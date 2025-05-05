@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unlook-sdk"
+version = "0.1.0"
+authors = [
+    {name = "UnLook Team", email = "info@unlook.com"},
+]
+description = "SDK universale per scanner 3D UnLook"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy>=1.21.0",
+    "opencv-python>=4.5.0",
+    "pyzmq>=25.0.0",
+    "zeroconf>=0.38.0",
+    "smbus2>=0.4.1",
+    "picamera2; platform_machine=='aarch64' or platform_machine=='armv7l'",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/unlook/unlook-sdk"
+"Bug Tracker" = "https://github.com/unlook/unlook-sdk/issues"
