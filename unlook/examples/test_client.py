@@ -391,7 +391,13 @@ Streaming diretto avviato con i seguenti parametri:
                 pattern_info = metadata.get("pattern_info", None)
                 
                 # Salva la differenza di sincronizzazione per calcoli futuri
-                sync_diff_values.append(sync_diff_ms)
+                try:
+                    sync_diff_values.append(sync_diff_ms)
+                except Exception as e:
+                    print(f"Error adding to sync_diff_values: {e}")
+                    # Reset if there's a problem
+                    sync_diff_values.clear()
+                    sync_diff_values.append(sync_diff_ms)
 
                 # Se c'è l'informazione sul pattern, aggiornala
                 if pattern_info:
@@ -485,8 +491,13 @@ Streaming diretto avviato con i seguenti parametri:
                 
                 # In stereo_direct_callback abbiamo accesso a sync_diff_ms dai metadati
                 # Calcoliamo la media delle differenze di sincronizzazione
-                avg_sync_diff = np.mean(sync_diff_values) if len(sync_diff_values) > 0 else 0
-                print(f"Differenza sync media: {avg_sync_diff:.1f}ms")
+                try:
+                    avg_sync_diff = np.mean(sync_diff_values) if len(sync_diff_values) > 0 else 0
+                    print(f"Differenza sync media: {avg_sync_diff:.1f}ms")
+                except Exception as e:
+                    print(f"Error calculating average sync difference: {e}")
+                    print("Resetando le statistiche di sincronizzazione...")
+                    sync_diff_values.clear()
 
                 # Ferma lo streaming
                 client.stream.stop()

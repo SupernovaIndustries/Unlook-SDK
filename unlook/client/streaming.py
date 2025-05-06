@@ -722,6 +722,15 @@ class StreamClient:
     def _direct_stream_receiver_loop(self):
         """Loop di ricezione dello streaming diretto."""
         logger.info("Thread di ricezione streaming diretto avviato")
+        
+        # Log debug info about direct streams
+        with self._lock:
+            if hasattr(self, 'direct_streams'):
+                for cam_id, stream in self.direct_streams.items():
+                    logger.info(f"Direct stream active for camera {cam_id}: {stream.get('active', False)}, "
+                               f"FPS: {stream.get('fps', 0)}, Quality: {stream.get('jpeg_quality', 0)}")
+            else:
+                logger.warning("No direct_streams attribute found")
 
         last_heartbeat_time = time.time()
         heartbeat_interval = 1.0  # Invia heartbeat ogni secondo
@@ -827,6 +836,8 @@ class StreamClient:
 
                     except Exception as e:
                         logger.error(f"Errore nella decodifica del frame: {e}")
+                        import traceback
+                        logger.error(f"Stack trace: {traceback.format_exc()}")
 
             except zmq.error.Again:
                 # Timeout, continua il loop
@@ -894,19 +905,31 @@ class StreamClient:
                 # Attendi un attimo prima di riavviare
                 time.sleep(0.5)
 
-                # Riavvia lo stream con le stesse configurazioni
-                self.start_direct_stream(
-                    camera_id,
-                    callback,
-                    stream_config.get("fps", 60),
-                    stream_config.get("jpeg_quality", 85),
-                    stream_config.get("sync_with_projector", False),
-                    stream_config.get("synchronization_pattern_interval", 5),
-                    stream_config.get("low_latency", True)
-                )
+                # Riavvia lo stream con le stesse configurazioni (in un thread separato per evitare errori join)
+                threading.Thread(
+                    target=self._delayed_restart_stream,
+                    args=(camera_id, callback, stream_config),
+                    daemon=True
+                ).start()
 
         except Exception as e:
             logger.error(f"Errore nel riavvio dello stream diretto {camera_id}: {e}")
+            
+    def _delayed_restart_stream(self, camera_id, callback, stream_config):
+        """Helper method to restart stream in a separate thread"""
+        try:
+            time.sleep(0.5)  # Additional small delay to ensure cleanup is complete
+            self.start_direct_stream(
+                camera_id,
+                callback,
+                stream_config.get("fps", 60),
+                stream_config.get("jpeg_quality", 85),
+                stream_config.get("sync_with_projector", False),
+                stream_config.get("synchronization_pattern_interval", 5),
+                stream_config.get("low_latency", True)
+            )
+        except Exception as e:
+            logger.error(f"Errore nel riavvio ritardato dello stream {camera_id}: {e}")
 
     def start_direct_stereo_stream(
             self,

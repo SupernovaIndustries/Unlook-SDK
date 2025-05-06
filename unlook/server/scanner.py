@@ -472,14 +472,26 @@ class UnlookServer(EventEmitter):
                         # Tempo di inizio elaborazione per calcolo performance
                         processing_start = time.time()
 
-                        # Cattura immagine
-                        image = self.camera_manager.capture_image(camera_id)
-                        if image is None:
-                            logger.error(f"Errore nella cattura dell'immagine dalla telecamera {camera_id}")
+                        # Cattura immagine con gestione eccezioni migliorata
+                        try:
+                            image = self.camera_manager.capture_image(camera_id)
+                            if image is None:
+                                logger.error(f"Errore nella cattura dell'immagine dalla telecamera {camera_id}")
+                                continue
+                        except Exception as e:
+                            logger.error(f"Eccezione nella cattura dell'immagine dalla telecamera {camera_id}: {e}")
+                            import traceback
+                            logger.error(traceback.format_exc())
                             continue
 
-                        # Codifica in JPEG
-                        jpeg_data = encode_image_to_jpeg(image, jpeg_quality)
+                        # Codifica in JPEG con gestione eccezioni
+                        try:
+                            jpeg_data = encode_image_to_jpeg(image, jpeg_quality)
+                        except Exception as e:
+                            logger.error(f"Errore nella codifica JPEG per la telecamera {camera_id}: {e}")
+                            import traceback
+                            logger.error(traceback.format_exc())
+                            continue
 
                         # Prepara metadati
                         height, width = image.shape[:2]
