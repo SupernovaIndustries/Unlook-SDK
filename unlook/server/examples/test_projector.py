@@ -7,6 +7,9 @@ Proietta una serie di pattern di linee con diverse configurazioni.
 import time
 import sys
 import logging
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
+
 from unlook.server.projector.dlp342x import (
     DLPC342XController,
     OperatingMode,
