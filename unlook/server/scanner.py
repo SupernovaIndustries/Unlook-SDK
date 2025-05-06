@@ -656,52 +656,55 @@ class UnlookServer:
                     "jpeg_data": jpeg_data
                 }
 
-            # Prepara la risposta
+            # Prepara i metadati per la risposta
+            all_metadata = {camera_id: images[camera_id]["metadata"] for camera_id in camera_ids}
             response_payload = {
                 "num_cameras": len(images),
                 "camera_ids": camera_ids,
+                "images_metadata": all_metadata,
                 "timestamp": time.time(),
-                "type": "multi_camera_response"  # Aggiunto esplicitamente il tipo
+                "type": "multi_camera_response"  # Tipo esplicito
             }
 
-            # Creiamo un messaggio di risposta speciale che contiene tutte le immagini
-            all_metadata = {camera_id: images[camera_id]["metadata"] for camera_id in camera_ids}
-            response_payload["images_metadata"] = all_metadata
+            # Serializza in formato JSON
+            response_json = json.dumps(response_payload).encode('utf-8')
+            response_json_size = len(response_json)
 
-            # Usa la funzione di serializzazione esistente invece di implementare manualmente
-            binary_message = serialize_binary_message(
-                "multi_camera_response",  # Tipo esplicito
-                response_payload,
-                None  # Inizialmente nessun dato binario
-            )
+            # Costruisci la risposta con formato:
+            # [Dimensione JSON (4 byte)][JSON][Dimensione JPEG 1 (4 byte)][JPEG 1][Dimensione JPEG 2 (4 byte)][JPEG 2]...
+            message_parts = [
+                # Dimensione header JSON (4 byte)
+                response_json_size.to_bytes(4, byteorder='little'),
+                # Header JSON
+                response_json
+            ]
 
-            # Preparazione del messaggio completo
-            # Ora dobbiamo aggiungere manualmente i dati delle immagini dopo l'header
-            header_size = binary_message[:4]  # I primi 4 byte contengono la dimensione dell'header
-            header = binary_message[:4 + int.from_bytes(header_size, byteorder='little')]
-
-            # Costruisci il messaggio completo
-            message_parts = [header]
-
-            # Aggiungi i dati binari delle immagini in sequenza
+            # Aggiungi ogni immagine con la sua dimensione
             for camera_id in camera_ids:
                 jpeg_data = images[camera_id]["jpeg_data"]
-                # Dimensione dei dati JPEG (4 bytes)
+                # Dimensione JPEG (4 byte)
                 message_parts.append(len(jpeg_data).to_bytes(4, byteorder='little'))
                 # Dati JPEG
                 message_parts.append(jpeg_data)
 
-            # Unisci tutte le parti
+            # Unisci tutte le parti in un unico messaggio binario
             response_data = b''.join(message_parts)
 
-            # Invia la risposta direttamente tramite il socket REP
-            self.control_socket.send(response_data)
+            # Log dettagliato sul formato della risposta (aiuta il debug)
+            logger.debug(f"Invio risposta multicamera: {len(response_data)} bytes totali")
+            logger.debug(f"Dimensione header: {response_json_size} bytes")
+            logger.debug(f"Numero immagini: {len(camera_ids)}")
+            for camera_id in camera_ids:
+                logger.debug(f"Immagine {camera_id}: {len(images[camera_id]['jpeg_data'])} bytes")
 
-            # Restituisce None per indicare che la risposta è già stata inviata
-            return None
+            # Invia la risposta
+            self.control_socket.send(response_data)
+            return None  # Risposta già inviata
 
         except Exception as e:
             logger.error(f"Errore nella cattura sincronizzata: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return Message.create_error(
                 message,
                 f"Errore nella cattura sincronizzata: {e}"
