@@ -23,7 +23,7 @@ from ..common.utils import generate_uuid, get_machine_info, deserialize_binary_m
 from .camera import CameraClient
 from .projector import ProjectorClient
 from .streaming import StreamClient
-from ..common.events import ClientEvent as UnlookClientEvent
+from ..common.events import UnlookClientEvent
 
 logger = logging.getLogger(__name__)
 

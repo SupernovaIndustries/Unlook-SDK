@@ -2,7 +2,7 @@
 Modulo client per la connessione a scanner UnLook.
 """
 
-from .scanner import UnlookClient, UnlookClientEvent
+from .scanner import UnlookClient
 from .camera import CameraClient
 from .projector import ProjectorClient
 from .streaming import StreamClient
@@ -17,7 +17,10 @@ from .stereo import (
 from .export import ModelExporter
 from .auto_calibration import AutoCalibration, CalibrationStatus
 
-# Import condizionale di moduli che richiedono librerie esterne
+# Importa direttamente da common.events invece che da .scanner
+from ..common.events import UnlookClientEvent
+
+# Importazioni condizionali per librerie esterne
 try:
     from .open3d_utils import Open3DWrapper
     OPEN3D_AVAILABLE = True
@@ -29,5 +32,3 @@ try:
     MESH_PROCESSING_AVAILABLE = True
 except ImportError:
     MESH_PROCESSING_AVAILABLE = False
-
-from ..common.events import ClientEvent as UnlookClientEvent
