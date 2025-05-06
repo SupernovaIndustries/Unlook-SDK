@@ -14,6 +14,7 @@ import numpy as np
 from ..common.protocol import MessageType
 from ..common.utils import decode_jpeg_to_image, deserialize_binary_message
 from ..common.constants import DEFAULT_STREAM_PORT, DEFAULT_STREAM_FPS, DEFAULT_JPEG_QUALITY
+from ..client.scanner import UnlookClientEvent
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +147,7 @@ class StreamClient:
 
                 # Emetti evento nel client principale
                 self.client._emit_event(
-                    self.client.UnlookClientEvent.STREAM_STARTED,
+                    UnlookClientEvent.STREAM_STARTED,
                     camera_id
                 )
 
@@ -182,7 +183,7 @@ class StreamClient:
 
             # Emetti evento nel client principale
             self.client._emit_event(
-                self.client.UnlookClientEvent.STREAM_STOPPED,
+                UnlookClientEvent.STREAM_STOPPED,
                 camera_id
             )
 

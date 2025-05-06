@@ -518,6 +518,65 @@ def test_streaming():
         client.stream.stop()
         cv2.destroyAllWindows()
 
+def stream_callback(frame, metadata):
+    """Callback per lo streaming da una singola telecamera."""
+    global frame_counters, display_windows
+
+    camera_id = metadata.get("camera_id", "unknown")
+
+    # Aggiorna il contatore dei frame
+    if camera_id not in frame_counters:
+        frame_counters[camera_id] = 0
+    frame_counters[camera_id] += 1
+
+    # Visualizza info ogni 30 frame per non intasare il terminale
+    if frame_counters[camera_id] % 30 == 0:
+        print(f"Camera {camera_id}: Frame #{frame_counters[camera_id]}, dimensione: {frame.shape[1]}x{frame.shape[0]}")
+
+    # Visualizza il frame
+    if camera_id not in display_windows:
+        display_windows[camera_id] = f"Stream - Camera {camera_id}"
+        cv2.namedWindow(display_windows[camera_id], cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(display_windows[camera_id], 640, 480)
+
+    # Ridimensiona per visualizzazione
+    display_frame = cv2.resize(frame, (640, 480))
+    cv2.imshow(display_windows[camera_id], display_frame)
+    cv2.waitKey(1)
+
+
+def stereo_stream_callback(left_frame, right_frame, metadata):
+    """Callback per lo streaming stereo."""
+    global frame_counters
+
+    # Aggiorna il contatore dei frame
+    if "stereo" not in frame_counters:
+        frame_counters["stereo"] = 0
+    frame_counters["stereo"] += 1
+
+    # Ottieni informazioni sul tempo di sincronizzazione
+    sync_time_ms = metadata.get("sync_time", 0) * 1000  # in millisecondi
+
+    # Visualizza info ogni 30 frame
+    if frame_counters["stereo"] % 30 == 0:
+        print(f"Stereo: Frame #{frame_counters['stereo']}, sync: {sync_time_ms:.1f}ms")
+
+    # Crea un'immagine combinata
+    stereo_image = np.hstack((left_frame, right_frame))
+
+    # Ridimensiona per visualizzazione
+    h, w = stereo_image.shape[:2]
+    if w > 1280:
+        scale = 1280 / w
+        stereo_image = cv2.resize(stereo_image, (1280, int(h * scale)))
+
+    # Aggiungi info sulla sincronizzazione
+    cv2.putText(stereo_image, f"Sync: {sync_time_ms:.1f}ms", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+    # Visualizza
+    cv2.imshow("Stereo Stream", stereo_image)
+    cv2.waitKey(1)
 
 def run_all_tests():
     """Esegue tutti i test."""

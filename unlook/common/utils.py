@@ -82,29 +82,92 @@ def decode_jpeg_to_image(jpeg_data: bytes) -> np.ndarray:
 
 
 def serialize_binary_message(msg_type: str, payload: Dict,
-                             binary_data: Optional[bytes] = None) -> bytes:
+                             binary_data: Optional[bytes] = None,
+                             format_type: str = "standard") -> bytes:
     """
-    Serializza un messaggio con dati binari in modo più robusto.
+    Serializza un messaggio con dati binari con supporto per diversi formati.
 
     Args:
         msg_type: Tipo di messaggio
         payload: Payload come dizionario
         binary_data: Dati binari opzionali
+        format_type: Tipo di formato ("standard", "ulmc", "jpeg_direct")
 
     Returns:
         Messaggio serializzato come bytes
     """
-    # Crea l'header, assicurandosi che il tipo sia sempre presente
-    header = {
-        "type": msg_type,
-        "payload": payload or {},
-        "timestamp": time.time(),
-        "has_binary": binary_data is not None,
-        "binary_size": len(binary_data) if binary_data else 0,
-        "protocol_version": "1.1"  # Versione del protocollo per futuri cambiamenti
-    }
+    # FORMATO ULMC: Se specificato esplicitamente o se è una risposta multicamera
+    if format_type == "ulmc" or (
+            format_type == "auto" and msg_type == "multi_camera_response" and "cameras" in payload):
+        try:
+            # Verifica che payload contenga i dati necessari per il formato ULMC
+            if "cameras" not in payload:
+                logger.warning("Formato ULMC richiesto ma payload non contiene 'cameras', uso formato standard")
+                format_type = "standard"
+            else:
+                # Estrai le informazioni sulle telecamere dal payload
+                cameras = payload.get("cameras", {})
 
+                # Inizia con i magic bytes e la versione
+                result = bytearray(b'ULMC')  # Magic bytes
+                result.append(1)  # Versione del formato
+
+                # Numero di telecamere
+                result.append(len(cameras))
+
+                # Per ogni telecamera
+                for camera_id, camera_data in cameras.items():
+                    # Ottieni i dati JPEG
+                    if isinstance(camera_data, dict) and "jpeg_data" in camera_data:
+                        jpeg_data = camera_data["jpeg_data"]
+                    else:
+                        logger.error(f"Camera {camera_id} non ha dati JPEG validi")
+                        continue
+
+                    # Converti ID camera in bytes
+                    camera_id_bytes = camera_id.encode('utf-8')
+
+                    # Lunghezza ID camera (1 byte)
+                    result.append(len(camera_id_bytes))
+
+                    # ID camera
+                    result.extend(camera_id_bytes)
+
+                    # Dimensione JPEG (4 bytes, little endian)
+                    result.extend(len(jpeg_data).to_bytes(4, byteorder='little'))
+
+                    # Dati JPEG
+                    result.extend(jpeg_data)
+
+                # Calcola e aggiungi checksum (somma di tutti i bytes modulo 256)
+                checksum = sum(result) % 256
+                result.append(checksum)
+
+                logger.debug(f"Messaggio serializzato in formato ULMC: {len(result)} bytes, {len(cameras)} telecamere")
+                return bytes(result)
+
+        except Exception as e:
+            logger.error(f"Errore durante la serializzazione in formato ULMC: {e}")
+            format_type = "standard"  # Fallback al formato standard
+
+    # JPEG DIRETTO: Per inviare direttamente un'immagine JPEG
+    if format_type == "jpeg_direct" and binary_data and len(binary_data) >= 2 and binary_data[0:2] == b'\xff\xd8':
+        # Invia direttamente i dati JPEG senza header
+        logger.debug(f"Messaggio serializzato in formato JPEG diretto: {len(binary_data)} bytes")
+        return binary_data
+
+    # FORMATO STANDARD: Default con header JSON e dati binari
     try:
+        # Crea l'header, assicurandosi che il tipo sia sempre presente
+        header = {
+            "type": msg_type,
+            "payload": payload or {},
+            "timestamp": time.time(),
+            "has_binary": binary_data is not None,
+            "binary_size": len(binary_data) if binary_data else 0,
+            "protocol_version": "1.1"  # Versione del protocollo aggiornata
+        }
+
         # Converte l'header in JSON e poi in bytes
         header_json = json.dumps(header).encode('utf-8')
         header_size = len(header_json)
@@ -117,7 +180,9 @@ def serialize_binary_message(msg_type: str, payload: Dict,
         if binary_data:
             message.extend(binary_data)
 
+        logger.debug(f"Messaggio serializzato in formato standard: {len(message)} bytes")
         return bytes(message)
+
     except Exception as e:
         # Log dell'errore e ripristino con un messaggio di errore
         logger.error(f"Errore durante la serializzazione del messaggio: {e}")
@@ -144,7 +209,8 @@ def serialize_binary_message(msg_type: str, payload: Dict,
 
 def deserialize_binary_message(data: bytes) -> Tuple[str, Dict, Optional[bytes]]:
     """
-    Deserializza un messaggio con dati binari in modo più robusto.
+    Deserializza un messaggio con dati binari con supporto per diversi formati.
+    Supporta il formato standard, il formato ULMC, e formati alternativi con fallback.
 
     Args:
         data: Messaggio serializzato
@@ -152,17 +218,84 @@ def deserialize_binary_message(data: bytes) -> Tuple[str, Dict, Optional[bytes]]
     Returns:
         Tupla (tipo_messaggio, payload, dati_binari)
     """
-    # Verifico se i dati iniziano con JPEG SOI marker (0xFF 0xD8)
-    if len(data) >= 2 and data[0] == 0xFF and data[1] == 0xD8:
-        # È un'immagine JPEG diretta senza header
-        logger.debug("Rilevato JPEG diretto senza header")
-        return "camera_frame", {"format": "jpeg", "direct_image": True}, data
-
     # Controlli di validità
     if not data or len(data) < 4:
         logger.error("Dati binari insufficienti per la deserializzazione")
         return "error", {"error": "Dati binari insufficienti"}, None
 
+    # FORMATO ULMC: Verifica se è il formato ULMC (UnLook MultiCamera)
+    if len(data) >= 4 and data[0:4] == b'ULMC':
+        try:
+            # Estrai versione e numero di telecamere
+            version = data[4] if len(data) > 4 else 1
+            num_cameras = data[5] if len(data) > 5 else 0
+
+            logger.debug(f"Rilevato formato ULMC v{version} con {num_cameras} telecamere")
+
+            # Crea payload con metadati ULMC
+            payload = {
+                "format": "ULMC",
+                "version": version,
+                "num_cameras": num_cameras,
+                "cameras": {}
+            }
+
+            # Posizione corrente nel buffer
+            pos = 6
+            camera_data = {}
+
+            # Per ogni telecamera
+            for _ in range(num_cameras):
+                if pos >= len(data):
+                    break
+
+                # Lunghezza ID camera
+                id_len = data[pos] if pos < len(data) else 0
+                pos += 1
+
+                # ID camera
+                if pos + id_len > len(data):
+                    break
+
+                camera_id = data[pos:pos + id_len].decode('utf-8')
+                pos += id_len
+
+                # Dimensione JPEG
+                if pos + 4 > len(data):
+                    break
+
+                jpeg_size = int.from_bytes(data[pos:pos + 4], byteorder='little')
+                pos += 4
+
+                # Salva i metadati
+                payload["cameras"][camera_id] = {
+                    "size": jpeg_size,
+                    "offset": pos
+                }
+
+                # Salta i dati JPEG
+                pos += jpeg_size
+
+            # Verifica checksum se c'è spazio
+            if pos < len(data):
+                received_checksum = data[-1]
+                calculated_checksum = sum(data[:-1]) % 256
+
+                payload["checksum_valid"] = received_checksum == calculated_checksum
+
+            # Restituisci il tipo, payload e i dati binari completi
+            return "multi_camera_response", payload, data
+
+        except Exception as e:
+            logger.error(f"Errore durante il parsing del formato ULMC: {e}")
+
+    # JPEG DIRETTO: Verifica se i dati iniziano con JPEG SOI marker (0xFF 0xD8)
+    if len(data) >= 2 and data[0] == 0xFF and data[1] == 0xD8:
+        # È un'immagine JPEG diretta senza header
+        logger.debug("Rilevato JPEG diretto senza header")
+        return "camera_frame", {"format": "jpeg", "direct_image": True}, data
+
+    # FORMATO STANDARD: Tenta la deserializzazione standard con header JSON
     try:
         # Estrae la dimensione dell'header
         header_size = int.from_bytes(data[:4], byteorder='little')
@@ -224,15 +357,15 @@ def deserialize_binary_message(data: bytes) -> Tuple[str, Dict, Optional[bytes]]
         return msg_type, payload, binary_data
 
     except json.JSONDecodeError as e:
-        logger.error(f"Errore nella decodifica JSON dell'header: {e}")
+        logger.debug(f"Errore nella decodifica JSON dell'header: {e}")
         # Se è un errore di decodifica JSON ma l'inizio assomiglia a un JPEG
         if len(data) >= 2 and data[0] == 0xFF and data[1] == 0xD8:
             logger.debug("Rilevato JPEG nonostante errore di decodifica JSON")
             return "camera_frame", {"format": "jpeg", "direct_image": True}, data
-        return "error", {"error": f"JSON non valido: {str(e)}"}, None
+        return "binary_data", {"format": "raw", "error": f"JSON non valido: {str(e)}"}, data
     except Exception as e:
-        logger.error(f"Errore nella deserializzazione del messaggio binario: {e}")
-        return "error", {"error": f"Errore di deserializzazione: {str(e)}"}, None
+        logger.debug(f"Errore nella deserializzazione del messaggio binario: {e}")
+        return "binary_data", {"format": "raw", "error": f"Errore di deserializzazione: {str(e)}"}, data
 
 
 class RateLimiter:

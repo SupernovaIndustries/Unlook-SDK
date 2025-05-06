@@ -624,8 +624,8 @@ class UnlookServer:
                     )
 
             # Cattura in modo sincronizzato
-            images = {}
             jpeg_quality = message.payload.get("jpeg_quality", self.jpeg_quality)
+            cameras = {}
 
             for camera_id in camera_ids:
                 # Cattura l'immagine
@@ -641,44 +641,38 @@ class UnlookServer:
 
                 # Prepara i metadati
                 height, width = image.shape[:2]
-                metadata = {
-                    "width": width,
-                    "height": height,
-                    "channels": image.shape[2] if len(image.shape) > 2 else 1,
-                    "format": "jpeg",
-                    "camera_id": camera_id,
-                    "timestamp": time.time()
+                cameras[camera_id] = {
+                    "jpeg_data": jpeg_data,
+                    "metadata": {
+                        "width": width,
+                        "height": height,
+                        "channels": image.shape[2] if len(image.shape) > 2 else 1,
+                        "format": "jpeg",
+                        "timestamp": time.time()
+                    }
                 }
 
-                # Aggiungi alla lista
-                images[camera_id] = {
-                    "metadata": metadata,
-                    "jpeg_data": jpeg_data
-                }
+            # Crea il payload completo
+            payload = {
+                "cameras": cameras,
+                "timestamp": time.time(),
+                "num_cameras": len(cameras)
+            }
 
-            # Prepara i metadati per la risposta
-            all_metadata = {camera_id: images[camera_id]["metadata"] for camera_id in camera_ids}
-
-            # METODO PIÙ COERENTE: utilizzo serialize_binary_message per un formato standardizzato
-            all_jpeg_data = b''.join([images[camera_id]["jpeg_data"] for camera_id in camera_ids])
-
-            # Utilizza il metodo standard per serializzare la risposta
+            # Serializza con il formato ULMC
             binary_response = serialize_binary_message(
                 "multi_camera_response",
-                {
-                    "num_cameras": len(images),
-                    "camera_ids": camera_ids,
-                    "images_metadata": all_metadata,
-                    "jpeg_offsets": [0] + [len(images[camera_id]["jpeg_data"]) for camera_id in camera_ids[:-1]],
-                    "jpeg_sizes": [len(images[camera_id]["jpeg_data"]) for camera_id in camera_ids],
-                    "timestamp": time.time(),
-                    "format_version": "2.0"  # Nuova versione del formato
-                },
-                all_jpeg_data
+                payload,
+                format_type="ulmc"
             )
 
             # Invia la risposta
             self.control_socket.send(binary_response)
+
+            # Log di debug
+            logger.debug(
+                f"Inviate {len(cameras)} immagini nel formato ULMC, dimensione totale: {len(binary_response)} bytes")
+
             return None  # Risposta già inviata
 
         except Exception as e:

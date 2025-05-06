@@ -10,7 +10,7 @@ from typing import Dict, List, Tuple, Optional, Any
 import numpy as np
 
 from ..common.protocol import MessageType
-from ..common.utils import decode_jpeg_to_image
+from ..common.utils import decode_jpeg_to_image, deserialize_binary_message
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +211,7 @@ class CameraClient:
     def capture_multi(self, camera_ids: List[str], jpeg_quality: int = 80) -> Dict[str, Optional[np.ndarray]]:
         """
         Cattura immagini sincronizzate da più telecamere.
+        Utilizza il miglioramento della funzione deserialize_binary_message per supportare diversi formati.
 
         Args:
             camera_ids: Lista degli ID delle telecamere
@@ -233,135 +234,74 @@ class CameraClient:
             return {}
 
         try:
-            # Analizziamo i primi byte per determinare il formato dei dati
-            # Se inizia con FF D8, è direttamente un JPEG senza metadati
-            # Altrimenti, assumiamo che segua il formato atteso
-            images = {}
-
-            # Log per debug a basso livello
+            # Log per debug
             logger.debug(f"Ricevuti {len(binary_data)} bytes di dati binari")
-            logger.debug(f"Primi byte: {binary_data[:16].hex()}")
 
-            # Verifichiamo se riceviamo direttamente una singola immagine JPEG
-            if len(binary_data) >= 2 and binary_data[0:2] == b'\xff\xd8':
-                logger.debug("Rilevato JPEG senza metadati, assumo una singola immagine")
-                # È solo una singola immagine JPEG, la assegniamo alla prima camera
+            # Deserializza utilizzando la funzione migliorata
+            msg_type, payload, binary_data = deserialize_binary_message(binary_data)
+
+            # Log delle informazioni sul formato
+            logger.debug(f"Formato rilevato: {msg_type}, payload: {payload.get('format', 'N/A')}")
+
+            # GESTIONE DEL FORMATO ULMC
+            if msg_type == "multi_camera_response" and payload.get("format") == "ULMC":
+                logger.info(f"Processamento risposta ULMC con {payload.get('num_cameras', 0)} telecamere")
+                images = {}
+
+                # Per ogni telecamera
+                for camera_id, camera_info in payload.get("cameras", {}).items():
+                    # Estrai e decodifica l'immagine
+                    offset = camera_info.get("offset", 0)
+                    size = camera_info.get("size", 0)
+
+                    if offset > 0 and size > 0 and offset + size <= len(binary_data):
+                        jpeg_data = binary_data[offset:offset + size]
+                        image = decode_jpeg_to_image(jpeg_data)
+
+                        if image is not None:
+                            images[camera_id] = image
+                            logger.debug(f"Decodificata immagine ULMC per camera {camera_id}: {image.shape}")
+                        else:
+                            logger.error(f"Impossibile decodificare l'immagine ULMC per camera {camera_id}")
+
+                if images:
+                    return images
+
+            # GESTIONE IMMAGINE JPEG DIRETTA
+            if msg_type == "camera_frame" and payload.get("direct_image", False):
+                # È una singola immagine JPEG, la assegniamo alla prima camera
                 if camera_ids:
                     image = decode_jpeg_to_image(binary_data)
                     if image is not None:
-                        images[camera_ids[0]] = image
-                        logger.debug(f"Immagine decodificata: {image.shape}")
-                return images
+                        logger.warning("Ricevuta una sola immagine invece di una per ogni telecamera")
+                        return {camera_ids[0]: image}
 
-            # Formato previsto: dimensione header (4 byte) + header JSON + dati binari
-            if len(binary_data) < 4:
-                logger.error("Dati insufficienti per estrapolare la dimensione dell'header")
-                return {}
-
-            # Estrai la dimensione dell'header
-            header_size = int.from_bytes(binary_data[:4], byteorder='little')
-            logger.debug(f"Dimensione header dichiarata: {header_size} bytes")
-
-            # Se l'header sembra errato o troppo grande, potremmo avere un formato diverso
-            if header_size <= 0 or header_size > len(binary_data) - 4:
-                logger.warning(f"Dimensione header sospetta: {header_size}, controllo formato alternativo")
-
-                # Proviamo un approccio alternativo: assumiamo che riceviamo direttamente le immagini JPEG
-                # senza un header JSON, ma con la dimensione di ciascuna immagine
-                current_pos = 0
-                for camera_id in camera_ids:
-                    # Verifichiamo se abbiamo abbastanza dati
-                    if current_pos + 4 > len(binary_data):
-                        logger.error(f"Dati insufficienti per leggere la dimensione dell'immagine {camera_id}")
-                        break
-
-                    # Leggiamo la dimensione dell'immagine
-                    img_size = int.from_bytes(binary_data[current_pos:current_pos + 4], byteorder='little')
-                    current_pos += 4
-
-                    # Verifichiamo se la dimensione è valida
-                    if img_size <= 0 or current_pos + img_size > len(binary_data):
-                        logger.error(f"Dimensione immagine non valida: {img_size}")
-                        break
-
-                    # Estrai i dati JPEG
-                    jpeg_data = binary_data[current_pos:current_pos + img_size]
-                    current_pos += img_size
-
-                    # Decodifica l'immagine
-                    image = decode_jpeg_to_image(jpeg_data)
-                    if image is not None:
-                        images[camera_id] = image
-                        logger.debug(f"Immagine decodificata per camera {camera_id}: {image.shape}")
-                    else:
-                        logger.error(f"Impossibile decodificare l'immagine per la camera {camera_id}")
-
-                return images
-
-            # Formato standard: proviamo a decodificare l'header JSON
-            try:
-                header_json = binary_data[4:4 + header_size].decode('utf-8')
-                header = json.loads(header_json)
-
-                # Estrai i metadati delle immagini
-                images_metadata = header.get("images_metadata", {})
-                camera_ids_from_response = header.get("camera_ids", camera_ids)
-
-                logger.debug(f"Metadati immagini: {images_metadata}")
-                logger.debug(f"Camera IDs dalla risposta: {camera_ids_from_response}")
-
-                # Posizione corrente nei dati binari
-                current_pos = 4 + header_size
-
-                # Estrai ogni immagine
-                for camera_id in camera_ids_from_response:
-                    # Verifichiamo se abbiamo abbastanza dati
-                    if current_pos + 4 > len(binary_data):
-                        logger.error(f"Dati insufficienti per leggere la dimensione dell'immagine {camera_id}")
-                        break
-
-                    # Leggiamo la dimensione dell'immagine
-                    jpeg_size = int.from_bytes(binary_data[current_pos:current_pos + 4], byteorder='little')
-                    current_pos += 4
-
-                    # Verifichiamo se la dimensione è valida
-                    if jpeg_size <= 0 or current_pos + jpeg_size > len(binary_data):
-                        logger.error(f"Dimensione immagine non valida: {jpeg_size}")
-                        break
-
-                    # Estrai i dati JPEG
-                    jpeg_data = binary_data[current_pos:current_pos + jpeg_size]
-                    current_pos += jpeg_size
-
-                    # Decodifica l'immagine
-                    image = decode_jpeg_to_image(jpeg_data)
-                    if image is not None:
-                        images[camera_id] = image
-                        logger.debug(f"Immagine decodificata per camera {camera_id}: {image.shape}")
-                    else:
-                        logger.error(f"Impossibile decodificare l'immagine per la camera {camera_id}")
-
-            except UnicodeDecodeError as e:
-                logger.error(f"Errore nella decodifica dell'header JSON: {e}")
-                # In caso di errore nella decodifica dell'header, proviamo un approccio alternativo
-                return self._fallback_decode_multi_response(binary_data, camera_ids)
-            except json.JSONDecodeError as e:
-                logger.error(f"Errore nella deserializzazione dell'header JSON: {e}")
-                return self._fallback_decode_multi_response(binary_data, camera_ids)
-            except Exception as e:
-                logger.error(f"Errore generico nella decodifica: {e}")
+            # GESTIONE FORMATO ALTERNATIVO CON PREFISSI DIMENSIONE
+            if msg_type == "multi_camera_response" and payload.get("alternative_format", False):
+                logger.info("Processamento formato alternativo con prefissi dimensione")
                 return self._fallback_decode_multi_response(binary_data, camera_ids)
 
-            return images
+            # GESTIONE FORMATO BINARIO GREZZO
+            if msg_type == "binary_data":
+                logger.info("Processamento dati binari grezzi con metodo di fallback")
+                return self._fallback_decode_multi_response(binary_data, camera_ids)
+
+            # Se siamo qui, non siamo riusciti a decodificare il formato
+            logger.warning(f"Formato di risposta non riconosciuto: {msg_type}")
+            return self._fallback_decode_multi_response(binary_data, camera_ids)
 
         except Exception as e:
             logger.error(f"Errore durante la decodifica della risposta multicamera: {e}")
-            logger.error(f"Primi 100 byte della risposta: {binary_data[:100]}")
-            return {}
+            import traceback
+            logger.error(traceback.format_exc())
+
+            # Tenta il fallback come ultima risorsa
+            return self._fallback_decode_multi_response(binary_data, camera_ids)
 
     def _fallback_decode_multi_response(self, binary_data: bytes, camera_ids: List[str]) -> Dict[str, Optional[np.ndarray]]:
         """
-        Metodo di fallback per decodificare la risposta nel caso in cui il formato non sia standard.
+        Metodo di fallback migliorato per decodificare la risposta multicamera.
+        Implementa diverse strategie per estrarre le immagini, garantendo massima robustezza.
 
         Args:
             binary_data: Dati binari ricevuti
@@ -370,70 +310,201 @@ class CameraClient:
         Returns:
             Dizionario {camera_id: immagine}
         """
-        logger.warning("Utilizzo metodo di fallback per decodificare la risposta multicamera")
+        logger.info("Utilizzo metodo di fallback avanzato per decodificare la risposta multicamera")
         images = {}
 
-        # Analisi di basso livello dei dati ricevuti
+        # Analisi più robusta dei dati ricevuti
         if len(binary_data) < 8:
             logger.error("Dati binari insufficienti per il metodo di fallback")
             return {}
 
-        # Controlliamo se riceviamo direttamente una sequenza di immagini JPEG con dimensioni prefissate
+        # Stampa informazioni diagnostiche sui primi byte
+        logger.debug(f"Primi 32 bytes: {binary_data[:32].hex()}")
+
+        # STRATEGIA 1: Cerca i marker JPEG (FFD8) e fine JPEG (FFD9)
+        # Questa è utile quando le immagini sono semplicemente concatenate
+        jpeg_starts = []
+        jpeg_ends = []
+
+        for i in range(len(binary_data) - 1):
+            if binary_data[i] == 0xFF:
+                if binary_data[i + 1] == 0xD8:  # Start of JPEG
+                    jpeg_starts.append(i)
+                elif binary_data[i + 1] == 0xD9:  # End of JPEG
+                    jpeg_ends.append(i + 1)
+
+        # Se troviamo lo stesso numero di inizi e fini JPEG e corrisponde al numero di telecamere
+        if len(jpeg_starts) == len(jpeg_ends) and len(jpeg_starts) == len(camera_ids):
+            logger.info(f"STRATEGIA 1: Trovate {len(jpeg_starts)} immagini JPEG complete nel stream binario")
+
+            # Ordiniamo le posizioni di inizio/fine
+            pairs = sorted(zip(jpeg_starts, jpeg_ends))
+
+            for idx, (start, end) in enumerate(pairs):
+                jpeg_data = binary_data[start:end + 1]  # Include il marcatore di fine
+                image = decode_jpeg_to_image(jpeg_data)
+
+                if image is not None:
+                    camera_id = camera_ids[idx]
+                    images[camera_id] = image
+                    logger.debug(f"Decodificata immagine per camera {camera_id}: {image.shape}")
+                else:
+                    logger.error(f"Impossibile decodificare l'immagine {idx + 1}")
+
+            return images
+
+        # STRATEGIA 2: Assume formato [size1(4B) | JPEG1 | size2(4B) | JPEG2 | ...]
+        logger.info("STRATEGIA 2: Tentativo di decodifica basato su prefissi di dimensione")
         current_pos = 0
-        for camera_id in camera_ids:
-            if current_pos + 4 > len(binary_data):
-                break
+        strategy2_images = {}
 
-            # Proviamo a leggere la dimensione come un intero little-endian a 32 bit
-            img_size = int.from_bytes(binary_data[current_pos:current_pos + 4], byteorder='little')
-            current_pos += 4
-
-            # Verifichiamo se la dimensione è ragionevole
-            if img_size <= 0 or img_size > 10 * 1024 * 1024 or current_pos + img_size > len(binary_data):
-                # Proviamo a trovare direttamente i marker JPEG
-                for i in range(current_pos, len(binary_data) - 1):
-                    if binary_data[i] == 0xFF and binary_data[i + 1] == 0xD8:
-                        # Trovato inizio JPEG
-                        jpeg_start = i
-                        jpeg_end = None
-
-                        # Cerca la fine del JPEG (FFD9)
-                        for j in range(i + 2, len(binary_data) - 1):
-                            if binary_data[j] == 0xFF and binary_data[j + 1] == 0xD9:
-                                jpeg_end = j + 2
-                                break
-
-                        if jpeg_end is not None:
-                            # Estrai i dati JPEG
-                            jpeg_data = binary_data[jpeg_start:jpeg_end]
-                            image = decode_jpeg_to_image(jpeg_data)
-                            if image is not None:
-                                images[camera_id] = image
-                                logger.debug(f"JPEG trovato tramite rilevamento marker: {jpeg_start}-{jpeg_end}")
-                                current_pos = jpeg_end
-                                break
-
-                # Se non abbiamo trovato nessun JPEG, usciamo
-                if camera_id not in images:
-                    logger.error(f"Impossibile trovare dati JPEG validi per la camera {camera_id}")
+        try:
+            for idx, camera_id in enumerate(camera_ids):
+                if current_pos + 4 > len(binary_data):
+                    logger.error("Fine prematura dei dati")
                     break
-            else:
-                # La dimensione sembra ragionevole, proviamo a estrapolare i dati JPEG
+
+                # Leggi la dimensione del prossimo blocco JPEG
+                img_size = int.from_bytes(binary_data[current_pos:current_pos + 4], byteorder='little')
+                current_pos += 4
+
+                # Verifica se la dimensione sembra valida
+                if img_size <= 0 or img_size > 10 * 1024 * 1024 or current_pos + img_size > len(binary_data):
+                    logger.warning(f"Dimensione immagine non valida: {img_size}, salto alla strategia successiva")
+                    break
+
+                # Estrai i dati JPEG
                 jpeg_data = binary_data[current_pos:current_pos + img_size]
                 current_pos += img_size
 
-                # Verifichiamo se i dati iniziano con marker JPEG (FFD8)
-                if len(jpeg_data) >= 2 and jpeg_data[0:2] == b'\xff\xd8':
+                # Verifica che siano dati JPEG validi
+                if len(jpeg_data) > 2 and jpeg_data[0:2] == b'\xff\xd8':
                     image = decode_jpeg_to_image(jpeg_data)
                     if image is not None:
-                        images[camera_id] = image
-                        logger.debug(f"Immagine decodificata per camera {camera_id} (fallback): {image.shape}")
+                        strategy2_images[camera_id] = image
+                        logger.debug(f"Decodificata immagine per camera {camera_id}: {image.shape}")
                     else:
-                        logger.error(f"Impossibile decodificare l'immagine per la camera {camera_id} (fallback)")
+                        logger.error(f"Impossibile decodificare l'immagine per camera {camera_id}")
                 else:
-                    logger.error(f"I dati estratti non sembrano un JPEG valido per la camera {camera_id}")
+                    logger.warning(f"I dati non sembrano un JPEG valido per camera {camera_id}")
+                    break
+        except Exception as e:
+            logger.error(f"Errore nella STRATEGIA 2: {e}")
 
-        return images
+        # Se abbiamo decodificato tutte le immagini, restituisci il risultato
+        if len(strategy2_images) == len(camera_ids):
+            logger.info("STRATEGIA 2 completata con successo")
+            return strategy2_images
+
+        # STRATEGIA 3: Cerca marker JPEG e usa euristica per riconoscere la fine
+        logger.info("STRATEGIA 3: Ricerca euristica delle immagini JPEG")
+        strategy3_images = {}
+
+        try:
+            pos = 0
+            for idx, camera_id in enumerate(camera_ids):
+                # Cerca l'inizio di un JPEG
+                jpeg_start = -1
+                for i in range(pos, len(binary_data) - 1):
+                    if binary_data[i] == 0xFF and binary_data[i + 1] == 0xD8:
+                        jpeg_start = i
+                        break
+
+                if jpeg_start == -1:
+                    logger.error(f"Impossibile trovare l'inizio dell'immagine JPEG per camera {camera_id}")
+                    break
+
+                # Cerca la fine del JPEG o il prossimo inizio di JPEG
+                jpeg_end = -1
+                next_start = -1
+
+                for i in range(jpeg_start + 2, len(binary_data) - 1):
+                    if binary_data[i] == 0xFF:
+                        if binary_data[i + 1] == 0xD9:  # Fine JPEG
+                            jpeg_end = i + 1
+                            break
+                        elif binary_data[i + 1] == 0xD8 and i > jpeg_start + 100:  # Nuovo JPEG, ma non troppo vicino
+                            next_start = i
+                            break
+
+                # Se abbiamo trovato la fine, estrai il JPEG
+                if jpeg_end != -1:
+                    jpeg_data = binary_data[jpeg_start:jpeg_end + 1]
+                    pos = jpeg_end + 1
+                # Altrimenti, se abbiamo trovato l'inizio di un nuovo JPEG, usa quello come fine
+                elif next_start != -1:
+                    jpeg_data = binary_data[jpeg_start:next_start]
+                    pos = next_start
+                # Altrimenti, prendi tutto fino alla fine
+                else:
+                    jpeg_data = binary_data[jpeg_start:]
+                    pos = len(binary_data)
+
+                # Decodifica l'immagine
+                image = decode_jpeg_to_image(jpeg_data)
+                if image is not None:
+                    strategy3_images[camera_id] = image
+                    logger.debug(f"Decodificata immagine per camera {camera_id}: {image.shape}")
+                else:
+                    logger.error(f"Impossibile decodificare l'immagine per camera {camera_id}")
+        except Exception as e:
+            logger.error(f"Errore nella STRATEGIA 3: {e}")
+
+        # Se abbiamo decodificato tutte le immagini, restituisci il risultato
+        if len(strategy3_images) == len(camera_ids):
+            logger.info("STRATEGIA 3 completata con successo")
+            return strategy3_images
+
+        # STRATEGIA 4: Ultima risorsa - suddividi equamente il buffer tra le telecamere
+        # Utile se le immagini hanno dimensioni simili
+        if not images and len(camera_ids) > 0:
+            logger.info("STRATEGIA 4: Suddivisione equidistante del buffer")
+
+            chunk_size = len(binary_data) // len(camera_ids)
+            for idx, camera_id in enumerate(camera_ids):
+                start = idx * chunk_size
+                end = (idx + 1) * chunk_size if idx < len(camera_ids) - 1 else len(binary_data)
+
+                # Cerca l'inizio di un JPEG nel chunk
+                jpeg_start = -1
+                for i in range(start, min(start + 100, end - 1)):
+                    if binary_data[i] == 0xFF and binary_data[i + 1] == 0xD8:
+                        jpeg_start = i
+                        break
+
+                if jpeg_start == -1:
+                    logger.error(f"Impossibile trovare l'inizio dell'immagine JPEG per camera {camera_id}")
+                    continue
+
+                # Cerca la fine del JPEG
+                jpeg_end = -1
+                for i in range(end - 2, jpeg_start + 2, -1):
+                    if binary_data[i] == 0xFF and binary_data[i + 1] == 0xD9:
+                        jpeg_end = i + 1
+                        break
+
+                if jpeg_end == -1:
+                    logger.warning(
+                        f"Impossibile trovare la fine dell'immagine JPEG per camera {camera_id}, uso fine chunk")
+                    jpeg_end = end
+
+                # Estrai e decodifica
+                jpeg_data = binary_data[jpeg_start:jpeg_end + 1]
+                image = decode_jpeg_to_image(jpeg_data)
+                if image is not None:
+                    images[camera_id] = image
+                    logger.debug(f"Decodificata immagine per camera {camera_id}: {image.shape}")
+                else:
+                    logger.error(f"Impossibile decodificare l'immagine per camera {camera_id}")
+
+        # Combina i risultati delle diverse strategie, dando priorità a quelle più affidabili
+        final_images = {}
+        final_images.update(images)  # Strategia 4 ha priorità bassa
+        final_images.update(strategy3_images)  # Strategia 3 ha priorità media
+        final_images.update(strategy2_images)  # Strategia 2 ha priorità alta
+
+        logger.info(f"Decodificate {len(final_images)}/{len(camera_ids)} immagini tramite fallback")
+        return final_images
 
     def get_stereo_pair(self) -> Tuple[Optional[str], Optional[str]]:
         """
