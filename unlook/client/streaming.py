@@ -227,12 +227,12 @@ class StreamClient:
     def _cleanup_streaming(self):
         """Pulisce tutte le risorse di streaming."""
         with self._lock:
+            # Pulisci tutti gli stream attivi
+            for camera_id in list(self.streams.keys()):
+                self._cleanup_stream(camera_id)
+
             # Imposta flag
             self.streaming = False
-            self.streams = {}
-            self.frame_callbacks = {}
-            self.frame_counters = {}
-            self.fps_stats = {}
 
             # Chiudi il socket
             if self.stream_socket:

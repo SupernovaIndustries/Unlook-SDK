@@ -26,7 +26,7 @@ from ..common.utils import (
 
 from .camera.picamera2 import PiCamera2Manager
 from .projector.dlp342x import DLPC342XController, OperatingMode, TestPattern, Color
-from ..common.events import ClientEvent
+from ..common.events import UnlookClientEvent
 
 logger = logging.getLogger(__name__)
 
@@ -760,7 +760,13 @@ class UnlookServer:
         camera_id = message.payload.get("camera_id")
         stream_id = message.payload.get("stream_id")
 
-        # Cerca lo stream da fermare
+        # Se non è specificato né camera_id né stream_id, ferma tutti gli stream
+        if not camera_id and not stream_id:
+            self.stop_streaming()
+            logger.info("Tutti gli stream fermati")
+            return Message.create_reply(message, {"success": True})
+
+        # Altrimenti cerca lo stream specifico da fermare
         for i, stream_info in enumerate(self.active_streams):
             if ((camera_id and stream_info["camera_id"] == camera_id) or
                     (stream_id and stream_info["stream_id"] == stream_id)):
@@ -773,10 +779,7 @@ class UnlookServer:
         if not self.active_streams:
             self.stop_streaming()
 
-        return Message.create_reply(
-            message,
-            {"success": True}
-        )
+        return Message.create_reply(message, {"success": True})
 
     def _streaming_loop(self):
         """Loop di streaming video."""
@@ -861,17 +864,6 @@ class UnlookServer:
             time.sleep(0.001)  # 1ms
 
         logger.info("Thread di streaming terminato")
-
-    def _handle_camera_stream_stop(self, message: Message) -> Message:
-        """Gestisce i messaggi CAMERA_STREAM_STOP."""
-        self.stop_streaming()
-
-        logger.info("Streaming fermato")
-
-        return Message.create_reply(
-            message,
-            {"success": True}
-        )
 
     def _handle_scan_start(self, message: Message) -> Message:
         """Gestisce i messaggi SCAN_START."""
@@ -968,64 +960,6 @@ class UnlookServer:
             }
         }
         return capabilities
-
-    def _streaming_loop(self):
-        """Loop di streaming video."""
-        logger.info(f"Thread di streaming avviato (camera: {self.streaming_camera_id})")
-
-        # Calcola l'intervallo tra i frame
-        interval = 1.0 / self.streaming_fps
-
-        while self.streaming_active:
-            start_time = time.time()
-
-            try:
-                # Cattura immagine
-                image = self.camera_manager.capture_image(self.streaming_camera_id)
-                if image is None:
-                    logger.error(f"Errore nella cattura dell'immagine dalla camera {self.streaming_camera_id}")
-                    time.sleep(interval)  # Attendi comunque l'intervallo
-                    continue
-
-                # Codifica in JPEG
-                jpeg_data = encode_image_to_jpeg(image, self.jpeg_quality)
-
-                # Prepara i metadati
-                height, width = image.shape[:2]
-                metadata = {
-                    "width": width,
-                    "height": height,
-                    "channels": image.shape[2] if len(image.shape) > 2 else 1,
-                    "format": "jpeg",
-                    "camera_id": self.streaming_camera_id,
-                    "timestamp": time.time(),
-                    "frame_number": 0  # TODO: implementare contatore frame
-                }
-
-                # Crea messaggio binario
-                binary_message = serialize_binary_message(
-                    "camera_frame",
-                    metadata,
-                    jpeg_data
-                )
-
-                # Pubblica il frame
-                self.stream_socket.send(binary_message)
-
-            except Exception as e:
-                logger.error(f"Errore nello streaming: {e}")
-
-            # Calcola tempo rimanente per rispettare il frame rate
-            elapsed = time.time() - start_time
-            sleep_time = max(0, interval - elapsed)
-
-            if sleep_time > 0:
-                time.sleep(sleep_time)
-            elif elapsed > interval * 1.1:
-                # Log solo se il ritardo è significativo
-                logger.warning(f"Streaming in ritardo: {elapsed:.4f}s > {interval:.4f}s")
-
-        logger.info("Thread di streaming terminato")
 
     def stop_streaming(self):
         """Ferma lo streaming video."""
