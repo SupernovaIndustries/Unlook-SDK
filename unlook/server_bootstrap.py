@@ -31,7 +31,7 @@ def main():
 
     try:
         # Importa il modulo server - questo import è sicuro con la nuova struttura
-        from unlook.server import UnlookServer
+        from server import UnlookServer
 
         # Carica la configurazione
         config_path = args.config or "unlook/unlook_config.json"
