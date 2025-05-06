@@ -286,10 +286,13 @@ def test_direct_streaming():
             # Aggiungi overlay con informazioni sulla latenza e sul pattern
             frame_with_info = frame.copy()
 
+            # Ensure fps_history has data before accessing
+            current_fps = fps_history[-1] if len(fps_history) > 0 else 0.0
+            
             # Aggiungi informazioni su latenza e FPS
             cv2.putText(
                 frame_with_info,
-                f"Frame: {frame_counters[camera_id]} | Latenza: {latency:.1f}ms | FPS: {fps_history[-1]:.1f}",
+                f"Frame: {frame_counters[camera_id]} | Latenza: {latency:.1f}ms | FPS: {current_fps:.1f}",
                 (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 1,
@@ -585,8 +588,8 @@ def start_stats_plot():
 
         return latency_line, fps_line
 
-    # Avvia l'animazione
-    ani = FuncAnimation(fig, update, interval=100, blit=True)
+    # Avvia l'animazione (suppress warning by setting save_count)
+    ani = FuncAnimation(fig, update, interval=100, blit=True, save_count=100, cache_frame_data=False)
     plt.tight_layout()
     plt.ion()  # Abilita la modalità interattiva
     plt.show(block=False)

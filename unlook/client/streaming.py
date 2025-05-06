@@ -245,10 +245,16 @@ class StreamClient:
 
             # Wait for threads to terminate
             if hasattr(self, 'stream_thread') and self.stream_thread and self.stream_thread.is_alive():
-                self.stream_thread.join(timeout=2.0)
+                if self.stream_thread != threading.current_thread():  # Avoid joining current thread
+                    self.stream_thread.join(timeout=2.0)
+                else:
+                    logger.warning("Not joining stream_thread as it is the current thread")
 
             if hasattr(self, 'watchdog_thread') and self.watchdog_thread and self.watchdog_thread.is_alive():
-                self.watchdog_thread.join(timeout=2.0)
+                if self.watchdog_thread != threading.current_thread():  # Avoid joining current thread
+                    self.watchdog_thread.join(timeout=2.0)
+                else:
+                    logger.warning("Not joining watchdog_thread as it is the current thread")
 
             self.stream_thread = None
             self.watchdog_thread = None
@@ -710,11 +716,16 @@ class StreamClient:
 
             # Attendi che i thread si terminino
             if hasattr(self, 'direct_thread') and self.direct_thread and self.direct_thread.is_alive():
-                self.direct_thread.join(timeout=2.0)
+                if self.direct_thread != threading.current_thread():  # Avoid joining current thread
+                    self.direct_thread.join(timeout=2.0)
+                else:
+                    logger.warning("Not joining direct_thread as it is the current thread")
 
-            if hasattr(self,
-                       'direct_watchdog_thread') and self.direct_watchdog_thread and self.direct_watchdog_thread.is_alive():
-                self.direct_watchdog_thread.join(timeout=2.0)
+            if hasattr(self, 'direct_watchdog_thread') and self.direct_watchdog_thread and self.direct_watchdog_thread.is_alive():
+                if self.direct_watchdog_thread != threading.current_thread():  # Avoid joining current thread
+                    self.direct_watchdog_thread.join(timeout=2.0)
+                else:
+                    logger.warning("Not joining direct_watchdog_thread as it is the current thread")
 
             self.direct_thread = None
             self.direct_watchdog_thread = None
