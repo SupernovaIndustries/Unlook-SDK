@@ -95,9 +95,48 @@ class UnlookDiscovery:
         }
         properties.update(scanner_info)
 
-        # Ottieni l'indirizzo IP locale
-        hostname = socket.gethostname()
-        local_ip = socket.gethostbyname(hostname)
+        # Ottieni l'indirizzo IP locale che sia effettivamente accessibile dalla rete
+        # Questo metodo crea un socket che "punta" a un indirizzo esterno
+        # per determinare quale interfaccia di rete viene usata per il routing
+        local_ip = None
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(('8.8.8.8', 1))  # Usiamo Google DNS, ma non inviamo veramente dati
+            local_ip = s.getsockname()[0]
+            s.close()
+        except Exception as e:
+            logger.warning(f"Errore nell'ottenimento dell'IP tramite socket: {e}, usando metodi alternativi")
+
+        # Metodo alternativo se il precedente fallisce
+        if not local_ip:
+            try:
+                # Tenta di ottenere gli indirizzi IP da tutte le interfacce di rete
+                from netifaces import interfaces, ifaddresses, AF_INET
+                for interface in interfaces():
+                    addresses = ifaddresses(interface).get(AF_INET, [])
+                    for address_info in addresses:
+                        addr = address_info.get('addr')
+                        # Escludiamo gli indirizzi localhost
+                        if addr and not addr.startswith('127.'):
+                            local_ip = addr
+                            break
+                    if local_ip:
+                        break
+            except ImportError:
+                logger.warning("Modulo netifaces non disponibile, usando metodo base")
+            except Exception as e:
+                logger.warning(f"Errore nell'ottenimento dell'IP dalle interfacce: {e}")
+
+        # Se tutto fallisce, usa il metodo standard (che potrebbe restituire localhost)
+        if not local_ip:
+            hostname = socket.gethostname()
+            try:
+                local_ip = socket.gethostbyname(hostname)
+            except Exception as e:
+                logger.error(f"Impossibile ottenere IP locale: {e}")
+                local_ip = '127.0.0.1'  # Fallback a localhost come ultima risorsa
+
+        logger.info(f"Indirizzo IP trovato per il servizio: {local_ip}")
 
         # Crea e registra il servizio
         service_name = f"{name}.{SERVICE_TYPE}"
