@@ -247,20 +247,26 @@ class ProjectorClient:
 
     def set_standby(self) -> bool:
         """
-        Mette il proiettore in standby in modo sicuro.
+        Mette il proiettore in uno stato equivalente allo standby in modo sicuro.
+        Usa un campo nero invece della modalità standby per evitare problemi di timeout I2C.
 
         Returns:
             True se l'operazione ha successo, False altrimenti
         """
         try:
-            # Prima proietta un campo nero per evitare problemi
-            self.show_solid_field("Black")
-            time.sleep(0.2)  # Breve pausa per assicurarsi che il comando sia completato
+            # Impostiamo prima la modalità test pattern
+            mode_success = self.set_test_pattern_mode()
+            if not mode_success:
+                logger.warning("Impossibile impostare la modalità test pattern, provo comunque a proiettare nero")
 
-            # Poi imposta la modalità standby
-            return self.set_mode("Standby")
+            # Proietta un campo nero (equivalente visivo dello standby)
+            black_success = self.show_solid_field("Black")
+
+            # Considerare l'operazione riuscita se riusciamo almeno a proiettare il nero
+            return black_success
+
         except Exception as e:
-            logger.error(f"Errore durante l'impostazione della modalità standby: {e}")
+            logger.error(f"Errore durante l'impostazione dello 'standby visivo': {e}")
             return False
 
     def set_test_pattern_mode(self) -> bool:

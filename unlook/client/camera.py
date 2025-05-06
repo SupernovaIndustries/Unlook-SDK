@@ -104,6 +104,56 @@ class CameraClient:
             logger.error(f"Errore nella configurazione della telecamera {camera_id}")
             return False
 
+    def set_exposure(self, camera_id: str, exposure_time: int, gain: Optional[float] = None) -> bool:
+        """
+        Imposta l'esposizione della telecamera.
+
+        Args:
+            camera_id: ID della telecamera
+            exposure_time: Tempo di esposizione in microsecondi
+            gain: Guadagno analogico (opzionale)
+
+        Returns:
+            True se l'operazione ha successo, False altrimenti
+        """
+        config = {"exposure": exposure_time}
+        if gain is not None:
+            config["gain"] = gain
+        return self.configure(camera_id, config)
+
+    def set_white_balance(self, camera_id: str, mode: str, red_gain: Optional[float] = None,
+                          blue_gain: Optional[float] = None) -> bool:
+        """
+        Imposta il bilanciamento del bianco della telecamera.
+
+        Args:
+            camera_id: ID della telecamera
+            mode: Modalità ("auto" o "manual")
+            red_gain: Guadagno del canale rosso (necessario per "manual")
+            blue_gain: Guadagno del canale blu (necessario per "manual")
+
+        Returns:
+            True se l'operazione ha successo, False altrimenti
+        """
+        config = {"awb": mode}
+        if mode == "manual" and red_gain is not None and blue_gain is not None:
+            config["awb_gains"] = [red_gain, blue_gain]
+        return self.configure(camera_id, config)
+
+    def flip_image(self, camera_id: str, horizontal: bool = False, vertical: bool = False) -> bool:
+        """
+        Specchia l'immagine della telecamera.
+
+        Args:
+            camera_id: ID della telecamera
+            horizontal: Specchia orizzontalmente
+            vertical: Specchia verticalmente
+
+        Returns:
+            True se l'operazione ha successo, False altrimenti
+        """
+        return self.configure(camera_id, {"hflip": horizontal, "vflip": vertical})
+
     def configure_all(self, config: Dict[str, Any]) -> Dict[str, bool]:
         """
         Configura tutte le telecamere con la stessa configurazione.
@@ -184,23 +234,16 @@ class CameraClient:
 
         try:
             # Decodifica la risposta multicamera
-            # La risposta è strutturata come:
-            # - Header size (4 bytes)
-            # - Header JSON (header_size bytes)
-            # Per ogni camera:
-            #   - Dimensione dati JPEG (4 bytes)
-            #   - Dati JPEG (jpeg_size bytes)
-
             # Estrai la dimensione dell'header
             header_size = int.from_bytes(binary_data[:4], byteorder='little')
 
             # Estrai e parsa l'header
-            header_json = binary_data[4:4+header_size].decode('utf-8')
+            header_json = binary_data[4:4 + header_size].decode('utf-8')
             header = json.loads(header_json)
 
-            # Estrai i metadati delle immagini
+            # Estrai i metadati delle immagini - gestisci possibili chiavi mancanti
             images_metadata = header.get("images_metadata", {})
-            camera_ids = header.get("camera_ids", [])
+            camera_ids_from_response = header.get("camera_ids", camera_ids)  # Fallback all'input originale
 
             # Dizionario per i risultati
             images = {}
@@ -208,26 +251,45 @@ class CameraClient:
             # Posizione corrente nei dati binari
             current_pos = 4 + header_size
 
+            # Log per debug
+            logger.debug(f"Header ricevuto: {header}")
+            logger.debug(f"Lunghezza dati binari: {len(binary_data)}")
+            logger.debug(f"Posizione dopo header: {current_pos}")
+
             # Estrai ogni immagine
-            for camera_id in camera_ids:
-                # Leggi la dimensione dell'immagine
-                jpeg_size = int.from_bytes(binary_data[current_pos:current_pos+4], byteorder='little')
-                current_pos += 4
+            for camera_id in camera_ids_from_response:
+                try:
+                    if current_pos >= len(binary_data):
+                        logger.error(f"Dati binari insufficienti per la camera {camera_id}")
+                        continue
 
-                # Estrai i dati JPEG
-                jpeg_data = binary_data[current_pos:current_pos+jpeg_size]
-                current_pos += jpeg_size
+                    # Leggi la dimensione dell'immagine
+                    jpeg_size = int.from_bytes(binary_data[current_pos:current_pos + 4], byteorder='little')
+                    current_pos += 4
 
-                # Decodifica l'immagine
-                image = decode_jpeg_to_image(jpeg_data)
-                images[camera_id] = image
+                    if current_pos + jpeg_size > len(binary_data):
+                        logger.error(f"Dati JPEG incompleti per la camera {camera_id}")
+                        continue
 
-                logger.debug(f"Immagine decodificata per camera {camera_id}: {image.shape if image is not None else 'None'}")
+                    # Estrai i dati JPEG
+                    jpeg_data = binary_data[current_pos:current_pos + jpeg_size]
+                    current_pos += jpeg_size
+
+                    # Decodifica l'immagine
+                    image = decode_jpeg_to_image(jpeg_data)
+                    images[camera_id] = image
+
+                    logger.debug(
+                        f"Immagine decodificata per camera {camera_id}: {image.shape if image is not None else 'None'}")
+                except Exception as cam_error:
+                    logger.error(f"Errore durante l'elaborazione della camera {camera_id}: {cam_error}")
+                    continue  # Passa alla prossima camera
 
             return images
 
         except Exception as e:
             logger.error(f"Errore durante la decodifica della risposta multicamera: {e}")
+            logger.error(f"Primi 100 byte della risposta: {binary_data[:100]}")
             return {}
 
     def get_stereo_pair(self) -> Tuple[Optional[str], Optional[str]]:

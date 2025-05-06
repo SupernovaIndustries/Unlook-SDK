@@ -84,7 +84,7 @@ def decode_jpeg_to_image(jpeg_data: bytes) -> np.ndarray:
 def serialize_binary_message(msg_type: str, payload: Dict,
                              binary_data: Optional[bytes] = None) -> bytes:
     """
-    Serializza un messaggio con dati binari.
+    Serializza un messaggio con dati binari in modo più robusto.
 
     Args:
         msg_type: Tipo di messaggio
@@ -94,33 +94,57 @@ def serialize_binary_message(msg_type: str, payload: Dict,
     Returns:
         Messaggio serializzato come bytes
     """
-    # Crea l'header
+    # Crea l'header, assicurandosi che il tipo sia sempre presente
     header = {
         "type": msg_type,
-        "payload": payload,
+        "payload": payload or {},
         "timestamp": time.time(),
         "has_binary": binary_data is not None,
-        "binary_size": len(binary_data) if binary_data else 0
+        "binary_size": len(binary_data) if binary_data else 0,
+        "protocol_version": "1.1"  # Versione del protocollo per futuri cambiamenti
     }
 
-    # Converte l'header in JSON e poi in bytes
-    header_json = json.dumps(header).encode('utf-8')
-    header_size = len(header_json)
+    try:
+        # Converte l'header in JSON e poi in bytes
+        header_json = json.dumps(header).encode('utf-8')
+        header_size = len(header_json)
 
-    # Costruisce il messaggio: [header_size (4 bytes) | header (json) | binary_data]
-    message = bytearray()
-    message.extend(header_size.to_bytes(4, byteorder='little'))
-    message.extend(header_json)
+        # Costruisce il messaggio: [header_size (4 bytes) | header (json) | binary_data]
+        message = bytearray()
+        message.extend(header_size.to_bytes(4, byteorder='little'))
+        message.extend(header_json)
 
-    if binary_data:
-        message.extend(binary_data)
+        if binary_data:
+            message.extend(binary_data)
 
-    return bytes(message)
+        return bytes(message)
+    except Exception as e:
+        # Log dell'errore e ripristino con un messaggio di errore
+        logger.error(f"Errore durante la serializzazione del messaggio: {e}")
+
+        # Crea un header di fallback minimo
+        fallback_header = {
+            "type": "error",
+            "payload": {"error": f"Errore di serializzazione: {str(e)}"},
+            "timestamp": time.time(),
+            "has_binary": False,
+            "binary_size": 0,
+            "protocol_version": "1.1"
+        }
+
+        fallback_json = json.dumps(fallback_header).encode('utf-8')
+        fallback_size = len(fallback_json)
+
+        fallback_message = bytearray()
+        fallback_message.extend(fallback_size.to_bytes(4, byteorder='little'))
+        fallback_message.extend(fallback_json)
+
+        return bytes(fallback_message)
 
 
 def deserialize_binary_message(data: bytes) -> Tuple[str, Dict, Optional[bytes]]:
     """
-    Deserializza un messaggio con dati binari.
+    Deserializza un messaggio con dati binari in modo più robusto.
 
     Args:
         data: Messaggio serializzato
@@ -128,23 +152,62 @@ def deserialize_binary_message(data: bytes) -> Tuple[str, Dict, Optional[bytes]]
     Returns:
         Tupla (tipo_messaggio, payload, dati_binari)
     """
+    # Controlli di validità
+    if not data or len(data) < 4:
+        logger.error("Dati binari insufficienti per la deserializzazione")
+        return "error", {"error": "Dati binari insufficienti"}, None
+
     try:
         # Estrae la dimensione dell'header
         header_size = int.from_bytes(data[:4], byteorder='little')
 
+        # Verifica che ci siano abbastanza dati per l'header
+        if len(data) < 4 + header_size:
+            logger.error(f"Dati binari incompleti: necessari {4 + header_size} byte, ricevuti {len(data)}")
+            return "error", {"error": "Header incompleto"}, None
+
         # Estrae e parsa l'header
         header_json = data[4:4 + header_size].decode('utf-8')
         header = json.loads(header_json)
+
+        # Log per debug
+        logger.debug(f"Header deserializzato: {header}")
 
         # Estrae eventuali dati binari
         binary_data = None
         if header.get("has_binary", False):
             binary_data = data[4 + header_size:]
 
-        return header["type"], header["payload"], binary_data
+            # Verifica dimensione dichiarata
+            declared_size = header.get("binary_size", 0)
+            actual_size = len(binary_data)
+
+            if declared_size != actual_size:
+                logger.warning(
+                    f"Dimensione dati binari non corrisponde: dichiarati {declared_size}, ricevuti {actual_size}")
+
+        elif len(data) > 4 + header_size:
+            # Se ci sono dati extra, li consideriamo come binari anche se has_binary è False
+            logger.warning("Dati binari presenti ma has_binary=False, estrazione comunque")
+            binary_data = data[4 + header_size:]
+
+        # Estrae tipo e payload con valori di default sicuri
+        msg_type = header.get("type", "unknown_message_type")
+        payload = header.get("payload", {})
+
+        # Verifica versione del protocollo
+        protocol_version = header.get("protocol_version", "1.0")
+        if protocol_version != "1.0" and protocol_version != "1.1":
+            logger.warning(f"Versione protocollo non riconosciuta: {protocol_version}")
+
+        return msg_type, payload, binary_data
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Errore nella decodifica JSON dell'header: {e}")
+        return "error", {"error": f"JSON non valido: {str(e)}"}, None
     except Exception as e:
         logger.error(f"Errore nella deserializzazione del messaggio binario: {e}")
-        raise ValueError(f"Errore nella deserializzazione: {e}")
+        return "error", {"error": f"Errore di deserializzazione: {str(e)}"}, None
 
 
 class RateLimiter:

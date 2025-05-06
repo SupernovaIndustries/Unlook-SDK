@@ -660,28 +660,28 @@ class UnlookServer:
             response_payload = {
                 "num_cameras": len(images),
                 "camera_ids": camera_ids,
-                "timestamp": time.time()
+                "timestamp": time.time(),
+                "type": "multi_camera_response"  # Aggiunto esplicitamente il tipo
             }
 
             # Creiamo un messaggio di risposta speciale che contiene tutte le immagini
-            # Questo è un esempio semplificato, in un'implementazione reale potrebbe essere necessario
-            # un formato più complesso o una serie di messaggi
-
-            # Per ora, creiamo un messaggio JSON con i metadati e poi aggiungiamo i dati binari in sequenza
             all_metadata = {camera_id: images[camera_id]["metadata"] for camera_id in camera_ids}
             response_payload["images_metadata"] = all_metadata
 
-            # Serializza i metadati
-            header_json = json.dumps(response_payload).encode('utf-8')
-            header_size = len(header_json)
+            # Usa la funzione di serializzazione esistente invece di implementare manualmente
+            binary_message = serialize_binary_message(
+                "multi_camera_response",  # Tipo esplicito
+                response_payload,
+                None  # Inizialmente nessun dato binario
+            )
+
+            # Preparazione del messaggio completo
+            # Ora dobbiamo aggiungere manualmente i dati delle immagini dopo l'header
+            header_size = binary_message[:4]  # I primi 4 byte contengono la dimensione dell'header
+            header = binary_message[:4 + int.from_bytes(header_size, byteorder='little')]
 
             # Costruisci il messaggio completo
-            message_parts = [
-                # Header size (4 bytes)
-                header_size.to_bytes(4, byteorder='little'),
-                # Header JSON
-                header_json
-            ]
+            message_parts = [header]
 
             # Aggiungi i dati binari delle immagini in sequenza
             for camera_id in camera_ids:
@@ -701,6 +701,7 @@ class UnlookServer:
             return None
 
         except Exception as e:
+            logger.error(f"Errore nella cattura sincronizzata: {e}")
             return Message.create_error(
                 message,
                 f"Errore nella cattura sincronizzata: {e}"
