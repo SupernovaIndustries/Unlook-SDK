@@ -128,19 +128,23 @@ def deserialize_binary_message(data: bytes) -> Tuple[str, Dict, Optional[bytes]]
     Returns:
         Tupla (tipo_messaggio, payload, dati_binari)
     """
-    # Estrae la dimensione dell'header
-    header_size = int.from_bytes(data[:4], byteorder='little')
+    try:
+        # Estrae la dimensione dell'header
+        header_size = int.from_bytes(data[:4], byteorder='little')
 
-    # Estrae e parsa l'header
-    header_json = data[4:4 + header_size].decode('utf-8')
-    header = json.loads(header_json)
+        # Estrae e parsa l'header
+        header_json = data[4:4 + header_size].decode('utf-8')
+        header = json.loads(header_json)
 
-    # Estrae eventuali dati binari
-    binary_data = None
-    if header.get("has_binary", False):
-        binary_data = data[4 + header_size:]
+        # Estrae eventuali dati binari
+        binary_data = None
+        if header.get("has_binary", False):
+            binary_data = data[4 + header_size:]
 
-    return header["type"], header["payload"], binary_data
+        return header["type"], header["payload"], binary_data
+    except Exception as e:
+        logger.error(f"Errore nella deserializzazione del messaggio binario: {e}")
+        raise ValueError(f"Errore nella deserializzazione: {e}")
 
 
 class RateLimiter:

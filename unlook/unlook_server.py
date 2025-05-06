@@ -136,6 +136,8 @@ def setup_gpio():
         return
 
     try:
+        # Disabilita gli avvertimenti per i canali già in uso
+        GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
 
         # LED di stato
@@ -151,16 +153,19 @@ def setup_gpio():
         GPIO.output(status_pin, GPIO.LOW)
         GPIO.output(error_pin, GPIO.LOW)
 
-        # Aggiunge callback per il pulsante di reset
-        GPIO.add_event_detect(reset_pin, GPIO.FALLING,
-                              callback=reset_button_callback,
-                              bouncetime=300)
+        # Gestisci gli eventi con try-except per essere resilienti
+        try:
+            # Aggiunge callback per il pulsante di reset
+            GPIO.add_event_detect(reset_pin, GPIO.FALLING,
+                                callback=reset_button_callback,
+                                bouncetime=300)
+        except Exception as e:
+            logging.warning(f"Impossibile aggiungere il rilevamento di eventi GPIO: {e}")
 
         logging.info("GPIO configurato correttamente")
     except Exception as e:
         logging.error(f"Errore durante la configurazione GPIO: {e}")
         config["gpio"]["use_gpio"] = False
-
 
 def reset_button_callback(channel):
     """Gestisce la pressione del pulsante di reset."""

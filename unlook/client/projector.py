@@ -3,6 +3,7 @@ Client per il controllo del proiettore dello scanner UnLook.
 """
 
 import logging
+import time
 from typing import Dict, Optional, Any, List
 
 from ..common.protocol import MessageType
@@ -246,28 +247,21 @@ class ProjectorClient:
 
     def set_standby(self) -> bool:
         """
-        Mette il proiettore in modalità nero (alternativa allo standby).
+        Mette il proiettore in standby in modo sicuro.
 
         Returns:
             True se l'operazione ha successo, False altrimenti
         """
-        # Prima imposta la modalità test pattern
-        success1 = self.set_mode("TestPatternGenerator")
-        if not success1:
-            logger.error("Errore nell'impostazione della modalità test pattern")
+        try:
+            # Prima proietta un campo nero per evitare problemi
+            self.show_solid_field("Black")
+            time.sleep(0.2)  # Breve pausa per assicurarsi che il comando sia completato
+
+            # Poi imposta la modalità standby
+            return self.set_mode("Standby")
+        except Exception as e:
+            logger.error(f"Errore durante l'impostazione della modalità standby: {e}")
             return False
-
-        # Breve pausa
-        time.sleep(0.5)
-
-        # Poi proietta nero
-        success2 = self.show_solid_field("Black")
-        if not success2:
-            logger.error("Errore nella proiezione del pattern nero")
-            return False
-
-        logger.info("Proiettore impostato su nero (alternativa allo standby)")
-        return True
 
     def set_test_pattern_mode(self) -> bool:
         """

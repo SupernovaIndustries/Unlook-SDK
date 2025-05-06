@@ -12,31 +12,52 @@ from typing import Any, Dict, Optional
 class MessageType(enum.Enum):
     """Tipi di messaggi supportati dal protocollo."""
     # Messaggi generali
-    HELLO = "hello"                   # Inizializzazione connessione
-    INFO = "info"                     # Informazioni sullo scanner
-    ERROR = "error"                   # Errore generale
+    HELLO = "hello"  # Inizializzazione connessione
+    INFO = "info"  # Informazioni sullo scanner
+    ERROR = "error"  # Errore generale
 
     # Controllo proiettore
-    PROJECTOR_MODE = "projector_mode"    # Imposta modalità proiettore
+    PROJECTOR_MODE = "projector_mode"  # Imposta modalità proiettore
     PROJECTOR_PATTERN = "projector_pattern"  # Imposta pattern proiettore
 
     # Controllo camera
-    CAMERA_LIST = "camera_list"          # Lista delle telecamere disponibili
-    CAMERA_CONFIG = "camera_config"      # Configurazione telecamera
-    CAMERA_CAPTURE = "camera_capture"    # Cattura immagine
+    CAMERA_LIST = "camera_list"  # Lista delle telecamere disponibili
+    CAMERA_CONFIG = "camera_config"  # Configurazione telecamera
+    CAMERA_CAPTURE = "camera_capture"  # Cattura immagine
     CAMERA_CAPTURE_MULTI = "camera_capture_multi"  # Cattura immagine da più telecamere
     CAMERA_STREAM_START = "camera_stream_start"  # Avvia streaming
-    CAMERA_STREAM_STOP = "camera_stream_stop"    # Ferma streaming
+    CAMERA_STREAM_STOP = "camera_stream_stop"  # Ferma streaming
+
+    # Tipi di risposta binaria
+    CAMERA_CAPTURE_RESPONSE = "camera_capture_response"  # Risposta alla cattura immagine
+    CAMERA_FRAME = "camera_frame"  # Frame della telecamera per lo streaming
+    MULTI_CAMERA_RESPONSE = "multi_camera_response"  # Risposta per cattura multi-camera
 
     # Scansione 3D
-    SCAN_START = "scan_start"            # Avvia scansione
-    SCAN_STOP = "scan_stop"              # Ferma scansione
-    SCAN_STATUS = "scan_status"          # Stato scansione
-    SCAN_RESULT = "scan_result"          # Risultato scansione
+    SCAN_START = "scan_start"  # Avvia scansione
+    SCAN_STOP = "scan_stop"  # Ferma scansione
+    SCAN_STATUS = "scan_status"  # Stato scansione
+    SCAN_RESULT = "scan_result"  # Risultato scansione
 
     # Stereo vision
     STEREO_CALIBRATION = "stereo_calibration"  # Calibrazione stereo
-    STEREO_RECTIFY = "stereo_rectify"          # Rettifica stereo
+    STEREO_RECTIFY = "stereo_rectify"  # Rettifica stereo
+
+    # Pattern di luce strutturata
+    PATTERN_GENERATE = "pattern_generate"  # Genera pattern
+    PATTERN_PROJECT = "pattern_project"  # Proietta pattern
+
+    # Calibrazione
+    CALIBRATION_START = "calibration_start"  # Avvia calibrazione
+    CALIBRATION_CAPTURE = "calibration_capture"  # Cattura immagine calibrazione
+    CALIBRATION_COMPUTE = "calibration_compute"  # Calcola calibrazione
+    CALIBRATION_SAVE = "calibration_save"  # Salva calibrazione
+    CALIBRATION_LOAD = "calibration_load"  # Carica calibrazione
+
+    # Gestione sistema
+    SYSTEM_STATUS = "system_status"  # Stato del sistema
+    SYSTEM_RESET = "system_reset"  # Reset del sistema
+    SYSTEM_SHUTDOWN = "system_shutdown"  # Arresto del sistema
 
 
 class Message:

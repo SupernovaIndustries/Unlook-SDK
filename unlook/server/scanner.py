@@ -253,8 +253,9 @@ class UnlookServer:
                     message = Message.from_bytes(data)
                     response = self._process_message(message)
 
-                    # Invia la risposta
-                    self.control_socket.send(response.to_bytes())
+                    # Se la risposta è None, significa che è già stata inviata
+                    if response is not None:
+                        self.control_socket.send(response.to_bytes())
 
                 except Exception as e:
                     logger.error(f"Errore durante l'elaborazione del messaggio: {e}")
@@ -271,7 +272,7 @@ class UnlookServer:
 
         logger.info("Thread di controllo terminato")
 
-    def _process_message(self, message: Message) -> Message:
+    def _process_message(self, message: Message) -> Optional[Message]:
         """
         Processa un messaggio in arrivo.
 
@@ -279,7 +280,7 @@ class UnlookServer:
             message: Messaggio da processare
 
         Returns:
-            Messaggio di risposta
+            Messaggio di risposta o None se già inviato
         """
         logger.debug(f"Ricevuto messaggio: {message.msg_type.value}")
 
@@ -287,7 +288,9 @@ class UnlookServer:
         handler = self.message_handlers.get(message.msg_type)
         if handler:
             try:
-                return handler(message)
+                response = handler(message)
+                # Se la risposta è None, significa che è già stata inviata
+                return response
             except Exception as e:
                 logger.error(f"Errore nell'handler {message.msg_type.value}: {e}")
                 return Message.create_error(
@@ -584,20 +587,19 @@ class UnlookServer:
                 "timestamp": time.time()
             }
 
-            # Crea la risposta come messaggio binario
-            response_data = serialize_binary_message(
-                "camera_capture_response",
+            # Crea un messaggio speciale di tipo stringa (non enum) per la risposta
+            binary_response = serialize_binary_message(
+                "camera_capture_response",  # Usa una stringa invece di un enum
                 metadata,
                 jpeg_data
             )
 
-            # Invia la risposta direttamente tramite il socket REP
-            self.control_socket.send(response_data)
-
-            # Restituisce None per indicare che la risposta è già stata inviata
-            return None
+            # Invia la risposta binaria direttamente
+            self.control_socket.send(binary_response)
+            return None  # Ritorna None per indicare che la risposta è già stata inviata
 
         except Exception as e:
+            logger.error(f"Errore nella cattura dell'immagine: {e}")
             return Message.create_error(
                 message,
                 f"Errore nella cattura dell'immagine: {e}"
