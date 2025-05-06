@@ -29,3 +29,5 @@ try:
     MESH_PROCESSING_AVAILABLE = True
 except ImportError:
     MESH_PROCESSING_AVAILABLE = False
+
+from ..common.events import ClientEvent as UnlookClientEvent
