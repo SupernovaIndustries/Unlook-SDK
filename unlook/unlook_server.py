@@ -24,15 +24,15 @@ import RPi.GPIO as GPIO
 # Aggiungi la directory corrente al percorso di ricerca dei moduli
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Prima importa i moduli di base senza dipendenze
 try:
-    # Importa solo ciò che è necessario, evitando importazioni circolari
+    # Importa direttamente dai moduli specifici per evitare cicli
     from unlook.server.scanner import UnlookServer
-    from unlook.server.projector.dlp342x import OperatingMode, Color
+    from unlook.server.projector.dlp342x import OperatingMode, Color, BorderEnable
 except ImportError as e:
     print(f"ERRORE: Impossibile importare i moduli UnLook: {e}")
     print("Assicurati che l'SDK UnLook sia installato correttamente")
     sys.exit(1)
+
 # Configurazione predefinita
 DEFAULT_CONFIG = {
     "server": {

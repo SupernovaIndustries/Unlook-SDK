@@ -15,19 +15,21 @@ Per iniziare ad utilizzare l'SDK, consulta la documentazione e gli esempi.
 __version__ = "0.1.0"
 __author__ = "UnLook Team"
 
+# Importazione posticipata per evitare cicli
+from .common.events import UnlookClientEvent
+
+from .common import (
+    UnlookDiscovery, UnlookScanner,
+    MessageType, Message
+)
+
+# MODIFICARE: Spostare queste importazioni dopo common
 from .client import (
     UnlookClient,
     Calibrator, CalibrationData,
     StructuredLightProcessor, ScanProcessor, ProcessingResult,
     PatternType, PatternDirection,
     ModelExporter
-)
-
-from .common.events import UnlookClientEvent
-
-from .common import (
-    UnlookDiscovery, UnlookScanner,
-    MessageType, Message
 )
 
 # Import condizionale per il server (solo su Raspberry Pi)
