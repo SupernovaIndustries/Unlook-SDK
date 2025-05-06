@@ -123,7 +123,7 @@ class UnlookDiscovery:
         # Metodo 3: Se ancora non abbiamo un IP, prova a ottenerlo dalle interfacce
         if not local_ip:
             try:
-                import socket
+                # Usa subprocess invece di reimportare socket
                 import subprocess
 
                 # Su Linux (Raspberry Pi)
