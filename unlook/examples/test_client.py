@@ -17,8 +17,9 @@ from collections import deque
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
-# Aggiungi la directory corrente al percorso di ricerca dei moduli
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Aggiungi la directory radice al percorso di ricerca dei moduli
+root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+sys.path.insert(0, root_dir)
 
 try:
     # Importa dalla nuova struttura

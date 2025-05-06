@@ -19,8 +19,9 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("ServerBoot")
 
-# Aggiungi la directory corrente al percorso di ricerca dei moduli
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Fix: Add the root directory (Unlook-SDK) to the Python path for proper import resolution
+root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, root_dir)
 
 
 def main():
@@ -30,11 +31,12 @@ def main():
     args = parser.parse_args()
 
     try:
-        # Importa il modulo server - questo import è sicuro con la nuova struttura
-        from server import UnlookServer
+        # Fix: Import the server using absolute path
+        # This ensures proper resolution of relative imports within the server module
+        from unlook.server.scanner import UnlookServer
 
         # Carica la configurazione
-        config_path = args.config or "unlook/unlook_config.json"
+        config_path = args.config or os.path.join(os.path.dirname(__file__), "unlook_config.json")
 
         if os.path.exists(config_path):
             with open(config_path, 'r') as f:
@@ -46,7 +48,8 @@ def main():
                 "server": {
                     "name": "UnLookScanner",
                     "control_port": 5555,
-                    "stream_port": 5556
+                    "stream_port": 5556,
+                    "direct_stream_port": 5557  # Added default for direct streaming
                 }
             }
 
@@ -58,6 +61,7 @@ def main():
             name=server_config.get("name", "UnLookScanner"),
             control_port=server_config.get("control_port", 5555),
             stream_port=server_config.get("stream_port", 5556),
+            direct_stream_port=server_config.get("direct_stream_port", 5557),  # Added direct stream port
             scanner_uuid=server_config.get("scanner_uuid"),
             auto_start=True
         )
