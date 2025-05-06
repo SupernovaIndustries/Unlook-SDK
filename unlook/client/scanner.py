@@ -146,7 +146,7 @@ class UnlookClient:
         Connette a uno scanner.
 
         Args:
-            scanner_or_endpoint: Scanner oggetto o endpoint (tcp://host:port)
+            scanner_or_endpoint: Scanner oggetto o endpoint (tcp://host:port) o UUID
             timeout: Timeout di connessione in millisecondi
 
         Returns:
@@ -161,17 +161,41 @@ class UnlookClient:
             endpoint = scanner_or_endpoint.endpoint
             self.scanner = scanner_or_endpoint
         elif isinstance(scanner_or_endpoint, str):
-            endpoint = scanner_or_endpoint
-            # Crea uno scanner "dummy" per memorizzare le informazioni
-            host, port = endpoint.replace("tcp://", "").split(":")
-            self.scanner = UnlookScanner(
-                name="Unknown Scanner",
-                host=host,
-                port=int(port),
-                scanner_uuid=generate_uuid()
-            )
+            # Verifica se è un UUID o un endpoint
+            if "://" in scanner_or_endpoint:
+                # È un endpoint
+                endpoint = scanner_or_endpoint
+                # Crea uno scanner "dummy" per memorizzare le informazioni
+                host, port = endpoint.replace("tcp://", "").split(":")
+                self.scanner = UnlookScanner(
+                    name="Unknown Scanner",
+                    host=host,
+                    port=int(port),
+                    scanner_uuid=generate_uuid()
+                )
+            else:
+                # Potrebbe essere un UUID, cerca di trovare lo scanner
+                uuid = scanner_or_endpoint
+                found_scanner = None
+
+                # Cerca lo scanner nella lista di quelli scoperti
+                with self._lock:
+                    for scanner in self.discovered_scanners.values():
+                        if scanner.uuid == uuid:
+                            found_scanner = scanner
+                            break
+
+                if found_scanner:
+                    self.scanner = found_scanner
+                    endpoint = found_scanner.endpoint
+                    logger.info(f"Trovato scanner con UUID {uuid}, endpoint: {endpoint}")
+                else:
+                    logger.error(f"Scanner con UUID {uuid} non trovato. Esegui prima discovery.")
+                    return False
         else:
-            raise ValueError("scanner_or_endpoint deve essere un oggetto UnlookScanner o un endpoint (tcp://host:port)")
+            logger.error(
+                "scanner_or_endpoint deve essere un oggetto UnlookScanner, un endpoint (tcp://host:port) o un UUID")
+            return False
 
         logger.info(f"Connessione a {endpoint}...")
 
