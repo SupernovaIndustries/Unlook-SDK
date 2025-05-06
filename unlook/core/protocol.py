@@ -33,6 +33,13 @@ class MessageType(enum.Enum):
     CAMERA_FRAME = "camera_frame"  # Camera frame for streaming
     MULTI_CAMERA_RESPONSE = "multi_camera_response"  # Response for multi-camera capture
 
+    # Direct streaming (new)
+    CAMERA_DIRECT_STREAM_START = "camera_direct_stream_start"  # Start direct streaming
+    CAMERA_DIRECT_STREAM_STOP = "camera_direct_stream_stop"  # Stop direct streaming
+    DIRECT_FRAME = "direct_frame"  # Direct streaming frame
+    DIRECT_STREAM_CONFIG = "direct_stream_config"  # Configure direct stream
+    PROJECTOR_SYNC = "projector_sync"  # Synchronize projector with stream
+
     # 3D scanning
     SCAN_START = "scan_start"  # Start scan
     SCAN_STOP = "scan_stop"  # Stop scan

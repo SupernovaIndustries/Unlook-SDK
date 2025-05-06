@@ -7,6 +7,7 @@ import threading
 import time
 import os
 import signal
+import json
 from typing import Dict, List, Optional, Any, Callable, Tuple
 
 import zmq
@@ -36,6 +37,7 @@ class UnlookServer(EventEmitter):
             name: str = "UnLookScanner",
             control_port: int = DEFAULT_CONTROL_PORT,
             stream_port: int = DEFAULT_STREAM_PORT,
+            direct_stream_port: int = None,  # Nuova porta per lo streaming diretto
             scanner_uuid: Optional[str] = None,
             auto_start: bool = True
     ):
@@ -46,6 +48,7 @@ class UnlookServer(EventEmitter):
             name: Nome dello scanner
             control_port: Porta per i comandi di controllo
             stream_port: Porta per lo streaming video
+            direct_stream_port: Porta per lo streaming diretto (generata se None)
             scanner_uuid: UUID univoco dello scanner (generato se None)
             auto_start: Avvia automaticamente il server
         """
@@ -58,6 +61,7 @@ class UnlookServer(EventEmitter):
         # Configurazione rete
         self.control_port = control_port
         self.stream_port = stream_port
+        self.direct_stream_port = direct_stream_port or (stream_port + 1)  # Default: stream_port + 1
 
         # Stato server
         self.running = False
@@ -75,6 +79,9 @@ class UnlookServer(EventEmitter):
         self.stream_socket = self.zmq_context.socket(zmq.PUB)
         self.stream_socket.bind(f"tcp://*:{stream_port}")
 
+        # Socket per lo streaming diretto
+        self.direct_stream_socket = None  # Inizializzato solo quando necessario
+
         # Discovery network
         self.discovery = DiscoveryService()
 
@@ -89,6 +96,13 @@ class UnlookServer(EventEmitter):
         self.streaming_fps = DEFAULT_STREAM_FPS
         self.jpeg_quality = DEFAULT_JPEG_QUALITY
 
+        # Streaming diretto
+        self.direct_streaming_active = False
+        self.active_direct_streams = []  # Lista di stream diretti attivi
+        self.direct_streaming_thread = None
+        self.direct_streaming_fps = 60  # FPS predefinito più alto per lo streaming diretto
+        self.direct_jpeg_quality = 85  # Qualità JPEG predefinita più alta
+
         # Scansione
         self.scanning = False
         self.scan_thread = None
@@ -102,6 +116,589 @@ class UnlookServer(EventEmitter):
         # Avvio automatico
         if auto_start:
             self.start()
+
+    def _init_message_handlers(self) -> Dict[MessageType, Callable]:
+        """
+        Inizializza gli handler dei messaggi.
+
+        Returns:
+            Dizionario di handler per tipo di messaggio
+        """
+        handlers = {
+            MessageType.HELLO: self._handle_hello,
+            MessageType.INFO: self._handle_info,
+
+            # Handlers del proiettore
+            MessageType.PROJECTOR_MODE: self._handle_projector_mode,
+            MessageType.PROJECTOR_PATTERN: self._handle_projector_pattern,
+
+            # Handlers della telecamera
+            MessageType.CAMERA_LIST: self._handle_camera_list,
+            MessageType.CAMERA_CONFIG: self._handle_camera_config,
+            MessageType.CAMERA_CAPTURE: self._handle_camera_capture,
+            MessageType.CAMERA_STREAM_START: self._handle_camera_stream_start,
+            MessageType.CAMERA_STREAM_STOP: self._handle_camera_stream_stop,
+
+            # Handlers per la cattura sincronizzata multicamera
+            MessageType.CAMERA_CAPTURE_MULTI: self._handle_camera_capture_multi,
+
+            # Nuovi handler per lo streaming diretto
+            MessageType.CAMERA_DIRECT_STREAM_START: self._handle_camera_direct_stream_start,
+            MessageType.CAMERA_DIRECT_STREAM_STOP: self._handle_camera_direct_stream_stop,
+
+            # Altri handlers...
+        }
+        return handlers
+
+    def _handle_info(self, message: Message) -> Message:
+        """Handle INFO messages."""
+        return Message.create_reply(
+            message,
+            {
+                "scanner_name": self.name,
+                "scanner_uuid": self.uuid,
+                "control_port": self.control_port,
+                "stream_port": self.stream_port,
+                "direct_stream_port": self.direct_stream_port,  # Aggiunta porta streaming diretto
+                "capabilities": self._get_capabilities(),
+                "status": {
+                    "streaming": self.streaming_active,
+                    "direct_streaming": self.direct_streaming_active,  # Aggiunto stato dello streaming diretto
+                    "scanning": self.scanning,
+                    "projector_connected": self.projector is not None,
+                    "camera_connected": self.camera_manager is not None,
+                    "cameras_available": len(self.camera_manager.get_cameras()) if self.camera_manager else 0,
+                },
+                "system_info": get_machine_info()
+            }
+        )
+
+    def _get_capabilities(self) -> Dict[str, Any]:
+        """
+        Return scanner capabilities.
+
+        Returns:
+            Dictionary with capabilities
+        """
+        capabilities = {
+            "projector": {
+                "available": self.projector is not None,
+                "type": "DLP342X" if self.projector else None,
+                "patterns": ["SolidField", "HorizontalLines", "VerticalLines", "Grid", "Checkerboard", "Colorbars"]
+                if self.projector else [],
+                "i2c_bus": 3,
+                "i2c_address": "0x1B"
+            },
+            "cameras": {
+                "available": self.camera_manager is not None,
+                "count": len(self.camera_manager.get_cameras()) if self.camera_manager else 0,
+                "stereo_capable": len(self.camera_manager.get_cameras()) >= 2 if self.camera_manager else False
+            },
+            "streaming": {
+                "available": self.camera_manager is not None,
+                "max_fps": 60
+            },
+            "direct_streaming": {  # Nuova capacità per lo streaming diretto
+                "available": self.camera_manager is not None,
+                "max_fps": 120,  # Presupponiamo un framerate massimo più alto per lo streaming diretto
+                "low_latency": True,
+                "sync_capabilities": self.projector is not None  # Sincronizzazione disponibile se c'è un proiettore
+            },
+            "scanning": {
+                "available": self.projector is not None and self.camera_manager is not None,
+                "multi_camera": len(self.camera_manager.get_cameras()) >= 2 if self.camera_manager else False
+            }
+        }
+        return capabilities
+
+    def _handle_camera_direct_stream_start(self, message: Message) -> Message:
+        """Handle CAMERA_DIRECT_STREAM_START messages."""
+        if not self.camera_manager:
+            return Message.create_error(message, "Camera manager non disponibile")
+
+        camera_id = message.payload.get("camera_id")
+        if not camera_id:
+            return Message.create_error(message, "ID telecamera non specificato")
+
+        fps = message.payload.get("fps", self.direct_streaming_fps)
+        jpeg_quality = message.payload.get("jpeg_quality", self.direct_jpeg_quality)
+        sync_with_projector = message.payload.get("sync_with_projector", False)
+        synchronization_pattern_interval = message.payload.get("synchronization_pattern_interval", 5)
+        low_latency = message.payload.get("low_latency", True)
+
+        # Controlla se lo stream è già attivo per questa telecamera
+        for stream_info in self.active_direct_streams:
+            if stream_info["camera_id"] == camera_id:
+                logger.warning(f"Stream diretto già attivo per la telecamera {camera_id}, verrà riutilizzato")
+                # Aggiorna configurazione
+                stream_info["fps"] = fps
+                stream_info["jpeg_quality"] = jpeg_quality
+                stream_info["sync_with_projector"] = sync_with_projector
+                stream_info["synchronization_pattern_interval"] = synchronization_pattern_interval
+                stream_info["low_latency"] = low_latency
+                stream_info["last_activity"] = time.time()
+
+                return Message.create_reply(
+                    message,
+                    {
+                        "success": True,
+                        "camera_id": camera_id,
+                        "direct_port": self.direct_stream_port,
+                        "fps": fps,
+                        "stream_id": stream_info["stream_id"]
+                    }
+                )
+
+        # Inizializza il socket di streaming diretto se necessario
+        if self.direct_stream_socket is None:
+            try:
+                # Utilizziamo un socket PAIR per comunicazione bidirezionale
+                self.direct_stream_socket = self.zmq_context.socket(zmq.PAIR)
+
+                # Configurazione per bassa latenza
+                if low_latency:
+                    self.direct_stream_socket.setsockopt(zmq.SNDHWM, 2)  # Buffer di invio ridotto
+                    self.direct_stream_socket.setsockopt(zmq.LINGER, 0)  # Non aspettare alla chiusura
+                    self.direct_stream_socket.setsockopt(zmq.IMMEDIATE, 1)  # Non accodare messaggi
+
+                # Bind sulla porta di streaming diretto
+                self.direct_stream_socket.bind(f"tcp://*:{self.direct_stream_port}")
+                logger.info(f"Socket di streaming diretto inizializzato sulla porta {self.direct_stream_port}")
+            except Exception as e:
+                logger.error(f"Errore nell'inizializzazione del socket di streaming diretto: {e}")
+                return Message.create_error(message, f"Errore nell'inizializzazione dello streaming diretto: {e}")
+
+        # Configura streaming
+        stream_id = generate_uuid()
+        stream_info = {
+            "stream_id": stream_id,
+            "camera_id": camera_id,
+            "fps": fps,
+            "jpeg_quality": jpeg_quality,
+            "sync_with_projector": sync_with_projector,
+            "synchronization_pattern_interval": synchronization_pattern_interval,
+            "low_latency": low_latency,
+            "active": True,
+            "start_time": time.time(),
+            "last_activity": time.time(),
+            "frame_count": 0,
+            "pattern_index": 0,  # Indice del pattern corrente per la sincronizzazione
+            "next_pattern_time": time.time(),  # Timestamp per il prossimo cambio di pattern
+            "stats": {
+                "dropped_frames": 0,
+                "skipped_frames": 0,
+                "processing_time_ms": 0
+            }
+        }
+
+        # Aggiungi alla lista di stream diretti attivi
+        self.active_direct_streams.append(stream_info)
+
+        # Avvia thread di streaming diretto se non è già attivo
+        if not self.direct_streaming_active:
+            self.direct_streaming_active = True
+            self.direct_streaming_thread = threading.Thread(
+                target=self._direct_streaming_loop,
+                daemon=True
+            )
+            self.direct_streaming_thread.start()
+
+        logger.info(f"Streaming diretto avviato per la telecamera {camera_id} a {fps} FPS (ID: {stream_id})")
+
+        return Message.create_reply(
+            message,
+            {
+                "success": True,
+                "camera_id": camera_id,
+                "direct_port": self.direct_stream_port,
+                "fps": fps,
+                "stream_id": stream_id
+            }
+        )
+
+    def _handle_camera_direct_stream_stop(self, message: Message) -> Message:
+        """Handle CAMERA_DIRECT_STREAM_STOP messages."""
+        camera_id = message.payload.get("camera_id")
+        stream_id = message.payload.get("stream_id")
+
+        # Se né camera_id né stream_id sono specificati, interrompi tutti gli stream
+        if not camera_id and not stream_id:
+            self.stop_direct_streaming()
+            logger.info("Tutti gli stream diretti interrotti")
+            return Message.create_reply(message, {"success": True})
+
+        # Altrimenti cerca lo stream specifico da interrompere
+        for i, stream_info in enumerate(self.active_direct_streams):
+            if ((camera_id and stream_info["camera_id"] == camera_id) or
+                    (stream_id and stream_info["stream_id"] == stream_id)):
+                # Rimuovi stream
+                self.active_direct_streams.pop(i)
+                logger.info(
+                    f"Stream diretto interrotto per la telecamera {stream_info['camera_id']} (ID: {stream_info['stream_id']})")
+                break
+
+        # Se non ci sono più stream attivi, interrompi il thread
+        if not self.active_direct_streams:
+            self.stop_direct_streaming()
+
+        return Message.create_reply(message, {"success": True})
+
+    def stop_direct_streaming(self):
+        """Interrompe lo streaming video diretto."""
+        if not self.direct_streaming_active:
+            return
+
+        # Imposta flag per terminare il thread
+        self.direct_streaming_active = False
+
+        # Attendi che il thread termini
+        if self.direct_streaming_thread and self.direct_streaming_thread.is_alive():
+            self.direct_streaming_thread.join(timeout=2.0)
+
+        self.direct_streaming_thread = None
+
+        # Chiudi il socket di streaming diretto
+        if self.direct_stream_socket:
+            try:
+                self.direct_stream_socket.close()
+                self.direct_stream_socket = None
+            except Exception as e:
+                logger.error(f"Errore nella chiusura del socket di streaming diretto: {e}")
+
+        logger.info("Streaming video diretto interrotto")
+
+    def _direct_streaming_loop(self):
+        """Loop di streaming video diretto ottimizzato per bassa latenza e sincronizzazione."""
+        logger.info("Thread di streaming diretto avviato")
+
+        # Dizionario per tracciare l'ultimo frame inviato per ogni telecamera
+        last_frame_times = {}
+
+        # Dati condivisi per la sincronizzazione del proiettore
+        projection_patterns = [
+            # Elenco di pattern predefiniti per la sincronizzazione
+            {"type": "grid", "fg_color": "White", "bg_color": "Black", "h_fg_width": 4, "h_bg_width": 20,
+             "v_fg_width": 4, "v_bg_width": 20},
+            {"type": "horizontal_lines", "fg_color": "White", "bg_color": "Black", "fg_width": 4, "bg_width": 20},
+            {"type": "vertical_lines", "fg_color": "White", "bg_color": "Black", "fg_width": 4, "bg_width": 20},
+            {"type": "checkerboard", "fg_color": "White", "bg_color": "Black", "h_count": 8, "v_count": 6}
+        ]
+
+        # Ciclo principale
+        while self.direct_streaming_active:
+            # Leggi lista degli stream attivi (copia per sicurezza)
+            current_streams = self.active_direct_streams.copy()
+
+            # Gestione heartbeat e messaggi dal client
+            try:
+                if self.direct_stream_socket:
+                    # Controlla se ci sono messaggi in arrivo dal client senza bloccare
+                    if self.direct_stream_socket.poll(0):
+                        msg_data = self.direct_stream_socket.recv(zmq.NOBLOCK)
+                        try:
+                            msg = json.loads(msg_data)
+                            # Gestisci diversi tipi di messaggi
+                            if msg.get("type") == "heartbeat":
+                                # Aggiorna stato di attività per tutti gli stream
+                                for stream in self.active_direct_streams:
+                                    stream["last_activity"] = time.time()
+                            elif msg.get("type") == "pattern_request":
+                                # Richiesta di cambio pattern dal client
+                                pattern_data = msg.get("pattern", {})
+                                camera_id = msg.get("camera_id")
+
+                                # Applica il pattern richiesto
+                                if pattern_data and self.projector:
+                                    self._apply_projector_pattern(pattern_data)
+
+                                    # Aggiorna lo stato di tutti gli stream che usano questo pattern
+                                    for stream in self.active_direct_streams:
+                                        if not camera_id or stream["camera_id"] == camera_id:
+                                            stream["current_pattern"] = pattern_data
+                        except json.JSONDecodeError:
+                            logger.warning("Ricevuto messaggio non valido dal client di streaming diretto")
+            except zmq.error.Again:
+                # Nessun messaggio disponibile, continua
+                pass
+            except Exception as e:
+                logger.error(f"Errore nella gestione dei messaggi del client di streaming diretto: {e}")
+
+            # Processa ogni stream
+            for stream_info in current_streams:
+                camera_id = stream_info["camera_id"]
+                fps = stream_info["fps"]
+                jpeg_quality = stream_info["jpeg_quality"]
+                sync_with_projector = stream_info["sync_with_projector"]
+                pattern_interval = stream_info["synchronization_pattern_interval"]
+
+                # Calcola intervallo frame
+                interval = 1.0 / fps
+
+                # Controlla se è il momento di inviare un nuovo frame
+                current_time = time.time()
+                last_time = last_frame_times.get(camera_id, 0)
+
+                if current_time - last_time >= interval:
+                    try:
+                        # Gestione della sincronizzazione con il proiettore
+                        is_sync_frame = False
+                        pattern_info = None
+
+                        # Se richiesta sincronizzazione con il proiettore e il proiettore è disponibile
+                        if sync_with_projector and self.projector:
+                            # Controlla se è il momento di cambiare pattern
+                            if current_time >= stream_info["next_pattern_time"]:
+                                # Calcola il tempo per il prossimo cambio pattern
+                                stream_info["next_pattern_time"] = current_time + (pattern_interval / fps)
+
+                                # Scegli e applica il pattern successivo
+                                pattern_index = stream_info["pattern_index"]
+                                current_pattern = projection_patterns[pattern_index % len(projection_patterns)]
+
+                                # Applica il pattern
+                                self._apply_projector_pattern(current_pattern)
+
+                                # Aggiorna l'indice per il prossimo pattern
+                                stream_info["pattern_index"] = (pattern_index + 1) % len(projection_patterns)
+
+                                # Marca questo come frame di sincronizzazione
+                                is_sync_frame = True
+                                pattern_info = {
+                                    "pattern_type": current_pattern["type"],
+                                    "pattern_index": pattern_index,
+                                    "timestamp": current_time
+                                }
+
+                        # Tempo di inizio elaborazione per calcolo performance
+                        processing_start = time.time()
+
+                        # Cattura immagine
+                        image = self.camera_manager.capture_image(camera_id)
+                        if image is None:
+                            logger.error(f"Errore nella cattura dell'immagine dalla telecamera {camera_id}")
+                            continue
+
+                        # Codifica in JPEG
+                        jpeg_data = encode_image_to_jpeg(image, jpeg_quality)
+
+                        # Prepara metadati
+                        height, width = image.shape[:2]
+                        metadata = {
+                            "width": width,
+                            "height": height,
+                            "channels": image.shape[2] if len(image.shape) > 2 else 1,
+                            "format": "jpeg",
+                            "camera_id": camera_id,
+                            "stream_id": stream_info["stream_id"],
+                            "timestamp": current_time,
+                            "frame_number": stream_info["frame_count"],
+                            "fps": fps,
+                            "is_direct_stream": True
+                        }
+
+                        # Aggiungi informazioni di sincronizzazione se necessario
+                        if is_sync_frame:
+                            metadata["is_sync_frame"] = True
+
+                        if pattern_info:
+                            metadata["pattern_info"] = pattern_info
+
+                        # Crea messaggio binario
+                        binary_message = serialize_binary_message(
+                            "direct_frame",  # Tipo specifico per frame diretti
+                            metadata,
+                            jpeg_data
+                        )
+
+                        # Pubblica frame attraverso il socket di streaming diretto
+                        try:
+                            if self.direct_stream_socket:
+                                self.direct_stream_socket.send(binary_message, zmq.NOBLOCK)
+                        except zmq.error.Again:
+                            # Buffer pieno, incrementa contatore frame saltati
+                            stream_info["stats"]["skipped_frames"] += 1
+                            logger.debug(f"Frame saltato per la telecamera {camera_id} (buffer pieno)")
+                            continue
+                        except Exception as e:
+                            logger.error(f"Errore nell'invio del frame diretto per la telecamera {camera_id}: {e}")
+                            continue
+
+                        # Calcola tempo di elaborazione
+                        processing_time = (time.time() - processing_start) * 1000  # ms
+                        stream_info["stats"]["processing_time_ms"] = processing_time
+
+                        # Aggiorna contatori
+                        stream_info["frame_count"] += 1
+                        last_frame_times[camera_id] = current_time
+                        stream_info["last_activity"] = current_time
+
+                        # Log dettagliato periodico
+                        if stream_info["frame_count"] % 100 == 0:
+                            logger.debug(
+                                f"Camera {camera_id}: Frame #{stream_info['frame_count']}, "
+                                f"Elaborazione: {processing_time:.1f}ms, "
+                                f"Framerate effettivo: {1000 / max(processing_time, 1):.1f} FPS"
+                            )
+
+                    except Exception as e:
+                        logger.error(f"Errore nello streaming diretto della telecamera {camera_id}: {e}")
+
+            # Controlla inattività e rimuovi stream inattivi
+            current_time = time.time()
+            for i in range(len(self.active_direct_streams) - 1, -1, -1):
+                if current_time - self.active_direct_streams[i]["last_activity"] > 5.0:  # 5 secondi di inattività
+                    logger.warning(f"Stream diretto inattivo rimosso: {self.active_direct_streams[i]['camera_id']}")
+                    self.active_direct_streams.pop(i)
+
+            # Se non ci sono più stream attivi, esci dal loop
+            if not self.active_direct_streams:
+                logger.info("Nessuno stream diretto attivo, terminazione thread")
+                break
+
+            # Attendi un breve intervallo per non sovraccaricare la CPU
+            # Usa un intervallo più breve per mantenere la reattività
+            time.sleep(0.0005)  # 0.5ms
+
+        logger.info("Thread di streaming diretto terminato")
+
+    def _apply_projector_pattern(self, pattern_data):
+        """
+        Applica un pattern al proiettore per la sincronizzazione.
+
+        Args:
+            pattern_data: Dizionario con i parametri del pattern
+
+        Returns:
+            True se successo, False altrimenti
+        """
+        if not self.projector:
+            logger.error("Proiettore non disponibile per applicare il pattern")
+            return False
+
+        try:
+            from .hardware.projector import OperatingMode, Color, BorderEnable
+
+            # Prima imposta la modalità test pattern
+            self.projector.set_operating_mode(OperatingMode.TestPatternGenerator)
+
+            # Ottieni il tipo di pattern
+            pattern_type = pattern_data.get("type", "solid_field")
+
+            # Converti stringhe colore in oggetti Color
+            def get_color(color_name):
+                try:
+                    return Color[color_name]
+                except (KeyError, TypeError):
+                    return Color.White  # Default a bianco
+
+            # Genera il pattern in base al tipo
+            if pattern_type == "solid_field":
+                color = get_color(pattern_data.get("color", "White"))
+                return self.projector.generate_solid_field(color)
+
+            elif pattern_type == "horizontal_lines":
+                bg_color = get_color(pattern_data.get("bg_color", "Black"))
+                fg_color = get_color(pattern_data.get("fg_color", "White"))
+                fg_width = pattern_data.get("fg_width", 4)
+                bg_width = pattern_data.get("bg_width", 20)
+
+                return self.projector.generate_horizontal_lines(
+                    bg_color, fg_color, fg_width, bg_width
+                )
+
+            elif pattern_type == "vertical_lines":
+                bg_color = get_color(pattern_data.get("bg_color", "Black"))
+                fg_color = get_color(pattern_data.get("fg_color", "White"))
+                fg_width = pattern_data.get("fg_width", 4)
+                bg_width = pattern_data.get("bg_width", 20)
+
+                return self.projector.generate_vertical_lines(
+                    bg_color, fg_color, fg_width, bg_width
+                )
+
+            elif pattern_type == "grid":
+                bg_color = get_color(pattern_data.get("bg_color", "Black"))
+                fg_color = get_color(pattern_data.get("fg_color", "White"))
+                h_fg_width = pattern_data.get("h_fg_width", 4)
+                h_bg_width = pattern_data.get("h_bg_width", 20)
+                v_fg_width = pattern_data.get("v_fg_width", 4)
+                v_bg_width = pattern_data.get("v_bg_width", 20)
+
+                return self.projector.generate_grid(
+                    bg_color, fg_color,
+                    h_fg_width, h_bg_width,
+                    v_fg_width, v_bg_width
+                )
+
+            elif pattern_type == "checkerboard":
+                bg_color = get_color(pattern_data.get("bg_color", "Black"))
+                fg_color = get_color(pattern_data.get("fg_color", "White"))
+                h_count = pattern_data.get("h_count", 8)
+                v_count = pattern_data.get("v_count", 6)
+
+                return self.projector.generate_checkerboard(
+                    bg_color, fg_color, h_count, v_count
+                )
+
+            else:
+                logger.warning(f"Tipo di pattern non supportato: {pattern_type}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Errore nell'applicazione del pattern: {e}")
+            return False
+
+    def stop(self):
+        """Stop the server."""
+        if not self.running:
+            return
+
+        logger.info("Stopping UnLook server...")
+
+        # Stop streaming if active
+        self.stop_streaming()
+
+        # Stop direct streaming if active
+        self.stop_direct_streaming()
+
+        # Stop scanning if active
+        self.stop_scan()
+
+        # Deactivate projector
+        if self.projector:
+            try:
+                from .hardware.projector import OperatingMode
+                self.projector.set_operating_mode(OperatingMode.Standby)
+                self.projector.close()
+            except Exception as e:
+                logger.error(f"Error closing projector: {e}")
+
+        # Close camera manager
+        if self._camera_manager:
+            try:
+                self._camera_manager.close()
+            except Exception as e:
+                logger.error(f"Error closing camera manager: {e}")
+
+        # Stop control thread
+        self.running = False
+        if self.control_thread and self.control_thread.is_alive():
+            self.control_thread.join(timeout=2.0)
+
+        # Remove registration from discovery
+        self.discovery.unregister_scanner()
+
+        # Close ZMQ sockets
+        self.control_socket.close()
+        self.stream_socket.close()
+
+        # Chiudi il socket di streaming diretto se esiste
+        if self.direct_stream_socket:
+            self.direct_stream_socket.close()
+
+        self.zmq_context.term()
+
+        logger.info("UnLook server stopped")
 
     @property
     def projector(self):
@@ -933,7 +1530,7 @@ class UnlookServer(EventEmitter):
 
         self.scanning = False
         logger.info("Scan process completed")
-        
+
     def _handle_camera_stream_stop(self, message: Message) -> Message:
         """Handle CAMERA_STREAM_STOP messages."""
         camera_id = message.payload.get("camera_id")

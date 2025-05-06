@@ -25,6 +25,13 @@ class EventType(enum.Enum):
     STREAM_STARTED = "stream_started"
     STREAM_STOPPED = "stream_stopped"
 
+    # Direct streaming events (new)
+    DIRECT_STREAM_STARTED = "direct_stream_started"
+    DIRECT_STREAM_STOPPED = "direct_stream_stopped"
+    DIRECT_STREAM_SYNC = "direct_stream_sync"  # Evento di sincronizzazione proiettore-camera
+    DIRECT_STREAM_ERROR = "direct_stream_error"
+    PATTERN_CHANGED = "pattern_changed"  # Evento di cambio pattern
+
     # Scanning events
     SCAN_STARTED = "scan_started"
     SCAN_COMPLETED = "scan_completed"
