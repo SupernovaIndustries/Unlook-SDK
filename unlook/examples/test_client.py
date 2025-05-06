@@ -44,6 +44,7 @@ frame_counters = {}
 latency_history = deque(maxlen=100)  # Ultimi 100 valori di latenza
 fps_history = deque(maxlen=100)  # Ultimi 100 valori di FPS
 last_pattern_info = None  # Ultima informazione sul pattern del proiettore
+sync_diff_values = []  # Valori di differenza di sincronizzazione per stream stereo
 
 
 # Callback per gli eventi del client
@@ -202,7 +203,7 @@ def test_connection(scanner):
 
 def test_direct_streaming():
     """Testa lo streaming video diretto."""
-    global client, direct_streaming_active, frame_counters, latency_history, fps_history, last_pattern_info
+    global client, direct_streaming_active, frame_counters, latency_history, fps_history, last_pattern_info, sync_diff_values
 
     print("\n=== Test dello streaming video diretto ===")
 
@@ -222,11 +223,12 @@ def test_direct_streaming():
         for i, camera in enumerate(cameras):
             print(f"{i + 1}. {camera['name']} - {camera['id']}")
 
-        # Reset contatori
+        # Reset contatori e statistiche
         frame_counters = {}
         latency_history.clear()
         fps_history.clear()
         last_pattern_info = None
+        sync_diff_values = []  # Reset differenze sync
 
         # Crea la finestra di visualizzazione
         cv2.namedWindow("Streaming Diretto", cv2.WINDOW_NORMAL)
@@ -364,11 +366,12 @@ Streaming diretto avviato con i seguenti parametri:
         if len(cameras) >= 2:
             print("\nTest streaming stereo diretto...")
 
-            # Reset contatori
+            # Reset contatori e statistiche
             frame_counters = {}
             latency_history.clear()
             fps_history.clear()
             last_pattern_info = None
+            sync_diff_values = []  # Reset differenze sync
 
             # Crea la finestra di visualizzazione
             cv2.namedWindow("Streaming Stereo Diretto", cv2.WINDOW_NORMAL)
@@ -379,12 +382,19 @@ Streaming diretto avviato con i seguenti parametri:
 
             # Callback per lo streaming stereo diretto
             def stereo_direct_callback(left_frame, right_frame, metadata):
-                global frame_counters, latency_history, fps_history, last_pattern_info
+                global frame_counters, latency_history, fps_history, last_pattern_info, sync_diff_values
 
                 # Estrai informazioni dal metadata
                 timestamp = metadata.get("timestamp", time.time())
                 sync_diff_ms = metadata.get("sync_diff_ms", 0)
                 pattern_info = metadata.get("pattern_info", None)
+                
+                # Salva la differenza di sincronizzazione per calcoli futuri
+                sync_diff_values.append(sync_diff_ms)
+                
+                # Manteniamo solo gli ultimi 100 valori per evitare uso eccessivo di memoria
+                if len(sync_diff_values) > 100:
+                    sync_diff_values = sync_diff_values[-100:]
 
                 # Se c'è l'informazione sul pattern, aggiornala
                 if pattern_info:
@@ -475,7 +485,12 @@ Streaming diretto avviato con i seguenti parametri:
                 print(f"Statistiche streaming diretto: {stats}")
                 print(f"Frame stereo ricevuti: {frame_counters.get('stereo', 0)}")
                 print(f"Latenza media: {np.mean(latency_history):.1f}ms")
-                print(f"Differenza sync media: {sync_diff_ms:.1f}ms")
+                
+                # In stereo_direct_callback abbiamo accesso a sync_diff_ms dai metadati
+                # Definiamo una variabile globale per tener traccia delle differenze di sincronizzazione
+                global sync_diff_values
+                avg_sync_diff = np.mean(sync_diff_values) if len(sync_diff_values) > 0 else 0
+                print(f"Differenza sync media: {avg_sync_diff:.1f}ms")
 
                 # Ferma lo streaming
                 client.stream.stop()
@@ -1082,7 +1097,7 @@ def test_streaming_parameters():
 
 def test_projector_sync():
     """Testa la sincronizzazione tra proiettore e telecamera."""
-    global client, frame_counters, latency_history, fps_history, last_pattern_info
+    global client, output_dir
 
     print("\n=== Test sincronizzazione proiettore-telecamera ===")
 
@@ -1091,181 +1106,161 @@ def test_projector_sync():
         return False
 
     try:
-        # Controlla se il proiettore è disponibile
-        info = client.get_info()
-        capabilities = info.get('capabilities', {})
-        projector_available = capabilities.get('projector', {}).get('available', False)
-
-        if not projector_available:
-            print("Proiettore non disponibile. Impossibile eseguire il test di sincronizzazione.")
-            return False
-
         # Ottieni la lista delle telecamere
         cameras = client.camera.get_cameras()
-
         if not cameras:
             print("Nessuna telecamera disponibile")
             return False
 
         camera_id = cameras[0]["id"]
-        print(f"Utilizzo della telecamera: {camera_id}")
 
-        # Reset contatori e statistiche
-        frame_counters = {}
-        latency_history.clear()
-        fps_history.clear()
-        last_pattern_info = None
+        # Parametri di test
+        num_patterns = 5
+        sync_delay = 50  # ms tra cambio pattern e acquisizione
+        pattern_types = ["solid_field", "checkerboard", "grid", "horizontal_lines", "vertical_lines"]
+        pattern_colors = ["White", "Red", "Green", "Blue", "Cyan"]
 
-        # Parametri di sincronizzazione
-        sync_interval = 5  # Cambia pattern ogni 5 frame
-
-        # Crea finestre di visualizzazione
-        cv2.namedWindow("Sincronizzazione", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("Sincronizzazione", 960, 540)
-
-        # Avvia il grafico per statistiche in tempo reale
-        stats_plot = start_stats_plot()
-
-        # Callback per lo streaming diretto con sincronizzazione
-        def sync_callback(frame, metadata):
-            global frame_counters, latency_history, fps_history, last_pattern_info
-
-            # Estrai informazioni dal metadata
-            camera_id = metadata.get("camera_id", "unknown")
-            timestamp = metadata.get("timestamp", time.time())
-            latency = metadata.get("latency_ms", 0)
-            is_sync_frame = metadata.get("is_sync_frame", False)
-            pattern_info = metadata.get("pattern_info", None)
-
-            # Se c'è l'informazione sul pattern, aggiornala
-            if pattern_info:
-                last_pattern_info = pattern_info
-
-            # Aggiorna contatore frames
-            if camera_id not in frame_counters:
-                frame_counters[camera_id] = 0
-            frame_counters[camera_id] += 1
-
-            # Aggiorna cronologia latenza
-            latency_history.append(latency)
-
-            # Calcola FPS
-            if len(latency_history) > 1:
-                current_fps = 1000 / max(1, np.mean(np.diff(latency_history)))
-                fps_history.append(min(current_fps, 120))  # Cap a 120 FPS per visualizzazione
-
-            # Visualizza info ogni 30 frame per non intasare il terminale
-            if frame_counters[camera_id] % 30 == 0:
-                sync_status = "SYNC" if is_sync_frame else "STREAM"
-                pattern_type = last_pattern_info.get('pattern_type', 'N/A') if last_pattern_info else 'N/A'
-                pattern_index = last_pattern_info.get('pattern_index', -1) if last_pattern_info else -1
-
-                print(f"Camera {camera_id}: Frame #{frame_counters[camera_id]}, " +
-                      f"Latenza: {latency:.1f}ms, Status: {sync_status}, " +
-                      f"Pattern: {pattern_type} (idx: {pattern_index})")
-
-            # Aggiungi overlay con informazioni
-            display_frame = frame.copy()
-
-            # Info base
-            cv2.putText(
-                display_frame,
-                f"Frame: {frame_counters[camera_id]} | Latenza: {latency:.1f}ms | FPS: {fps_history[-1]:.1f}",
-                (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (0, 255, 0) if latency < 50 else (0, 165, 255) if latency < 100 else (0, 0, 255),
-                2
-            )
-
-            # Info pattern
-            if last_pattern_info:
-                pattern_text = f"Pattern: {last_pattern_info.get('pattern_type', 'unknown')} (idx: {last_pattern_info.get('pattern_index', -1)})"
-                cv2.putText(
-                    display_frame,
-                    pattern_text,
-                    (10, 70),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    (255, 255, 0),
-                    2
-                )
-
-            # Se è un frame di sincronizzazione, aggiungi un indicatore visivo
-            if is_sync_frame:
-                cv2.rectangle(display_frame, (0, 0), (frame.shape[1], frame.shape[0]), (0, 255, 0), 5)
-                cv2.putText(
-                    display_frame,
-                    "SYNC FRAME",
-                    (frame.shape[1] // 2 - 100, frame.shape[0] // 2),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1.5,
-                    (0, 255, 0),
-                    3
-                )
-
-            # Visualizza
-            cv2.imshow("Sincronizzazione", display_frame)
-            key = cv2.waitKey(1)
-
-            # Se premuto ESC, interrompi lo streaming
-            if key == 27:
-                client.stream.stop_direct_stream(camera_id)
-
-        # Avvia streaming diretto con sincronizzazione
-        print(f"Avvio streaming diretto con sincronizzazione (intervallo: {sync_interval} frame)...")
-        success = client.stream.start_direct_stream(
-            camera_id,
-            sync_callback,
-            fps=60,
-            jpeg_quality=85,
-            sync_with_projector=True,
-            synchronization_pattern_interval=sync_interval,
-            low_latency=True
-        )
-
-        if not success:
-            print("Errore nell'avvio dello streaming diretto con sincronizzazione")
+        # Metti il proiettore in modalità test pattern
+        if not client.projector.set_test_pattern_mode():
+            print("Errore: impossibile impostare la modalità test pattern")
             return False
 
-        print("\nTest di sincronizzazione avviato. Premere 'ESC' nella finestra di streaming per terminare.")
-        print("Osservare la sincronizzazione tra i pattern del proiettore e il frame video.")
+        print("Avvio test di sincronizzazione...")
 
-        # Attendi che l'utente prema un tasto in input
-        input("Premere INVIO una volta completato il test...")
+        # Array per memorizzare i tempi di sincronizzazione
+        sync_times = []
+
+        # Avvia lo streaming diretto con sincronizzazione proiettore
+        sync_callback = lambda frame, metadata: process_sync_frame(frame, metadata, sync_times)
+
+        if hasattr(client.stream, 'start_direct_stream'):
+            # Utilizzo streaming diretto se disponibile
+            print("Utilizzo streaming diretto per il test di sincronizzazione")
+            success = client.stream.start_direct_stream(
+                camera_id,
+                sync_callback,
+                fps=30,
+                sync_with_projector=True
+            )
+        else:
+            # Fallback allo streaming normale
+            print("Utilizzo streaming standard per il test di sincronizzazione")
+            success = client.stream.start(
+                camera_id,
+                sync_callback,
+                fps=30
+            )
+
+        if not success:
+            print("Errore nell'avvio dello streaming")
+            return False
+
+        # Ciclo di test con diversi pattern
+        for i in range(num_patterns):
+            pattern_type = pattern_types[i % len(pattern_types)]
+            color = pattern_colors[i % len(pattern_colors)]
+
+            print(f"Test pattern {i + 1}/{num_patterns}: {pattern_type} {color}")
+
+            # Proietta il pattern
+            if pattern_type == "solid_field":
+                client.projector.show_solid_field(color)
+            elif pattern_type == "checkerboard":
+                client.projector.show_checkerboard(foreground_color=color)
+            elif pattern_type == "grid":
+                client.projector.show_grid(foreground_color=color)
+            elif pattern_type == "horizontal_lines":
+                client.projector.show_horizontal_lines(foreground_color=color)
+            elif pattern_type == "vertical_lines":
+                client.projector.show_vertical_lines(foreground_color=color)
+
+            # Attendi la sincronizzazione
+            time.sleep(sync_delay / 1000.0)
+
+            # Cattura un'immagine per verificare visivamente
+            image = client.camera.capture(camera_id)
+            if image is not None:
+                filename = os.path.join(output_dir, f"sync_test_{i + 1}_pattern_{pattern_type}_{color}.jpg")
+                cv2.imwrite(filename, image)
+                print(f"Immagine salvata: {filename}")
+
+            # Attendi un po' prima del pattern successivo
+            time.sleep(0.5)
 
         # Ferma lo streaming
-        client.stream.stop_direct_stream(camera_id)
+        if hasattr(client.stream, 'stop_direct_stream'):
+            client.stream.stop_direct_stream(camera_id)
+        else:
+            client.stream.stop_stream(camera_id)
 
-        # Fermale il grafico
-        stop_stats_plot(stats_plot)
+        # Calcola la differenza di sincronizzazione media
+        if sync_times:
+            sync_diff_ms = sum(sync_times) / len(sync_times)
+            print(f"Differenza sync media: {sync_diff_ms:.1f}ms")
+            print(f"Numero di campioni: {len(sync_times)}")
 
-        # Statistiche
-        sync_frames = sum(1 for l in latency_history if l < 50)  # Assumo che frame di sync abbiano latenza bassa
-        sync_ratio = sync_frames / len(latency_history) if latency_history else 0
+            # Valuta la qualità della sincronizzazione
+            if sync_diff_ms < 10:
+                print("Sincronizzazione eccellente (<10ms)")
+            elif sync_diff_ms < 20:
+                print("Sincronizzazione buona (<20ms)")
+            elif sync_diff_ms < 50:
+                print("Sincronizzazione accettabile (<50ms)")
+            else:
+                print("Sincronizzazione debole (>50ms)")
+        else:
+            sync_diff_ms = float('inf')
+            print("Nessun dato di sincronizzazione raccolto")
 
-        print("\n=== Risultati del test di sincronizzazione ===")
-        print(f"- Frame totali: {sum(frame_counters.values())}")
-        print(f"- Latenza media: {np.mean(latency_history):.1f}ms")
-        print(f"- Jitter: {np.std(latency_history):.1f}ms")
-        print(f"- Proporzione frame sincronizzati: {sync_ratio:.1%}")
+        # Metti il proiettore in standby
+        client.projector.set_standby()
+
+        # Mostra grafici di sincronizzazione se ci sono dati
+        if sync_times and len(sync_times) > 1:
+            try:
+                import matplotlib.pyplot as plt
+                plt.figure(figsize=(10, 6))
+                plt.plot(sync_times, 'b-', label='Differenza di sincronizzazione (ms)')
+                plt.axhline(y=sync_diff_ms, color='r', linestyle='--', label=f'Media: {sync_diff_ms:.1f}ms')
+                plt.title('Sincronizzazione Proiettore-Telecamera')
+                plt.xlabel('Campione')
+                plt.ylabel('Differenza (ms)')
+                plt.legend()
+                plt.grid(True)
+
+                # Salva il grafico
+                plot_filename = os.path.join(output_dir, "sync_performance.png")
+                plt.savefig(plot_filename)
+                print(f"Grafico salvato: {plot_filename}")
+                plt.close()
+            except Exception as e:
+                print(f"Impossibile creare il grafico: {e}")
 
         return True
 
     except Exception as e:
         print(f"Errore durante il test di sincronizzazione: {e}")
         import traceback
-        traceback.print_exc()
+        print(traceback.format_exc())
         return False
     finally:
-        # Assicurati di fermare tutti gli stream
-        if client:
-            client.stream.stop()
-            try:
-                client.stream.stop_direct_stream(camera_id)
-            except:
-                pass
-            cv2.destroyAllWindows()
+        # Assicurati di fermare lo streaming
+        client.stream.stop()
+        # Metti il proiettore in standby
+        client.projector.set_standby()
+
+
+def process_sync_frame(frame, metadata, sync_times):
+    """Callback per processare un frame e calcolare la sincronizzazione."""
+    # Estrai l'informazione di sincronizzazione dai metadati
+    if metadata and 'projector_sync_time' in metadata:
+        sync_time = metadata['projector_sync_time'] * 1000  # converti in ms
+        sync_times.append(sync_time)
+
+        # Mostra informazioni ogni 10 frame per non intasare il terminale
+        if len(sync_times) % 10 == 0:
+            avg = sum(sync_times[-10:]) / 10
+            print(f"Sync #{len(sync_times)}: {sync_time:.1f}ms, Media ultimi 10: {avg:.1f}ms")
 
 
 def main():
