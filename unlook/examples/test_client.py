@@ -45,7 +45,7 @@ frame_counters = {}
 latency_history = deque(maxlen=100)  # Ultimi 100 valori di latenza
 fps_history = deque(maxlen=100)  # Ultimi 100 valori di FPS
 last_pattern_info = None  # Ultima informazione sul pattern del proiettore
-sync_diff_values = []  # Valori di differenza di sincronizzazione per stream stereo
+sync_diff_values = deque(maxlen=100)  # Valori di differenza di sincronizzazione per stream stereo
 
 
 # Callback per gli eventi del client
@@ -392,10 +392,6 @@ Streaming diretto avviato con i seguenti parametri:
                 
                 # Salva la differenza di sincronizzazione per calcoli futuri
                 sync_diff_values.append(sync_diff_ms)
-                
-                # Manteniamo solo gli ultimi 100 valori per evitare uso eccessivo di memoria
-                if len(sync_diff_values) > 100:
-                    sync_diff_values = sync_diff_values[-100:]
 
                 # Se c'è l'informazione sul pattern, aggiornala
                 if pattern_info:
@@ -488,8 +484,7 @@ Streaming diretto avviato con i seguenti parametri:
                 print(f"Latenza media: {np.mean(latency_history):.1f}ms")
                 
                 # In stereo_direct_callback abbiamo accesso a sync_diff_ms dai metadati
-                # Definiamo una variabile globale per tener traccia delle differenze di sincronizzazione
-                global sync_diff_values
+                # Calcoliamo la media delle differenze di sincronizzazione
                 avg_sync_diff = np.mean(sync_diff_values) if len(sync_diff_values) > 0 else 0
                 print(f"Differenza sync media: {avg_sync_diff:.1f}ms")
 

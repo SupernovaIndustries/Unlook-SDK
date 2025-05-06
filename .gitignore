@@ -1,0 +1,11 @@
+/unlook/__pycache__
+unlook/core/__pycache__/utils.cpython-312.pyc
+unlook/core/__pycache__/protocol.cpython-312.pyc
+unlook/core/__pycache__/events.cpython-312.pyc
+unlook/core/__pycache__/discovery.cpython-312.pyc
+unlook/core/__pycache__/constants.cpython-312.pyc
+unlook/core/__pycache__/__init__.cpython-312.pyc
+unlook/client/__pycache__/streaming.cpython-312.pyc
+unlook/client/__pycache__/scanner.cpython-312.pyc
+unlook/client/__pycache__/camera.cpython-312.pyc
+unlook/client/__pycache__/__init__.cpython-312.pyc

@@ -729,34 +729,8 @@ class UnlookServer(EventEmitter):
                 self._camera_manager = None
         return self._camera_manager
 
-    def _init_message_handlers(self) -> Dict[MessageType, Callable]:
-        """
-        Inizializza gli handler dei messaggi.
-
-        Returns:
-            Dizionario di handler per tipo di messaggio
-        """
-        handlers = {
-            MessageType.HELLO: self._handle_hello,
-            MessageType.INFO: self._handle_info,
-
-            # Handlers del proiettore
-            MessageType.PROJECTOR_MODE: self._handle_projector_mode,
-            MessageType.PROJECTOR_PATTERN: self._handle_projector_pattern,
-
-            # Handlers della telecamera
-            MessageType.CAMERA_LIST: self._handle_camera_list,
-            MessageType.CAMERA_CONFIG: self._handle_camera_config,
-            MessageType.CAMERA_CAPTURE: self._handle_camera_capture,
-            MessageType.CAMERA_STREAM_START: self._handle_camera_stream_start,
-            MessageType.CAMERA_STREAM_STOP: self._handle_camera_stream_stop,
-
-            # Handlers per la cattura sincronizzata multicamera
-            MessageType.CAMERA_CAPTURE_MULTI: self._handle_camera_capture_multi,
-
-            # Altri handlers...
-        }
-        return handlers
+    # Duplicate method removed to fix issue with direct streaming handlers
+    # The actual handler initialization is at the beginning of the class
 
     # Implementazione degli handler dei messaggi...
 
@@ -1352,17 +1326,21 @@ class UnlookServer(EventEmitter):
         handler = self.message_handlers.get(message.msg_type)
         if handler:
             try:
+                logger.info(f"Processing message: {message.msg_type.value} with handler {handler.__name__}")
                 response = handler(message)
                 # If response is None, it means it was already sent
                 return response
             except Exception as e:
                 logger.error(f"Error in handler {message.msg_type.value}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 return Message.create_error(
                     message,
                     f"Error processing message: {e}"
                 )
         else:
             logger.warning(f"No handler for message: {message.msg_type.value}")
+            logger.warning(f"Available handlers: {[h.value for h in self.message_handlers.keys()]}")
             return Message.create_error(
                 message,
                 f"Unsupported message type: {message.msg_type.value}",

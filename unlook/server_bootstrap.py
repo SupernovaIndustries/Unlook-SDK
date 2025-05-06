@@ -23,6 +23,10 @@ logger = logging.getLogger("ServerBoot")
 root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, root_dir)
 
+# Print for debugging
+print(f"Adding to path: {root_dir}")
+print(f"Full sys.path: {sys.path}")
+
 
 def main():
     """Funzione principale per l'avvio del server."""
