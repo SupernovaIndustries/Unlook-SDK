@@ -16,12 +16,14 @@ __version__ = "0.1.0"
 __author__ = "UnLook Team"
 
 from .client import (
-    UnlookClient, UnlookClientEvent,
+    UnlookClient,
     Calibrator, CalibrationData,
     StructuredLightProcessor, ScanProcessor, ProcessingResult,
     PatternType, PatternDirection,
     ModelExporter
 )
+
+from .common.events import UnlookClientEvent
 
 from .common import (
     UnlookDiscovery, UnlookScanner,

@@ -26,7 +26,7 @@ from ..common.utils import (
 
 from .camera.picamera2 import PiCamera2Manager
 from .projector.dlp342x import DLPC342XController, OperatingMode, TestPattern, Color
-from ..common.events import UnlookClientEvent
+#from ..common.events import UnlookClientEvent
 
 logger = logging.getLogger(__name__)
 
