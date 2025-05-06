@@ -1,0 +1,500 @@
+"""
+Client for video streaming from the UnLook scanner.
+"""
+
+import json
+import logging
+import threading
+import time
+from typing import Dict, List, Optional, Any, Callable, Tuple
+
+import zmq
+import numpy as np
+
+from ..core.protocol import MessageType
+from ..core.utils import decode_jpeg_to_image, deserialize_binary_message
+from ..core.constants import DEFAULT_STREAM_PORT, DEFAULT_STREAM_FPS, DEFAULT_JPEG_QUALITY
+from ..core.events import EventType
+
+logger = logging.getLogger(__name__)
+
+
+class StreamClient:
+    """
+    Client for video streaming from the UnLook scanner.
+    """
+
+    def __init__(self, parent_client):
+        """
+        Initialize streaming client.
+
+        Args:
+            parent_client: Main UnlookClient
+        """
+        self.client = parent_client
+
+        # ZeroMQ
+        self.stream_socket = None
+        self.stream_poller = zmq.Poller()
+
+        # State
+        self.streaming = False
+        self.streams = {}  # Dictionary of active streams {camera_id: stream_info}
+        self.stream_thread = None
+        self.watchdog_thread = None
+        self.default_stream_fps = DEFAULT_STREAM_FPS
+        self.default_jpeg_quality = DEFAULT_JPEG_QUALITY
+
+        # Callbacks
+        self.frame_callbacks = {}  # Callbacks for each stream
+        self._lock = threading.RLock()
+
+        # Metadata
+        self.frame_counters = {}  # Frame counters for each stream
+        self.fps_stats = {}  # FPS statistics for each stream
+
+    def start(
+            self,
+            camera_id: str,
+            callback: Callable[[np.ndarray, Dict[str, Any]], None],
+            fps: int = DEFAULT_STREAM_FPS,
+            jpeg_quality: int = DEFAULT_JPEG_QUALITY
+    ) -> bool:
+        """
+        Start video streaming.
+
+        Args:
+            camera_id: Camera ID
+            callback: Function called for each frame
+            fps: Requested frame rate
+            jpeg_quality: JPEG quality
+
+        Returns:
+            True if streaming started successfully, False otherwise
+        """
+        with self._lock:
+            # Check if stream is already active
+            if camera_id in self.streams:
+                logger.warning(f"Stream already active for camera {camera_id}, restarting...")
+                self.stop_stream(camera_id)
+
+            # Send command to server
+            success, response, _ = self.client.send_message(
+                MessageType.CAMERA_STREAM_START,
+                {
+                    "camera_id": camera_id,
+                    "fps": fps,
+                    "jpeg_quality": jpeg_quality
+                }
+            )
+
+            if not success or not response:
+                logger.error(f"Error starting streaming from camera {camera_id}")
+                return False
+
+            # Get streaming port from server
+            stream_port = response.payload.get("stream_port", DEFAULT_STREAM_PORT)
+
+            try:
+                # Create socket for streaming if needed
+                if self.stream_socket is None:
+                    self.stream_socket = self.client.zmq_context.socket(zmq.SUB)
+                    self.stream_socket.setsockopt(zmq.SUBSCRIBE, b"")  # Subscribe to all messages
+                    self.stream_socket.setsockopt(zmq.RCVTIMEO, 1000)  # 1 second timeout
+
+                    # Connect to streaming port
+                    stream_endpoint = f"tcp://{self.client.scanner.host}:{stream_port}"
+                    self.stream_socket.connect(stream_endpoint)
+
+                    # Register with poller
+                    self.stream_poller.register(self.stream_socket, zmq.POLLIN)
+
+                # Store parameters
+                self.streams[camera_id] = {
+                    "fps": fps,
+                    "jpeg_quality": jpeg_quality,
+                    "active": True,
+                    "start_time": time.time(),
+                    "last_frame_time": time.time()
+                }
+
+                self.frame_callbacks[camera_id] = callback
+                self.frame_counters[camera_id] = 0
+                self.fps_stats[camera_id] = {
+                    "last_report_time": time.time(),
+                    "frames_since_report": 0,
+                    "current_fps": 0.0
+                }
+
+                # Start reception thread if not already running
+                if not self.streaming:
+                    self.streaming = True
+                    self.stream_thread = threading.Thread(
+                        target=self._stream_receiver_loop,
+                        daemon=True
+                    )
+                    self.stream_thread.start()
+
+                    # Also start watchdog if not already running
+                    if not self.watchdog_thread or not self.watchdog_thread.is_alive():
+                        self.watchdog_thread = threading.Thread(
+                            target=self._stream_watchdog,
+                            daemon=True
+                        )
+                        self.watchdog_thread.start()
+
+                logger.info(f"Streaming started from camera {camera_id} at {fps} FPS")
+
+                # Emit event in main client
+                self.client.emit(
+                    EventType.STREAM_STARTED,
+                    camera_id
+                )
+
+                return True
+
+            except Exception as e:
+                logger.error(f"Error starting streaming client: {e}")
+                self._cleanup_stream(camera_id)
+                return False
+
+    def stop_stream(self, camera_id: str):
+        """
+        Stop video streaming for a specific camera.
+
+        Args:
+            camera_id: Camera ID
+        """
+        with self._lock:
+            if camera_id not in self.streams:
+                logger.debug(f"No active stream for camera {camera_id}")
+                return
+
+            # Send command to server
+            self.client.send_message(
+                MessageType.CAMERA_STREAM_STOP,
+                {"camera_id": camera_id}
+            )
+
+            # Remove the stream
+            self._cleanup_stream(camera_id)
+
+            logger.info(f"Streaming stopped for camera {camera_id}")
+
+            # Emit event in main client
+            self.client.emit(
+                EventType.STREAM_STOPPED,
+                camera_id
+            )
+
+            # If there are no more active streams, close the socket
+            if not self.streams:
+                self._cleanup_streaming()
+
+    def stop(self):
+        """Stop all video streams."""
+        with self._lock:
+            # Copy keys to avoid modifications during iteration
+            camera_ids = list(self.streams.keys())
+
+            for camera_id in camera_ids:
+                self.stop_stream(camera_id)
+
+            # Clean up remaining resources
+            self._cleanup_streaming()
+
+    def _cleanup_stream(self, camera_id: str):
+        """
+        Clean up resources of a specific stream.
+
+        Args:
+            camera_id: Camera ID
+        """
+        with self._lock:
+            if camera_id in self.streams:
+                self.streams[camera_id]["active"] = False
+                del self.streams[camera_id]
+
+            if camera_id in self.frame_callbacks:
+                del self.frame_callbacks[camera_id]
+
+            if camera_id in self.frame_counters:
+                del self.frame_counters[camera_id]
+
+            if camera_id in self.fps_stats:
+                del self.fps_stats[camera_id]
+
+    def _cleanup_streaming(self):
+        """Clean up all streaming resources."""
+        with self._lock:
+            # Clean up all active streams
+            for camera_id in list(self.streams.keys()):
+                self._cleanup_stream(camera_id)
+
+            # Set flag
+            self.streaming = False
+
+            # Close socket
+            if self.stream_socket:
+                try:
+                    self.stream_poller.unregister(self.stream_socket)
+                    self.stream_socket.close()
+                    self.stream_socket = None
+                except Exception as e:
+                    logger.error(f"Error closing streaming socket: {e}")
+
+            # Wait for threads to terminate
+            if hasattr(self, 'stream_thread') and self.stream_thread and self.stream_thread.is_alive():
+                self.stream_thread.join(timeout=2.0)
+
+            if hasattr(self, 'watchdog_thread') and self.watchdog_thread and self.watchdog_thread.is_alive():
+                self.watchdog_thread.join(timeout=2.0)
+
+            self.stream_thread = None
+            self.watchdog_thread = None
+
+    def _stream_receiver_loop(self):
+        """Video streaming reception loop."""
+        logger.info("Streaming reception thread started")
+
+        while self.streaming:
+            try:
+                # Wait for frame with timeout
+                socks = dict(self.stream_poller.poll(1000))  # 1 second timeout
+
+                if not self.streaming:  # Check if interrupted during wait
+                    break
+
+                if self.stream_socket in socks and socks[self.stream_socket] == zmq.POLLIN:
+                    # Receive frame
+                    frame_data = self.stream_socket.recv()
+
+                    # Deserialize message
+                    try:
+                        msg_type, metadata, jpeg_data = deserialize_binary_message(frame_data)
+
+                        # Extract camera_id from metadata
+                        camera_id = metadata.get("camera_id", "unknown")
+
+                        # Check if this stream is still active
+                        with self._lock:
+                            if camera_id not in self.streams or not self.streams[camera_id]["active"]:
+                                continue
+
+                            callback = self.frame_callbacks.get(camera_id)
+                            if not callback:
+                                continue
+
+                        # Check if it's a frame
+                        if (msg_type == "camera_frame" or msg_type == "binary_data") and jpeg_data:
+                            # Decode image
+                            image = decode_jpeg_to_image(jpeg_data)
+
+                            # Call callback
+                            if callback and image is not None:
+                                callback(image, metadata)
+
+                                # Update statistics
+                                with self._lock:
+                                    # Increment frame counter
+                                    self.frame_counters[camera_id] += 1
+                                    self.streams[camera_id]["last_frame_time"] = time.time()
+                                    self.fps_stats[camera_id]["frames_since_report"] += 1
+
+                                    # Calculate FPS every second
+                                    current_time = time.time()
+                                    if current_time - self.fps_stats[camera_id]["last_report_time"] >= 1.0:
+                                        elapsed = current_time - self.fps_stats[camera_id]["last_report_time"]
+                                        fps = self.fps_stats[camera_id]["frames_since_report"] / elapsed
+                                        self.fps_stats[camera_id]["current_fps"] = fps
+                                        self.fps_stats[camera_id]["frames_since_report"] = 0
+                                        self.fps_stats[camera_id]["last_report_time"] = current_time
+                                        logger.debug(f"Streaming FPS for camera {camera_id}: {fps:.2f}")
+
+                    except Exception as e:
+                        logger.error(f"Error decoding frame: {e}")
+
+            except zmq.error.Again:
+                # Timeout, continue loop
+                pass
+            except Exception as e:
+                if self.streaming:  # Avoid error logs during shutdown
+                    logger.error(f"Error in streaming reception loop: {e}")
+
+        logger.info("Streaming reception thread terminated")
+
+    def get_stats(self, camera_id: str = None) -> Dict[str, Any]:
+        """
+        Get streaming statistics.
+
+        Args:
+            camera_id: Specific camera ID or None for all
+
+        Returns:
+            Dictionary with streaming statistics
+        """
+        with self._lock:
+            if camera_id:
+                if camera_id not in self.streams:
+                    return {}
+
+                stats = {
+                    "fps": self.fps_stats.get(camera_id, {}).get("current_fps", 0.0),
+                    "frames_received": self.frame_counters.get(camera_id, 0),
+                    "stream_active": camera_id in self.streams and self.streams[camera_id]["active"],
+                    "stream_time": time.time() - self.streams[camera_id].get("start_time", time.time()),
+                    "last_frame_time": time.time() - self.streams[camera_id].get("last_frame_time", time.time())
+                }
+                return stats
+            else:
+                # Statistics for all streams
+                return {
+                    "active_streams": len(self.streams),
+                    "total_frames": sum(self.frame_counters.values()),
+                    "streams": {
+                        cam_id: {
+                            "fps": self.fps_stats.get(cam_id, {}).get("current_fps", 0.0),
+                            "frames": self.frame_counters.get(cam_id, 0),
+                            "active": cam_id in self.streams and self.streams[cam_id]["active"]
+                        } for cam_id in self.frame_counters
+                    }
+                }
+
+    def start_stereo_stream(
+            self,
+            callback: Callable[[np.ndarray, np.ndarray, Dict[str, Any]], None],
+            fps: int = DEFAULT_STREAM_FPS,
+            jpeg_quality: int = DEFAULT_JPEG_QUALITY
+    ) -> bool:
+        """
+        Start stereo streaming (two synchronized cameras).
+
+        Args:
+            callback: Function called for each pair of frames
+            fps: Requested frame rate
+            jpeg_quality: JPEG quality
+
+        Returns:
+            True if streaming started successfully, False otherwise
+        """
+        # Get stereo pair
+        left_camera_id, right_camera_id = self.client.camera.get_stereo_pair()
+
+        if not left_camera_id or not right_camera_id:
+            logger.error("Unable to find a valid stereo pair")
+            return False
+
+        # Shared state for synchronization
+        stereo_state = {
+            "frames": {},
+            "lock": threading.Lock(),
+            "callback": callback,
+            "last_sync_time": time.time()
+        }
+
+        # Callback for left camera
+        def left_camera_callback(image, metadata):
+            with stereo_state["lock"]:
+                # Save frame
+                stereo_state["frames"]["left"] = (image, metadata)
+                # Check if we have both frames
+                _check_and_emit_stereo_frame(stereo_state)
+
+        # Callback for right camera
+        def right_camera_callback(image, metadata):
+            with stereo_state["lock"]:
+                # Save frame
+                stereo_state["frames"]["right"] = (image, metadata)
+                # Check if we have both frames
+                _check_and_emit_stereo_frame(stereo_state)
+
+        # Synchronization function
+        def _check_and_emit_stereo_frame(state):
+            if "left" in state["frames"] and "right" in state["frames"]:
+                # We have both frames, call the callback
+                left_image, left_metadata = state["frames"]["left"]
+                right_image, right_metadata = state["frames"]["right"]
+
+                # Create combined metadata
+                combined_metadata = {
+                    "left": left_metadata,
+                    "right": right_metadata,
+                    "sync_time": time.time() - state["last_sync_time"],
+                    "timestamp": time.time()
+                }
+
+                # Call callback
+                state["callback"](left_image, right_image, combined_metadata)
+
+                # Reset for next cycle
+                state["frames"] = {}
+                state["last_sync_time"] = time.time()
+
+        # Start individual streams
+        left_success = self.start(left_camera_id, left_camera_callback, fps, jpeg_quality)
+        right_success = self.start(right_camera_id, right_camera_callback, fps, jpeg_quality)
+
+        return left_success and right_success
+
+    def _stream_watchdog(self):
+        """
+        Watchdog thread that monitors active streams and detects potential issues.
+        """
+        while self.streaming:
+            try:
+                # Check inactivity
+                current_time = time.time()
+                with self._lock:
+                    for camera_id in list(self.streams.keys()):
+                        # Check if we haven't received frames for too long
+                        if camera_id in self.streams and "last_frame_time" in self.streams[camera_id]:
+                            last_frame_time = self.streams[camera_id]["last_frame_time"]
+                            inactivity_time = current_time - last_frame_time
+
+                            # If inactive for more than 5 seconds, log a warning
+                            if inactivity_time > 5.0:
+                                logger.warning(f"Stream {camera_id} inactive for {inactivity_time:.1f} seconds")
+
+                                # If inactive for more than 15 seconds, restart the stream
+                                if inactivity_time > 15.0:
+                                    logger.error(f"Stream {camera_id} inactive for too long, restarting...")
+                                    self._request_stream_restart(camera_id)
+
+            except Exception as e:
+                logger.error(f"Error in stream watchdog: {e}")
+
+            # Wait 2 seconds before next check
+            time.sleep(2.0)
+
+    def _request_stream_restart(self, camera_id):
+        """
+        Request stream restart.
+
+        Args:
+            camera_id: Camera ID
+        """
+        try:
+            # Save current configurations
+            with self._lock:
+                if camera_id not in self.streams:
+                    return
+
+                stream_config = self.streams[camera_id].copy()
+                callback = self.frame_callbacks.get(camera_id)
+
+                # Stop current stream
+                self.stop_stream(camera_id)
+
+                # Wait a bit before restarting
+                time.sleep(0.5)
+
+                # Restart stream with same configurations
+                self.start(
+                    camera_id,
+                    callback,
+                    stream_config.get("fps", self.default_stream_fps),
+                    stream_config.get("jpeg_quality", self.default_jpeg_quality)
+                )
+
+        except Exception as e:
+            logger.error(f"Error restarting stream {camera_id}: {e}")

@@ -263,3 +263,55 @@ class UnlookClient(EventEmitter):
             callback: Funzione da chiamare
         """
         self.on(event, callback)
+
+class UnlookClient(EventEmitter):
+    """
+    Main client for connecting to an UnLook scanner.
+    Provides a unified interface for all scanner functionalities.
+    """
+
+    def __init__(
+            self,
+            client_name: str = "UnlookClient",
+            auto_discover: bool = True,
+            discovery_callback: Optional[Callable[[ScannerInfo, bool], None]] = None
+    ):
+        """
+        Initialize a new UnLook client.
+
+        Args:
+            client_name: Client name
+            auto_discover: Automatically start scanner discovery
+            discovery_callback: Callback for scanner discovery
+        """
+        super().__init__()
+
+        # Client identification
+        self.name = client_name
+        self.id = generate_uuid()
+
+        # Connection state
+        self.connected = False
+        self.scanner: Optional[ScannerInfo] = None
+        self.scanner_info: Dict[str, Any] = {}
+
+        # ZeroMQ
+        self.zmq_context = zmq.Context()
+        self.control_socket = None
+        self.poller = zmq.Poller()
+
+        # Lock
+        self._lock = threading.RLock()
+
+        # Discovery
+        self.discovery = DiscoveryService()
+        self.discovered_scanners: Dict[str, ScannerInfo] = {}
+
+        # Subclasses block - lazy loading
+        self._camera = None
+        self._projector = None
+        self._stream = None
+
+        # Start discovery if requested
+        if auto_discover:
+            self.start_discovery(discovery_callback)

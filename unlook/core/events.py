@@ -1,6 +1,6 @@
 """
-Sistema di eventi per il framework Unlook.
-Fornisce un meccanismo di comunicazione basato su eventi per evitare dipendenze circolari.
+Event system for the Unlook framework.
+Provides an event-based communication mechanism to avoid circular dependencies.
 """
 
 import enum
@@ -11,26 +11,26 @@ logger = logging.getLogger(__name__)
 
 
 class EventType(enum.Enum):
-    """Tipi di eventi supportati nel framework Unlook."""
-    # Eventi di connessione
+    """Event types supported in the Unlook framework."""
+    # Connection events
     CONNECTED = "connected"
     DISCONNECTED = "disconnected"
     RECONNECTING = "reconnecting"
 
-    # Eventi di discovery
+    # Discovery events
     SCANNER_FOUND = "scanner_found"
     SCANNER_LOST = "scanner_lost"
 
-    # Eventi di streaming
+    # Streaming events
     STREAM_STARTED = "stream_started"
     STREAM_STOPPED = "stream_stopped"
 
-    # Eventi di scansione
+    # Scanning events
     SCAN_STARTED = "scan_started"
     SCAN_COMPLETED = "scan_completed"
     SCAN_ERROR = "scan_error"
 
-    # Altri eventi
+    # Other events
     ERROR = "error"
     STATUS_CHANGED = "status_changed"
     CONFIG_CHANGED = "config_changed"
@@ -38,23 +38,23 @@ class EventType(enum.Enum):
 
 class EventEmitter:
     """
-    Implementa un pattern observer per la gestione degli eventi.
-    Consente a diverse parti del sistema di comunicare senza dipendenze dirette.
+    Implements an observer pattern for event handling.
+    Allows different parts of the system to communicate without direct dependencies.
     """
 
     def __init__(self):
-        """Inizializza un emitter di eventi."""
+        """Initialize an event emitter."""
         self._event_callbacks: Dict[EventType, List[Callable]] = {
             event: [] for event in EventType
         }
 
     def on(self, event_type: EventType, callback: Callable) -> None:
         """
-        Registra un callback per un evento.
+        Register a callback for an event.
 
         Args:
-            event_type: Tipo di evento
-            callback: Funzione da chiamare quando l'evento viene emesso
+            event_type: Event type
+            callback: Function to call when the event is emitted
         """
         if event_type not in self._event_callbacks:
             self._event_callbacks[event_type] = []
@@ -63,22 +63,22 @@ class EventEmitter:
 
     def off(self, event_type: EventType, callback: Callable) -> None:
         """
-        Rimuove un callback per un evento.
+        Remove a callback for an event.
 
         Args:
-            event_type: Tipo di evento
-            callback: Funzione da rimuovere
+            event_type: Event type
+            callback: Function to remove
         """
         if event_type in self._event_callbacks and callback in self._event_callbacks[event_type]:
             self._event_callbacks[event_type].remove(callback)
 
     def emit(self, event_type: EventType, *args, **kwargs) -> None:
         """
-        Emette un evento, eseguendo tutti i callback registrati.
+        Emit an event, executing all registered callbacks.
 
         Args:
-            event_type: Tipo di evento
-            *args, **kwargs: Argomenti passati ai callback
+            event_type: Event type
+            *args, **kwargs: Arguments passed to callbacks
         """
         if event_type not in self._event_callbacks:
             return
@@ -87,4 +87,4 @@ class EventEmitter:
             try:
                 callback(*args, **kwargs)
             except Exception as e:
-                logger.error(f"Errore nel callback per l'evento {event_type}: {e}")
+                logger.error(f"Error in callback for event {event_type}: {e}")
