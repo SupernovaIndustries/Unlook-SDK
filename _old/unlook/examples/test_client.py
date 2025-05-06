@@ -3,7 +3,7 @@
 Script di test per la connessione al server UnLook.
 Questo script verifica la connessione al server e testa le funzionalità
 di base come il controllo del proiettore e la cattura di immagini.
-Versione adattata alla nuova struttura.
+Versione aggiornata con supporto per streaming migliorato.
 """
 
 import os
@@ -19,9 +19,7 @@ import threading
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
-    # Importa dalla nuova struttura
-    from unlook.client import UnlookClient
-    from unlook.core import EventType
+    from unlook.client import UnlookClient, UnlookClientEvent
 except ImportError as e:
     print(f"ERRORE: Impossibile importare i moduli UnLook: {e}")
     print("Assicurati che l'SDK UnLook sia installato correttamente")
@@ -410,7 +408,7 @@ def stereo_stream_callback(left_frame, right_frame, metadata):
 
 
 def test_streaming():
-    """Testa lo streaming video."""
+    """Testa lo streaming video migliorato."""
     global client, streaming_active, frame_counters, display_windows
 
     print("\n=== Test dello streaming video ===")
@@ -520,6 +518,65 @@ def test_streaming():
         client.stream.stop()
         cv2.destroyAllWindows()
 
+def stream_callback(frame, metadata):
+    """Callback per lo streaming da una singola telecamera."""
+    global frame_counters, display_windows
+
+    camera_id = metadata.get("camera_id", "unknown")
+
+    # Aggiorna il contatore dei frame
+    if camera_id not in frame_counters:
+        frame_counters[camera_id] = 0
+    frame_counters[camera_id] += 1
+
+    # Visualizza info ogni 30 frame per non intasare il terminale
+    if frame_counters[camera_id] % 30 == 0:
+        print(f"Camera {camera_id}: Frame #{frame_counters[camera_id]}, dimensione: {frame.shape[1]}x{frame.shape[0]}")
+
+    # Visualizza il frame
+    if camera_id not in display_windows:
+        display_windows[camera_id] = f"Stream - Camera {camera_id}"
+        cv2.namedWindow(display_windows[camera_id], cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(display_windows[camera_id], 640, 480)
+
+    # Ridimensiona per visualizzazione
+    display_frame = cv2.resize(frame, (640, 480))
+    cv2.imshow(display_windows[camera_id], display_frame)
+    cv2.waitKey(1)
+
+
+def stereo_stream_callback(left_frame, right_frame, metadata):
+    """Callback per lo streaming stereo."""
+    global frame_counters
+
+    # Aggiorna il contatore dei frame
+    if "stereo" not in frame_counters:
+        frame_counters["stereo"] = 0
+    frame_counters["stereo"] += 1
+
+    # Ottieni informazioni sul tempo di sincronizzazione
+    sync_time_ms = metadata.get("sync_time", 0) * 1000  # in millisecondi
+
+    # Visualizza info ogni 30 frame
+    if frame_counters["stereo"] % 30 == 0:
+        print(f"Stereo: Frame #{frame_counters['stereo']}, sync: {sync_time_ms:.1f}ms")
+
+    # Crea un'immagine combinata
+    stereo_image = np.hstack((left_frame, right_frame))
+
+    # Ridimensiona per visualizzazione
+    h, w = stereo_image.shape[:2]
+    if w > 1280:
+        scale = 1280 / w
+        stereo_image = cv2.resize(stereo_image, (1280, int(h * scale)))
+
+    # Aggiungi info sulla sincronizzazione
+    cv2.putText(stereo_image, f"Sync: {sync_time_ms:.1f}ms", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+    # Visualizza
+    cv2.imshow("Stereo Stream", stereo_image)
+    cv2.waitKey(1)
 
 def run_all_tests():
     """Esegue tutti i test."""
@@ -529,11 +586,11 @@ def run_all_tests():
     client = UnlookClient(client_name="UnlookTestClient")
 
     # Registra i callback
-    client.on(EventType.CONNECTED, on_connected)
-    client.on(EventType.DISCONNECTED, on_disconnected)
-    client.on(EventType.ERROR, on_error)
-    client.on(EventType.STREAM_STARTED, on_stream_started)
-    client.on(EventType.STREAM_STOPPED, on_stream_stopped)
+    client.on_event(UnlookClientEvent.CONNECTED, on_connected)
+    client.on_event(UnlookClientEvent.DISCONNECTED, on_disconnected)
+    client.on_event(UnlookClientEvent.ERROR, on_error)
+    client.on_event(UnlookClientEvent.STREAM_STARTED, on_stream_started)
+    client.on_event(UnlookClientEvent.STREAM_STOPPED, on_stream_stopped)
 
     try:
         # Assicura che la directory di output esista
@@ -556,7 +613,7 @@ def run_all_tests():
             print("1. Test proiettore")
             print("2. Test telecamere")
             print("3. Test coppia stereo")
-            print("4. Test streaming video")
+            print("4. Test streaming video (NUOVO)")
             print("5. Esegui tutti i test")
             print("0. Esci")
 
