@@ -152,6 +152,12 @@ def deserialize_binary_message(data: bytes) -> Tuple[str, Dict, Optional[bytes]]
     Returns:
         Tupla (tipo_messaggio, payload, dati_binari)
     """
+    # Verifico se i dati iniziano con JPEG SOI marker (0xFF 0xD8)
+    if len(data) >= 2 and data[0] == 0xFF and data[1] == 0xD8:
+        # È un'immagine JPEG diretta senza header
+        logger.debug("Rilevato JPEG diretto senza header")
+        return "camera_frame", {"format": "jpeg", "direct_image": True}, data
+
     # Controlli di validità
     if not data or len(data) < 4:
         logger.error("Dati binari insufficienti per la deserializzazione")
@@ -160,6 +166,21 @@ def deserialize_binary_message(data: bytes) -> Tuple[str, Dict, Optional[bytes]]
     try:
         # Estrae la dimensione dell'header
         header_size = int.from_bytes(data[:4], byteorder='little')
+
+        # Verifica dimensione ragionevole (evita overflow)
+        if header_size <= 0 or header_size > 100000:  # Limite ragionevole per header JSON
+            logger.warning(f"Dimensione header sospetta: {header_size}, potrebbe essere formato alternativo")
+
+            # Prova a rilevare se si tratta di un messaggio multicamera senza header standard
+            if len(data) >= 8:
+                # Controlla se dopo 4 byte c'è una dimensione JPEG ragionevole
+                img_size = int.from_bytes(data[4:8], byteorder='little')
+                if img_size > 0 and img_size < len(data) - 8:
+                    logger.debug(f"Rilevato possibile formato multicamera con dimensione immagine: {img_size}")
+                    return "multi_camera_response", {"format": "jpeg", "alternative_format": True}, data
+
+            # Se non riconosciuto, restituisci dati binari grezzi
+            return "binary_data", {"format": "unknown"}, data
 
         # Verifica che ci siano abbastanza dati per l'header
         if len(data) < 4 + header_size:
@@ -188,7 +209,7 @@ def deserialize_binary_message(data: bytes) -> Tuple[str, Dict, Optional[bytes]]
 
         elif len(data) > 4 + header_size:
             # Se ci sono dati extra, li consideriamo come binari anche se has_binary è False
-            logger.warning("Dati binari presenti ma has_binary=False, estrazione comunque")
+            logger.debug("Dati binari presenti ma has_binary=False, estrazione comunque")
             binary_data = data[4 + header_size:]
 
         # Estrae tipo e payload con valori di default sicuri
@@ -204,6 +225,10 @@ def deserialize_binary_message(data: bytes) -> Tuple[str, Dict, Optional[bytes]]
 
     except json.JSONDecodeError as e:
         logger.error(f"Errore nella decodifica JSON dell'header: {e}")
+        # Se è un errore di decodifica JSON ma l'inizio assomiglia a un JPEG
+        if len(data) >= 2 and data[0] == 0xFF and data[1] == 0xD8:
+            logger.debug("Rilevato JPEG nonostante errore di decodifica JSON")
+            return "camera_frame", {"format": "jpeg", "direct_image": True}, data
         return "error", {"error": f"JSON non valido: {str(e)}"}, None
     except Exception as e:
         logger.error(f"Errore nella deserializzazione del messaggio binario: {e}")

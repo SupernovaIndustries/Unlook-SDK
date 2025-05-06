@@ -3,6 +3,7 @@
 Script di test per la connessione al server UnLook.
 Questo script verifica la connessione al server e testa le funzionalità
 di base come il controllo del proiettore e la cattura di immagini.
+Versione aggiornata con supporto per streaming migliorato.
 """
 
 import os
@@ -12,6 +13,7 @@ import logging
 import argparse
 import cv2
 import numpy as np
+import threading
 
 # Aggiungi la directory corrente al percorso di ricerca dei moduli
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -32,6 +34,9 @@ logging.basicConfig(
 # Variabili globali
 client = None
 output_dir = "output"
+streaming_active = False
+frame_counters = {}
+display_windows = {}
 
 
 # Callback per gli eventi del client
@@ -56,6 +61,20 @@ def on_scanner_found(scanner, added):
         print(f"Scanner trovato: {scanner.name} ({scanner.uuid}) su {scanner.endpoint}")
     else:
         print(f"Scanner perso: {scanner.name} ({scanner.uuid})")
+
+
+def on_stream_started(camera_id):
+    """Callback chiamato quando uno stream viene avviato."""
+    global streaming_active
+    streaming_active = True
+    print(f"Stream avviato per la camera {camera_id}")
+
+
+def on_stream_stopped(camera_id):
+    """Callback chiamato quando uno stream viene fermato."""
+    global streaming_active
+    streaming_active = False
+    print(f"Stream fermato per la camera {camera_id}")
 
 
 def ensure_output_dir():
@@ -327,6 +346,179 @@ def test_stereo_pair():
         return False
 
 
+def stream_callback(frame, metadata):
+    """Callback per lo streaming da una singola telecamera."""
+    global frame_counters, display_windows
+
+    camera_id = metadata.get("camera_id", "unknown")
+
+    # Aggiorna il contatore dei frame
+    if camera_id not in frame_counters:
+        frame_counters[camera_id] = 0
+    frame_counters[camera_id] += 1
+
+    # Visualizza info ogni 30 frame per non intasare il terminale
+    if frame_counters[camera_id] % 30 == 0:
+        print(f"Camera {camera_id}: Frame #{frame_counters[camera_id]}, dimensione: {frame.shape[1]}x{frame.shape[0]}")
+
+    # Visualizza il frame
+    if camera_id not in display_windows:
+        display_windows[camera_id] = f"Stream - Camera {camera_id}"
+        cv2.namedWindow(display_windows[camera_id], cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(display_windows[camera_id], 640, 480)
+
+    # Ridimensiona per visualizzazione
+    display_frame = cv2.resize(frame, (640, 480))
+    cv2.imshow(display_windows[camera_id], display_frame)
+    cv2.waitKey(1)
+
+
+def stereo_stream_callback(left_frame, right_frame, metadata):
+    """Callback per lo streaming stereo."""
+    global frame_counters
+
+    # Aggiorna il contatore dei frame
+    if "stereo" not in frame_counters:
+        frame_counters["stereo"] = 0
+    frame_counters["stereo"] += 1
+
+    # Ottieni informazioni sul tempo di sincronizzazione
+    sync_time_ms = metadata.get("sync_time", 0) * 1000  # in millisecondi
+
+    # Visualizza info ogni 30 frame
+    if frame_counters["stereo"] % 30 == 0:
+        print(f"Stereo: Frame #{frame_counters['stereo']}, sync: {sync_time_ms:.1f}ms")
+
+    # Crea un'immagine combinata
+    stereo_image = np.hstack((left_frame, right_frame))
+
+    # Ridimensiona per visualizzazione
+    h, w = stereo_image.shape[:2]
+    if w > 1280:
+        scale = 1280 / w
+        stereo_image = cv2.resize(stereo_image, (1280, int(h * scale)))
+
+    # Aggiungi info sulla sincronizzazione
+    cv2.putText(stereo_image, f"Sync: {sync_time_ms:.1f}ms", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+    # Visualizza
+    cv2.imshow("Stereo Stream", stereo_image)
+    cv2.waitKey(1)
+
+
+def test_streaming():
+    """Testa lo streaming video migliorato."""
+    global client, streaming_active, frame_counters, display_windows
+
+    print("\n=== Test dello streaming video ===")
+
+    if not client.connected:
+        print("Errore: client non connesso")
+        return False
+
+    try:
+        # Ottieni la lista delle telecamere
+        cameras = client.camera.get_cameras()
+
+        if not cameras:
+            print("Nessuna telecamera disponibile")
+            return False
+
+        print(f"Telecamere disponibili: {len(cameras)}")
+        for i, camera in enumerate(cameras):
+            print(f"{i + 1}. {camera['name']} - {camera['id']}")
+
+        # Resetta i contatori
+        frame_counters = {}
+        display_windows = {}
+
+        # Test modalità di streaming singola telecamera
+        camera_id = cameras[0]["id"]
+        print(f"\nTest streaming singola telecamera ({camera_id})...")
+
+        # Avvia lo streaming
+        streaming_active = False
+        if not client.stream.start(camera_id, stream_callback, fps=15):
+            print("Errore nell'avvio dello streaming")
+            return False
+
+        # Attendi che l'utente prema un tasto
+        print("Streaming avviato. Premi INVIO per continuare...")
+        input()
+
+        # Mostra statistiche
+        stats = client.stream.get_stats(camera_id)
+        print(f"Statistiche streaming: {stats}")
+        print(f"Frame ricevuti: {frame_counters.get(camera_id, 0)}")
+
+        # Ferma lo streaming
+        client.stream.stop_stream(camera_id)
+        print("Streaming fermato")
+
+        # Test streaming multiplo se ci sono più telecamere
+        if len(cameras) > 1:
+            print("\nTest streaming multiplo...")
+
+            # Avvia lo streaming su tutte le telecamere
+            active_streams = []
+            for camera in cameras:
+                if client.stream.start(camera["id"], stream_callback, fps=10):
+                    print(f"Streaming avviato per la camera {camera['id']}")
+                    active_streams.append(camera["id"])
+                else:
+                    print(f"Errore nell'avvio dello streaming per la camera {camera['id']}")
+
+            # Attendi che l'utente prema un tasto
+            print("Streaming multiplo avviato. Premi INVIO per continuare...")
+            input()
+
+            # Mostra statistiche
+            for camera_id in active_streams:
+                stats = client.stream.get_stats(camera_id)
+                print(f"Statistiche per camera {camera_id}: {stats}")
+                print(f"Frame ricevuti: {frame_counters.get(camera_id, 0)}")
+
+            # Ferma tutti gli stream
+            client.stream.stop()
+            print("Tutti gli stream fermati")
+
+        # Test streaming stereo se disponibile
+        if len(cameras) >= 2:
+            print("\nTest streaming stereo...")
+
+            # Avvia lo streaming stereo
+            frame_counters["stereo"] = 0
+            if client.stream.start_stereo_stream(stereo_stream_callback, fps=15):
+                print("Streaming stereo avviato")
+
+                # Attendi che l'utente prema un tasto
+                print("Streaming stereo avviato. Premi INVIO per continuare...")
+                input()
+
+                # Mostra statistiche
+                stats = client.stream.get_stats()
+                print(f"Statistiche streaming: {stats}")
+                print(f"Frame stereo ricevuti: {frame_counters.get('stereo', 0)}")
+
+                # Ferma lo streaming
+                client.stream.stop()
+                print("Streaming stereo fermato")
+            else:
+                print("Errore nell'avvio dello streaming stereo")
+
+        cv2.destroyAllWindows()
+        return True
+
+    except Exception as e:
+        print(f"Errore durante il test dello streaming: {e}")
+        return False
+    finally:
+        # Assicurati di fermare tutti gli stream
+        client.stream.stop()
+        cv2.destroyAllWindows()
+
+
 def run_all_tests():
     """Esegue tutti i test."""
     global client
@@ -338,6 +530,8 @@ def run_all_tests():
     client.on_event(UnlookClientEvent.CONNECTED, on_connected)
     client.on_event(UnlookClientEvent.DISCONNECTED, on_disconnected)
     client.on_event(UnlookClientEvent.ERROR, on_error)
+    client.on_event(UnlookClientEvent.STREAM_STARTED, on_stream_started)
+    client.on_event(UnlookClientEvent.STREAM_STOPPED, on_stream_stopped)
 
     try:
         # Assicura che la directory di output esista
@@ -354,16 +548,35 @@ def run_all_tests():
             print("Test di connessione fallito. Uscita.")
             return
 
-        # Testa il proiettore
-        test_projector()
+        # Menù di test
+        while True:
+            print("\n=== Menu di Test ===")
+            print("1. Test proiettore")
+            print("2. Test telecamere")
+            print("3. Test coppia stereo")
+            print("4. Test streaming video (NUOVO)")
+            print("5. Esegui tutti i test")
+            print("0. Esci")
 
-        # Testa le telecamere
-        test_cameras()
+            choice = input("\nSeleziona un test (numero): ")
 
-        # Testa la coppia stereo
-        test_stereo_pair()
-
-        print("\nTutti i test completati.")
+            if choice == "1":
+                test_projector()
+            elif choice == "2":
+                test_cameras()
+            elif choice == "3":
+                test_stereo_pair()
+            elif choice == "4":
+                test_streaming()
+            elif choice == "5":
+                test_projector()
+                test_cameras()
+                test_stereo_pair()
+                test_streaming()
+            elif choice == "0":
+                break
+            else:
+                print("Scelta non valida.")
 
     except KeyboardInterrupt:
         print("\nTest interrotto dall'utente.")

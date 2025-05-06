@@ -99,7 +99,7 @@ class UnlookServer:
 
         # Streaming
         self.streaming_active = False
-        self.streaming_camera_id = None
+        self.active_streams = []  # Lista di stream attivi per gestire più telecamere
         self.streaming_thread = None
         self.streaming_fps = DEFAULT_STREAM_FPS
         self.jpeg_quality = DEFAULT_JPEG_QUALITY
@@ -623,7 +623,7 @@ class UnlookServer:
                         f"Errore nell'apertura della telecamera {camera_id}"
                     )
 
-            # Cattura in modo sincronizzato (implementazione semplificata)
+            # Cattura in modo sincronizzato
             images = {}
             jpeg_quality = message.payload.get("jpeg_quality", self.jpeg_quality)
 
@@ -658,47 +658,27 @@ class UnlookServer:
 
             # Prepara i metadati per la risposta
             all_metadata = {camera_id: images[camera_id]["metadata"] for camera_id in camera_ids}
-            response_payload = {
-                "num_cameras": len(images),
-                "camera_ids": camera_ids,
-                "images_metadata": all_metadata,
-                "timestamp": time.time(),
-                "type": "multi_camera_response"  # Tipo esplicito
-            }
 
-            # Serializza in formato JSON
-            response_json = json.dumps(response_payload).encode('utf-8')
-            response_json_size = len(response_json)
+            # METODO PIÙ COERENTE: utilizzo serialize_binary_message per un formato standardizzato
+            all_jpeg_data = b''.join([images[camera_id]["jpeg_data"] for camera_id in camera_ids])
 
-            # Costruisci la risposta con formato:
-            # [Dimensione JSON (4 byte)][JSON][Dimensione JPEG 1 (4 byte)][JPEG 1][Dimensione JPEG 2 (4 byte)][JPEG 2]...
-            message_parts = [
-                # Dimensione header JSON (4 byte)
-                response_json_size.to_bytes(4, byteorder='little'),
-                # Header JSON
-                response_json
-            ]
-
-            # Aggiungi ogni immagine con la sua dimensione
-            for camera_id in camera_ids:
-                jpeg_data = images[camera_id]["jpeg_data"]
-                # Dimensione JPEG (4 byte)
-                message_parts.append(len(jpeg_data).to_bytes(4, byteorder='little'))
-                # Dati JPEG
-                message_parts.append(jpeg_data)
-
-            # Unisci tutte le parti in un unico messaggio binario
-            response_data = b''.join(message_parts)
-
-            # Log dettagliato sul formato della risposta (aiuta il debug)
-            logger.debug(f"Invio risposta multicamera: {len(response_data)} bytes totali")
-            logger.debug(f"Dimensione header: {response_json_size} bytes")
-            logger.debug(f"Numero immagini: {len(camera_ids)}")
-            for camera_id in camera_ids:
-                logger.debug(f"Immagine {camera_id}: {len(images[camera_id]['jpeg_data'])} bytes")
+            # Utilizza il metodo standard per serializzare la risposta
+            binary_response = serialize_binary_message(
+                "multi_camera_response",
+                {
+                    "num_cameras": len(images),
+                    "camera_ids": camera_ids,
+                    "images_metadata": all_metadata,
+                    "jpeg_offsets": [0] + [len(images[camera_id]["jpeg_data"]) for camera_id in camera_ids[:-1]],
+                    "jpeg_sizes": [len(images[camera_id]["jpeg_data"]) for camera_id in camera_ids],
+                    "timestamp": time.time(),
+                    "format_version": "2.0"  # Nuova versione del formato
+                },
+                all_jpeg_data
+            )
 
             # Invia la risposta
-            self.control_socket.send(response_data)
+            self.control_socket.send(binary_response)
             return None  # Risposta già inviata
 
         except Exception as e:
@@ -722,17 +702,44 @@ class UnlookServer:
         fps = message.payload.get("fps", DEFAULT_STREAM_FPS)
         jpeg_quality = message.payload.get("jpeg_quality", DEFAULT_JPEG_QUALITY)
 
-        # Ferma lo streaming precedente se attivo
-        self.stop_streaming()
+        # Verifica se lo stream è già attivo per questa telecamera
+        for stream_info in self.active_streams:
+            if stream_info["camera_id"] == camera_id:
+                logger.warning(f"Stream già attivo per la camera {camera_id}, verrà riutilizzato")
+                # Aggiorna configurazione
+                stream_info["fps"] = fps
+                stream_info["jpeg_quality"] = jpeg_quality
+                stream_info["last_activity"] = time.time()
 
-        # Avvia il nuovo streaming
-        try:
-            # Configura lo streaming
-            self.streaming_camera_id = camera_id
-            self.streaming_fps = fps
-            self.jpeg_quality = jpeg_quality
+                return Message.create_reply(
+                    message,
+                    {
+                        "success": True,
+                        "camera_id": camera_id,
+                        "stream_port": self.stream_port,
+                        "fps": fps,
+                        "stream_id": stream_info["stream_id"]
+                    }
+                )
 
-            # Avvia il thread di streaming
+        # Configura lo streaming
+        stream_id = generate_uuid()
+        stream_info = {
+            "stream_id": stream_id,
+            "camera_id": camera_id,
+            "fps": fps,
+            "jpeg_quality": jpeg_quality,
+            "active": True,
+            "start_time": time.time(),
+            "last_activity": time.time(),
+            "frame_count": 0
+        }
+
+        # Aggiungi alla lista di stream attivi
+        self.active_streams.append(stream_info)
+
+        # Avvia il thread di streaming se non è già attivo
+        if not self.streaming_active:
             self.streaming_active = True
             self.streaming_thread = threading.Thread(
                 target=self._streaming_loop,
@@ -740,24 +747,125 @@ class UnlookServer:
             )
             self.streaming_thread.start()
 
-            logger.info(f"Streaming avviato per camera {camera_id} a {fps} FPS")
+        logger.info(f"Streaming avviato per camera {camera_id} a {fps} FPS (ID: {stream_id})")
 
-            return Message.create_reply(
-                message,
-                {
-                    "success": True,
-                    "camera_id": camera_id,
-                    "stream_port": self.stream_port,
-                    "fps": fps
-                }
-            )
+        return Message.create_reply(
+            message,
+            {
+                "success": True,
+                "camera_id": camera_id,
+                "stream_port": self.stream_port,
+                "fps": fps,
+                "stream_id": stream_id
+            }
+        )
 
-        except Exception as e:
-            self.streaming_active = False
-            return Message.create_error(
-                message,
-                f"Errore nell'avvio dello streaming: {e}"
-            )
+    def _handle_camera_stream_stop(self, message: Message) -> Message:
+        """Gestisce i messaggi CAMERA_STREAM_STOP."""
+        camera_id = message.payload.get("camera_id")
+        stream_id = message.payload.get("stream_id")
+
+        # Cerca lo stream da fermare
+        for i, stream_info in enumerate(self.active_streams):
+            if ((camera_id and stream_info["camera_id"] == camera_id) or
+                    (stream_id and stream_info["stream_id"] == stream_id)):
+                # Rimuovi lo stream
+                self.active_streams.pop(i)
+                logger.info(f"Stream fermato per camera {stream_info['camera_id']} (ID: {stream_info['stream_id']})")
+                break
+
+        # Se non ci sono più stream attivi, ferma il thread
+        if not self.active_streams:
+            self.stop_streaming()
+
+        return Message.create_reply(
+            message,
+            {"success": True}
+        )
+
+    def _streaming_loop(self):
+        """Loop di streaming video."""
+        logger.info("Thread di streaming avviato")
+
+        # Dizionario per tracciare l'ultimo frame inviato per ogni telecamera
+        last_frame_times = {}
+
+        while self.streaming_active:
+            # Leggi la lista di stream attivi (copia per sicurezza)
+            current_streams = self.active_streams.copy()
+
+            for stream_info in current_streams:
+                camera_id = stream_info["camera_id"]
+                fps = stream_info["fps"]
+                jpeg_quality = stream_info["jpeg_quality"]
+
+                # Calcola l'intervallo tra i frame
+                interval = 1.0 / fps
+
+                # Verifica se è tempo di inviare un nuovo frame
+                current_time = time.time()
+                last_time = last_frame_times.get(camera_id, 0)
+
+                if current_time - last_time >= interval:
+                    try:
+                        # Cattura immagine
+                        image = self.camera_manager.capture_image(camera_id)
+                        if image is None:
+                            logger.error(f"Errore nella cattura dell'immagine dalla camera {camera_id}")
+                            continue
+
+                        # Codifica in JPEG
+                        jpeg_data = encode_image_to_jpeg(image, jpeg_quality)
+
+                        # Prepara i metadati
+                        height, width = image.shape[:2]
+                        metadata = {
+                            "width": width,
+                            "height": height,
+                            "channels": image.shape[2] if len(image.shape) > 2 else 1,
+                            "format": "jpeg",
+                            "camera_id": camera_id,
+                            "stream_id": stream_info["stream_id"],
+                            "timestamp": current_time,
+                            "frame_number": stream_info["frame_count"],
+                            "fps": fps
+                        }
+
+                        # Crea messaggio binario
+                        binary_message = serialize_binary_message(
+                            "camera_frame",
+                            metadata,
+                            jpeg_data
+                        )
+
+                        # Pubblica il frame
+                        self.stream_socket.send(binary_message)
+
+                        # Aggiorna contatori
+                        stream_info["frame_count"] += 1
+                        last_frame_times[camera_id] = current_time
+                        stream_info["last_activity"] = current_time
+
+                    except Exception as e:
+                        logger.error(f"Errore nello streaming della camera {camera_id}: {e}")
+
+            # Verifica inattività e rimuovi stream inattivi
+            current_time = time.time()
+            for i in range(len(self.active_streams) - 1, -1, -1):
+                if current_time - self.active_streams[i]["last_activity"] > 10.0:  # 10 secondi di inattività
+                    logger.warning(f"Stream inattivo rimosso: {self.active_streams[i]['camera_id']}")
+                    self.active_streams.pop(i)
+
+            # Se non ci sono più stream attivi, esci dal loop
+            if not self.active_streams:
+                logger.info("Nessuno stream attivo, terminazione del thread")
+                break
+
+            # Attendi un breve intervallo per non sovraccaricare la CPU
+            # Utilizziamo un intervallo più breve per mantenere la reattività
+            time.sleep(0.001)  # 1ms
+
+        logger.info("Thread di streaming terminato")
 
     def _handle_camera_stream_stop(self, message: Message) -> Message:
         """Gestisce i messaggi CAMERA_STREAM_STOP."""
