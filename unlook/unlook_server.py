@@ -40,7 +40,7 @@ DEFAULT_CONFIG = {
         "stream_port": 5556,
         "scanner_uuid": None,  # Generato automaticamente se None
         "log_level": "INFO",
-        "log_file": "/var/log/unlook/server.log"
+        "log_file": "logs/unlook_server.log"
     },
     "projector": {
         "i2c_bus": 3,
