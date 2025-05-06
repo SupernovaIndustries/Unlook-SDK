@@ -11,7 +11,8 @@
         "i2c_bus": 3,
         "i2c_address": "0x1B",
         "standby_on_start": false,
-        "test_on_start": true
+        "test_on_start": true,
+        "use_black_instead_of_standby": true
     },
     "camera": {
         "default_resolution": [1920, 1080],

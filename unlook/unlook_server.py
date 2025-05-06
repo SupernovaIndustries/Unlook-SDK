@@ -45,7 +45,7 @@ DEFAULT_CONFIG = {
     "projector": {
         "i2c_bus": 3,
         "i2c_address": "0x1B",
-        "standby_on_start": True,
+        "standby_on_start": False,
         "test_on_start": False
     },
     "camera": {
@@ -267,7 +267,8 @@ def test_projector():
         time.sleep(1)
 
         # Metti in standby
-        server.projector.set_operating_mode(OperatingMode.Standby)
+        server.projector.generate_solid_field(Color.Black)
+        logging.info("Pattern nero proiettato come alternativa allo standby")
 
         logging.info("Test del proiettore completato con successo")
         return True
@@ -332,6 +333,15 @@ def signal_handler(sig, frame):
     logging.info("Segnale di arresto ricevuto, terminazione del server in corso...")
     terminate_flag = True
 
+    if server and server.projector:
+        try:
+            # Proietta nero invece di standby
+            server.projector.set_operating_mode(OperatingMode.TestPatternGenerator)
+            time.sleep(0.5)
+            server.projector.generate_solid_field(Color.Black)
+        except:
+            pass
+
     if server:
         server.stop()
 
@@ -375,10 +385,15 @@ def start_server():
 
         # Test del proiettore se richiesto
         if projector_config["test_on_start"]:
+
+            time.sleep(1)  # Pausa prima del test
             test_projector()
         elif projector_config["standby_on_start"] and server.projector:
-            # Metti il proiettore in standby
-            server.projector.set_operating_mode(OperatingMode.Standby)
+            time.sleep(1)  # Pausa prima di cambiare pattern
+            logging.info("Proiezione pattern nero come alternativa allo standby")
+            server.projector.set_operating_mode(OperatingMode.TestPatternGenerator)
+            time.sleep(1)
+            server.projector.generate_solid_field(Color.Black)
 
         # Test delle telecamere
         test_cameras()
@@ -401,6 +416,16 @@ def cleanup():
             server.stop()
         except Exception as e:
             logging.error(f"Errore durante l'arresto del server: {e}")
+
+    if server and server.projector:
+        try:
+            # Proietta nero invece di standby
+            server.projector.set_operating_mode(OperatingMode.TestPatternGenerator)
+            time.sleep(0.5)
+            server.projector.generate_solid_field(Color.Black)
+            logging.info("Proiettore impostato su nero durante la chiusura")
+        except Exception as e:
+            logging.error(f"Errore durante l'impostazione del pattern nero sul proiettore: {e}")
 
     if config["gpio"]["use_gpio"]:
         try:
