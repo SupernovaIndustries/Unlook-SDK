@@ -377,14 +377,40 @@ class PiCamera2Manager:
                     logger.error(f"Camera {camera_id} is None in active_cameras")
                     return None
                     
-                # Check camera state    
-                if not camera.is_open():
-                    logger.warning(f"Camera {camera_id} was closed, reopening")
-                    self.close_camera(camera_id)
-                    if not self.open_camera(camera_id):
-                        logger.error(f"Failed to reopen camera {camera_id}")
+                # Check camera state
+                try:
+                    # Try different ways to check if camera is open based on API version
+                    camera_open = False
+                    
+                    # Check if is_open is an attribute
+                    if hasattr(camera, 'is_open'):
+                        # Check if it's a property or method
+                        if callable(camera.is_open):
+                            camera_open = camera.is_open()
+                        else:
+                            camera_open = camera.is_open
+                    # Otherwise check if camera is None or has stop method
+                    elif camera and hasattr(camera, 'stop'):
+                        camera_open = True
+                    
+                    if not camera_open:
+                        logger.warning(f"Camera {camera_id} was closed, reopening")
+                        self.close_camera(camera_id)
+                        if not self.open_camera(camera_id):
+                            logger.error(f"Failed to reopen camera {camera_id}")
+                            return None
+                        camera = self.active_cameras[camera_id]
+                except Exception as check_error:
+                    logger.warning(f"Error checking camera state: {check_error}, assuming camera needs reopening")
+                    try:
+                        self.close_camera(camera_id)
+                        if not self.open_camera(camera_id):
+                            logger.error(f"Failed to reopen camera {camera_id}")
+                            return None
+                        camera = self.active_cameras[camera_id]
+                    except Exception as reopen_error:
+                        logger.error(f"Failed to reopen camera after state check error: {reopen_error}")
                         return None
-                    camera = self.active_cameras[camera_id]
                 
                 # Capture image with timeout handling
                 logger.debug(f"Capturing array from camera {camera_id}")
