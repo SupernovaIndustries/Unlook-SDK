@@ -252,20 +252,34 @@ class UnlookServer(EventEmitter):
         # Inizializza il socket di streaming diretto se necessario
         if self.direct_stream_socket is None:
             try:
+                # Close any existing socket first to ensure clean state
+                if hasattr(self, 'direct_stream_socket') and self.direct_stream_socket:
+                    try:
+                        self.direct_stream_socket.close()
+                    except Exception as close_err:
+                        logger.warning(f"Error closing existing direct stream socket: {close_err}")
+                
                 # Utilizziamo un socket PAIR per comunicazione bidirezionale
                 self.direct_stream_socket = self.zmq_context.socket(zmq.PAIR)
 
                 # Configurazione per bassa latenza
                 if low_latency:
                     self.direct_stream_socket.setsockopt(zmq.SNDHWM, 2)  # Buffer di invio ridotto
+                    self.direct_stream_socket.setsockopt(zmq.RCVHWM, 2)  # Buffer di ricezione ridotto
                     self.direct_stream_socket.setsockopt(zmq.LINGER, 0)  # Non aspettare alla chiusura
                     self.direct_stream_socket.setsockopt(zmq.IMMEDIATE, 1)  # Non accodare messaggi
+                    self.direct_stream_socket.setsockopt(zmq.RCVTIMEO, 100)  # 100ms timeout on receive
+                    self.direct_stream_socket.setsockopt(zmq.SNDTIMEO, 100)  # 100ms timeout on send
 
                 # Bind sulla porta di streaming diretto
-                self.direct_stream_socket.bind(f"tcp://*:{self.direct_stream_port}")
+                bind_address = f"tcp://*:{self.direct_stream_port}"
+                logger.info(f"Binding direct stream socket to {bind_address}")
+                self.direct_stream_socket.bind(bind_address)
                 logger.info(f"Socket di streaming diretto inizializzato sulla porta {self.direct_stream_port}")
             except Exception as e:
                 logger.error(f"Errore nell'inizializzazione del socket di streaming diretto: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 return Message.create_error(message, f"Errore nell'inizializzazione dello streaming diretto: {e}")
 
         # Configura streaming
@@ -472,16 +486,62 @@ class UnlookServer(EventEmitter):
                         # Tempo di inizio elaborazione per calcolo performance
                         processing_start = time.time()
 
-                        # Cattura immagine con gestione eccezioni migliorata
-                        try:
-                            image = self.camera_manager.capture_image(camera_id)
-                            if image is None:
-                                logger.error(f"Errore nella cattura dell'immagine dalla telecamera {camera_id}")
+                        # Cattura immagine con gestione eccezioni migliorata e logging dettagliato
+                        # First check camera manager is available
+                        if not self.camera_manager:
+                            logger.error(f"Cannot capture image from camera {camera_id} - camera manager is None")
+                            
+                            # Try to initialize camera manager if needed
+                            try:
+                                # Import ritardato per evitare importazioni circolari
+                                from .hardware.camera import PiCamera2Manager
+                                self._camera_manager = PiCamera2Manager()
+                                logger.info("Camera manager initialized for direct streaming")
+                            except Exception as cm_init_error:
+                                logger.error(f"Failed to initialize camera manager: {cm_init_error}")
+                                import traceback
+                                logger.error(traceback.format_exc())
                                 continue
-                        except Exception as e:
-                            logger.error(f"Eccezione nella cattura dell'immagine dalla telecamera {camera_id}: {e}")
-                            import traceback
-                            logger.error(traceback.format_exc())
+                        
+                        # Now try to capture image
+                        capture_attempt = 0
+                        max_capture_attempts = 3
+                        capture_delay = 0.05  # seconds
+                        
+                        while capture_attempt < max_capture_attempts:
+                            try:
+                                capture_attempt += 1
+                                logger.info(f"Attempting to capture image from camera {camera_id} (attempt {capture_attempt}/{max_capture_attempts})")
+                                
+                                # Try to capture with timeout handling
+                                image = self.camera_manager.capture_image(camera_id)
+                                
+                                if image is None:
+                                    logger.error(f"Error in image capture from camera {camera_id} - returned None (attempt {capture_attempt}/{max_capture_attempts})")
+                                    if capture_attempt < max_capture_attempts:
+                                        time.sleep(capture_delay)
+                                        continue
+                                    else:
+                                        break
+                                        
+                                # Image capture successful
+                                logger.info(f"Successfully captured image from camera {camera_id}, shape: {image.shape}")
+                                break
+                                
+                            except Exception as e:
+                                logger.error(f"Exception in image capture from camera {camera_id}: {e} (attempt {capture_attempt}/{max_capture_attempts})")
+                                import traceback
+                                logger.error(traceback.format_exc())
+                                
+                                if capture_attempt < max_capture_attempts:
+                                    time.sleep(capture_delay)
+                                    continue
+                                else:
+                                    break
+                        
+                        # Check if image capture was successful
+                        if 'image' not in locals() or image is None:
+                            logger.error(f"Failed to capture image from camera {camera_id} after {max_capture_attempts} attempts")
                             continue
 
                         # Codifica in JPEG con gestione eccezioni
@@ -525,7 +585,26 @@ class UnlookServer(EventEmitter):
                         # Pubblica frame attraverso il socket di streaming diretto
                         try:
                             if self.direct_stream_socket:
-                                self.direct_stream_socket.send(binary_message, zmq.NOBLOCK)
+                                # Log detailed info before sending
+                                logger.debug(f"Sending frame for camera {camera_id}, frame #{stream_info['frame_count']}, binary message size: {len(binary_message)} bytes")
+                                
+                                # Make sure we have a valid socket
+                                if not self.direct_stream_socket:
+                                    logger.error(f"Socket is None when trying to send frame for camera {camera_id}")
+                                    continue
+                                    
+                                # Try to send the frame with a small timeout
+                                try:
+                                    self.direct_stream_socket.send(binary_message, zmq.NOBLOCK)
+                                    logger.debug(f"Successfully sent frame for camera {camera_id}")
+                                except zmq.error.Again:
+                                    # Buffer pieno, incrementa contatore frame saltati
+                                    stream_info["stats"]["skipped_frames"] += 1
+                                    logger.debug(f"Frame saltato per la telecamera {camera_id} (buffer pieno)")
+                                    continue
+                            else:
+                                logger.error(f"Direct stream socket is None for camera {camera_id}")
+                                continue
                         except zmq.error.Again:
                             # Buffer pieno, incrementa contatore frame saltati
                             stream_info["stats"]["skipped_frames"] += 1
@@ -533,6 +612,25 @@ class UnlookServer(EventEmitter):
                             continue
                         except Exception as e:
                             logger.error(f"Errore nell'invio del frame diretto per la telecamera {camera_id}: {e}")
+                            import traceback
+                            logger.error(f"Send error details: {traceback.format_exc()}")
+                            
+                            # Try to recover the socket if there's a serious error
+                            try:
+                                logger.warning(f"Attempting to recover direct stream socket")
+                                # Close and recreate socket
+                                if self.direct_stream_socket:
+                                    self.direct_stream_socket.close()
+                                self.direct_stream_socket = self.zmq_context.socket(zmq.PAIR)
+                                self.direct_stream_socket.setsockopt(zmq.SNDHWM, 2)
+                                self.direct_stream_socket.setsockopt(zmq.RCVHWM, 2)
+                                self.direct_stream_socket.setsockopt(zmq.LINGER, 0)
+                                self.direct_stream_socket.setsockopt(zmq.IMMEDIATE, 1)
+                                self.direct_stream_socket.bind(f"tcp://*:{self.direct_stream_port}")
+                                logger.info(f"Direct stream socket recovered on port {self.direct_stream_port}")
+                            except Exception as recovery_error:
+                                logger.error(f"Failed to recover direct stream socket: {recovery_error}")
+                                
                             continue
 
                         # Calcola tempo di elaborazione

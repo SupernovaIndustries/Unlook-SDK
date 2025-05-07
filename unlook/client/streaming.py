@@ -33,11 +33,19 @@ class StreamClient:
         """
         self.client = parent_client
 
-        # ZeroMQ
+        # ZeroMQ for standard streaming
         self.stream_socket = None
         self.stream_poller = zmq.Poller()
 
-        # State
+        # ZeroMQ for direct streaming
+        self.direct_socket = None
+        self.direct_poller = zmq.Poller()
+        self.direct_thread = None
+        self.direct_watchdog_thread = None
+        self.direct_streaming = False
+        self.direct_streams = {}  # Dictionary of active direct streams {camera_id: stream_info}
+
+        # State for standard streaming
         self.streaming = False
         self.streams = {}  # Dictionary of active streams {camera_id: stream_info}
         self.stream_thread = None
@@ -614,21 +622,34 @@ class StreamClient:
                 }
 
                 # Avvia thread di ricezione se non è già in esecuzione
-                if not self.direct_streaming:
-                    self.direct_streaming = True
-                    self.direct_thread = threading.Thread(
-                        target=self._direct_stream_receiver_loop,
-                        daemon=True
-                    )
-                    self.direct_thread.start()
-
-                    # Avvia anche il watchdog per il direct streaming
-                    if not hasattr(self, 'direct_watchdog_thread') or not self.direct_watchdog_thread.is_alive():
-                        self.direct_watchdog_thread = threading.Thread(
-                            target=self._direct_stream_watchdog,
+                try:
+                    if not self.direct_streaming:
+                        # Make sure we have the direct_thread attribute
+                        if not hasattr(self, 'direct_thread'):
+                            self.direct_thread = None
+                            
+                        # Make sure we have the direct_watchdog_thread attribute
+                        if not hasattr(self, 'direct_watchdog_thread'):
+                            self.direct_watchdog_thread = None
+                            
+                        self.direct_streaming = True
+                        self.direct_thread = threading.Thread(
+                            target=self._direct_stream_receiver_loop,
                             daemon=True
                         )
-                        self.direct_watchdog_thread.start()
+                        self.direct_thread.start()
+    
+                        # Avvia anche il watchdog per il direct streaming
+                        if self.direct_watchdog_thread is None or not self.direct_watchdog_thread.is_alive():
+                            self.direct_watchdog_thread = threading.Thread(
+                                target=self._direct_stream_watchdog,
+                                daemon=True
+                            )
+                            self.direct_watchdog_thread.start()
+                except Exception as e:
+                    logger.error(f"Error starting direct streaming threads: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
 
                 logger.info(f"Streaming diretto avviato dalla telecamera {camera_id} a {fps} FPS")
 
@@ -652,35 +673,41 @@ class StreamClient:
         Args:
             camera_id: ID della telecamera
         """
-        if not hasattr(self, 'direct_streams'):
-            logger.debug(f"Nessuno stream diretto attivo per la telecamera {camera_id}")
-            return
-
-        with self._lock:
-            if camera_id not in self.direct_streams:
+        try:
+            if not hasattr(self, 'direct_streams'):
                 logger.debug(f"Nessuno stream diretto attivo per la telecamera {camera_id}")
                 return
-
-            # Invia comando al server
-            self.client.send_message(
-                MessageType.CAMERA_DIRECT_STREAM_STOP,
-                {"camera_id": camera_id}
-            )
-
-            # Rimuovi lo stream
-            self._cleanup_direct_stream(camera_id)
-
-            logger.info(f"Streaming diretto interrotto per la telecamera {camera_id}")
-
-            # Emetti evento nel client principale
-            self.client.emit(
-                EventType.DIRECT_STREAM_STOPPED,
-                camera_id
-            )
-
-            # Se non ci sono più stream attivi, chiudi il socket
-            if not self.direct_streams:
-                self._cleanup_direct_streaming()
+    
+            with self._lock:
+                if camera_id not in self.direct_streams:
+                    logger.debug(f"Nessuno stream diretto attivo per la telecamera {camera_id}")
+                    return
+    
+                # Invia comando al server
+                self.client.send_message(
+                    MessageType.CAMERA_DIRECT_STREAM_STOP,
+                    {"camera_id": camera_id}
+                )
+    
+                # Rimuovi lo stream
+                self._cleanup_direct_stream(camera_id)
+    
+                logger.info(f"Streaming diretto interrotto per la telecamera {camera_id}")
+    
+                # Emetti evento nel client principale
+                self.client.emit(
+                    EventType.DIRECT_STREAM_STOPPED,
+                    camera_id
+                )
+    
+                # Se non ci sono più stream attivi, chiudi il socket
+                if not self.direct_streams:
+                    self._cleanup_direct_streaming()
+                    
+        except Exception as e:
+            logger.error(f"Error stopping direct stream for camera {camera_id}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
 
     def _cleanup_direct_stream(self, camera_id: str):
         """
@@ -864,35 +891,86 @@ class StreamClient:
         Thread watchdog che monitora gli stream diretti attivi e rileva potenziali problemi.
         Include meccanismi di recupero automatico.
         """
-        while hasattr(self, 'direct_streaming') and self.direct_streaming:
-            try:
-                # Controlla inattività
-                current_time = time.time()
-                with self._lock:
-                    if hasattr(self, 'direct_streams'):
-                        for camera_id in list(self.direct_streams.keys()):
-                            # Controlla se non abbiamo ricevuto frame per troppo tempo
-                            if camera_id in self.direct_streams and "last_frame_time" in self.direct_streams[
-                                camera_id]:
-                                last_frame_time = self.direct_streams[camera_id]["last_frame_time"]
-                                inactivity_time = current_time - last_frame_time
-
-                                # Se inattivo per più di 2 secondi, log di avviso (più sensibile per lo streaming diretto)
-                                if inactivity_time > 2.0:
-                                    logger.warning(
-                                        f"Stream diretto {camera_id} inattivo per {inactivity_time:.1f} secondi")
-
-                                    # Se inattivo per più di 5 secondi, riavvia lo stream (più aggressivo per lo streaming diretto)
-                                    if inactivity_time > 5.0:
-                                        logger.error(
-                                            f"Stream diretto {camera_id} inattivo troppo a lungo, riavvio...")
-                                        self._request_direct_stream_restart(camera_id)
-
-            except Exception as e:
-                logger.error(f"Errore nel watchdog dello stream diretto: {e}")
-
-            # Attendi 1 secondo prima del prossimo controllo (più frequente per streaming diretto)
-            time.sleep(1.0)
+        logger.info("Direct stream watchdog thread started")
+        
+        restart_attempts = {}  # Track restart attempts by camera_id
+        max_restart_attempts = 3  # Maximum number of restart attempts
+        restart_cooldown = 30.0  # Cooldown period between multiple restarts (seconds)
+        
+        try:
+            # Initialize direct_streaming if not present
+            if not hasattr(self, 'direct_streaming'):
+                self.direct_streaming = False
+                logger.warning("direct_streaming attribute wasn't initialized")
+                
+            # Initialize direct_streams if not present
+            if not hasattr(self, 'direct_streams'):
+                self.direct_streams = {}
+                logger.warning("direct_streams attribute wasn't initialized")
+                
+            while hasattr(self, 'direct_streaming') and self.direct_streaming:
+                try:
+                    # Controlla inattività
+                    current_time = time.time()
+                    with self._lock:
+                        if hasattr(self, 'direct_streams'):
+                            for camera_id in list(self.direct_streams.keys()):
+                                # Controlla se non abbiamo ricevuto frame per troppo tempo
+                                if (camera_id in self.direct_streams and 
+                                    "last_frame_time" in self.direct_streams[camera_id]):
+                                    
+                                    last_frame_time = self.direct_streams[camera_id]["last_frame_time"]
+                                    inactivity_time = current_time - last_frame_time
+    
+                                    # Se inattivo per più di 2 secondi, log di avviso (più sensibile per lo streaming diretto)
+                                    if inactivity_time > 2.0:
+                                        logger.warning(
+                                            f"Stream diretto {camera_id} inattivo per {inactivity_time:.1f} secondi")
+    
+                                        # Se inattivo per più di 5 secondi, considera il riavvio
+                                        if inactivity_time > 5.0:
+                                            # Check if we've restarted too many times
+                                            if camera_id not in restart_attempts:
+                                                restart_attempts[camera_id] = {
+                                                    "count": 0,
+                                                    "last_attempt": 0
+                                                }
+                                                
+                                            # Check if we're in the cooldown period
+                                            time_since_last_restart = current_time - restart_attempts[camera_id]["last_attempt"]
+                                            if restart_attempts[camera_id]["count"] >= max_restart_attempts and time_since_last_restart < restart_cooldown:
+                                                logger.warning(
+                                                    f"Not restarting stream for camera {camera_id} - hit max restart attempts ({max_restart_attempts}). "
+                                                    f"Cooldown: {restart_cooldown - time_since_last_restart:.1f}s remaining")
+                                                continue
+                                                
+                                            # If cooldown period has passed, reset counter
+                                            if time_since_last_restart > restart_cooldown:
+                                                restart_attempts[camera_id]["count"] = 0
+                                                
+                                            # Attempt restart
+                                            logger.error(
+                                                f"Stream diretto {camera_id} inattivo troppo a lungo, riavvio... (tentativo #{restart_attempts[camera_id]['count'] + 1})")
+                                            
+                                            restart_attempts[camera_id]["count"] += 1
+                                            restart_attempts[camera_id]["last_attempt"] = current_time
+                                            
+                                            self._request_direct_stream_restart(camera_id)
+    
+                except Exception as e:
+                    logger.error(f"Errore nel watchdog dello stream diretto: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+    
+                # Attendi 1 secondo prima del prossimo controllo (più frequente per streaming diretto)
+                time.sleep(1.0)
+                
+            logger.info("Direct stream watchdog thread exiting normally")
+            
+        except Exception as e:
+            logger.error(f"Fatal error in direct stream watchdog: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
 
     def _request_direct_stream_restart(self, camera_id):
         """
@@ -929,8 +1007,54 @@ class StreamClient:
     def _delayed_restart_stream(self, camera_id, callback, stream_config):
         """Helper method to restart stream in a separate thread"""
         try:
-            time.sleep(0.5)  # Additional small delay to ensure cleanup is complete
-            self.start_direct_stream(
+            # Ensure all required attributes are properly initialized
+            with self._lock:
+                # Pre-cleanup: make sure no existing threads are still running
+                if hasattr(self, 'direct_thread') and self.direct_thread and self.direct_thread.is_alive():
+                    if self.direct_thread != threading.current_thread():
+                        logger.info(f"Waiting for existing direct_thread to finish before restart")
+                        try:
+                            self.direct_thread.join(timeout=1.0)
+                        except Exception as e:
+                            logger.warning(f"Error joining direct_thread: {e}")
+                    else:
+                        logger.info(f"Cannot join direct_thread as it is the current thread")
+                
+                if hasattr(self, 'direct_watchdog_thread') and self.direct_watchdog_thread and self.direct_watchdog_thread.is_alive():
+                    if self.direct_watchdog_thread != threading.current_thread():
+                        logger.info(f"Waiting for existing direct_watchdog_thread to finish before restart")
+                        try:
+                            self.direct_watchdog_thread.join(timeout=1.0)
+                        except Exception as e:
+                            logger.warning(f"Error joining direct_watchdog_thread: {e}")
+                    else:
+                        logger.info(f"Cannot join direct_watchdog_thread as it is the current thread")
+                
+                # Reset direct streaming state
+                self.direct_streaming = False
+                self.direct_thread = None
+                self.direct_watchdog_thread = None
+                
+                # Ensure socket is closed
+                if self.direct_socket:
+                    try:
+                        self.direct_poller.unregister(self.direct_socket)
+                    except Exception as e:
+                        logger.warning(f"Error unregistering direct_socket: {e}")
+                    
+                    try:
+                        self.direct_socket.close()
+                    except Exception as e:
+                        logger.warning(f"Error closing direct_socket: {e}")
+                    
+                    self.direct_socket = None
+            
+            # Wait for cleanup to complete
+            time.sleep(1.0)
+            
+            # Now restart the stream
+            logger.info(f"Restarting direct stream for camera {camera_id}")
+            success = self.start_direct_stream(
                 camera_id,
                 callback,
                 stream_config.get("fps", 60),
@@ -939,8 +1063,15 @@ class StreamClient:
                 stream_config.get("synchronization_pattern_interval", 5),
                 stream_config.get("low_latency", True)
             )
+            
+            if not success:
+                logger.error(f"Failed to restart direct stream for camera {camera_id}")
+            else:
+                logger.info(f"Successfully restarted direct stream for camera {camera_id}")
         except Exception as e:
             logger.error(f"Errore nel riavvio ritardato dello stream {camera_id}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
 
     def start_direct_stereo_stream(
             self,

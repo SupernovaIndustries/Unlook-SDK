@@ -364,41 +364,86 @@ class PiCamera2Manager:
 
             # Open camera if not already open
             if camera_id not in self.active_cameras:
+                logger.info(f"Opening camera {camera_id} for capture")
                 if not self.open_camera(camera_id):
+                    logger.error(f"Failed to open camera {camera_id}")
                     return None
 
             camera = self.active_cameras[camera_id]
 
             try:
-                # Capture image
-                image = camera.capture_array()
+                # Check if camera is still valid
+                if camera is None:
+                    logger.error(f"Camera {camera_id} is None in active_cameras")
+                    return None
+                    
+                # Check camera state    
+                if not camera.is_open():
+                    logger.warning(f"Camera {camera_id} was closed, reopening")
+                    self.close_camera(camera_id)
+                    if not self.open_camera(camera_id):
+                        logger.error(f"Failed to reopen camera {camera_id}")
+                        return None
+                    camera = self.active_cameras[camera_id]
+                
+                # Capture image with timeout handling
+                logger.debug(f"Capturing array from camera {camera_id}")
+                try:
+                    # Use a shorter timeout for direct streaming
+                    image = camera.capture_array()
+                except Exception as capture_error:
+                    logger.error(f"Error in camera.capture_array() for {camera_id}: {capture_error}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    return None
+
+                # Verify image is valid
+                if image is None:
+                    logger.error(f"Capture from camera {camera_id} returned None")
+                    return None
+                    
+                if not isinstance(image, np.ndarray):
+                    logger.error(f"Capture from camera {camera_id} returned non-ndarray: {type(image)}")
+                    return None
+                    
+                if image.size == 0:
+                    logger.error(f"Capture from camera {camera_id} returned empty array")
+                    return None
 
                 # Check image format
                 color_mode = self.cameras[camera_id].get("color_mode", "rgb")
+                logger.debug(f"Image shape: {image.shape}, color mode: {color_mode}")
 
                 # Convert image to correct format if necessary
-                if len(image.shape) == 3:
-                    if color_mode == "grayscale" and image.shape[2] > 1:
-                        # Convert to grayscale if requested
-                        import cv2
-                        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-                    elif color_mode == "rgb" and image.shape[2] == 4:  # RGBA
-                        # Remove alpha channel
-                        image = image[:, :, :3]
-                        # Convert from BGR to RGB if necessary
-                        if image.shape[2] == 3 and np.array_equal(image[0, 0], image[0, 0, ::-1]):
+                try:
+                    if len(image.shape) == 3:
+                        if color_mode == "grayscale" and image.shape[2] > 1:
+                            # Convert to grayscale if requested
                             import cv2
-                            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                    elif color_mode == "bgr" and image.shape[2] == 3:
-                        # Make sure it's in BGR format
-                        if not np.array_equal(image[0, 0], image[0, 0, ::-1]):
-                            import cv2
-                            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+                            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                        elif color_mode == "rgb" and image.shape[2] == 4:  # RGBA
+                            # Remove alpha channel
+                            image = image[:, :, :3]
+                            # Convert from BGR to RGB if necessary
+                            if image.shape[2] == 3 and np.array_equal(image[0, 0], image[0, 0, ::-1]):
+                                import cv2
+                                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                        elif color_mode == "bgr" and image.shape[2] == 3:
+                            # Make sure it's in BGR format
+                            if not np.array_equal(image[0, 0], image[0, 0, ::-1]):
+                                import cv2
+                                image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+                except Exception as conversion_error:
+                    logger.error(f"Error converting image format for camera {camera_id}: {conversion_error}")
+                    # Return original image if conversion fails
+                    return image
 
                 return image
 
             except Exception as e:
                 logger.error(f"Error capturing image from camera {camera_id}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 return None
 
     def close(self):
