@@ -19,6 +19,9 @@ class MessageType(enum.Enum):
     # Projector control
     PROJECTOR_MODE = "projector_mode"  # Set projector mode
     PROJECTOR_PATTERN = "projector_pattern"  # Set projector pattern
+    PROJECTOR_PATTERN_SEQUENCE = "projector_pattern_sequence"  # Define and run a sequence of patterns
+    PROJECTOR_PATTERN_SEQUENCE_STEP = "projector_pattern_sequence_step"  # Move to next pattern in sequence
+    PROJECTOR_PATTERN_SEQUENCE_STOP = "projector_pattern_sequence_stop"  # Stop a running pattern sequence
 
     # Camera control
     CAMERA_LIST = "camera_list"  # List of available cameras

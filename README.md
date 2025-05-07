@@ -21,6 +21,7 @@
 - **Advanced Video Streaming**:
   - Standard streams for visualization and monitoring
   - **✨ NEW! Low-latency direct streams** for real-time applications
+  - **✨ NEW! Automated pattern sequences** for structured light scanning
   - Precise projector-camera synchronization
 - **Optimized Communication**: Efficient image transfer and control using ZeroMQ
 - **Easy Expandability**: Modular architecture to add new hardware and algorithms
@@ -104,6 +105,15 @@ if scanners:
         low_latency=True,
         sync_with_projector=True
     )
+    
+    # Create and start a pattern sequence
+    patterns = [
+        {"pattern_type": "solid_field", "color": "White"},
+        {"pattern_type": "horizontal_lines", "foreground_color": "White", 
+         "background_color": "Black", "foreground_width": 4, "background_width": 20},
+        {"pattern_type": "grid", "foreground_color": "White", "background_color": "Black"}
+    ]
+    client.projector.start_pattern_sequence(patterns, interval=0.5, loop=True)
 ```
 
 ### Using as a Server
@@ -149,6 +159,7 @@ Communication between client and server happens through structured messages over
 ### Structured Light Module
 
 - Pattern generation and projection
+- **Automated pattern sequences** with timing control
 - Camera-projector synchronization
 - Phase unwrapping and 3D reconstruction
 

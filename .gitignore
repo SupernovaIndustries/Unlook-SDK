@@ -9,3 +9,6 @@ unlook/client/__pycache__/streaming.cpython-312.pyc
 unlook/client/__pycache__/scanner.cpython-312.pyc
 unlook/client/__pycache__/camera.cpython-312.pyc
 unlook/client/__pycache__/__init__.cpython-312.pyc
+
+**/.claude/settings.local.json
+/output

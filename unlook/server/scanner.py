@@ -107,6 +107,18 @@ class UnlookServer(EventEmitter):
         self.scanning = False
         self.scan_thread = None
 
+        # Projector pattern sequence state
+        self.pattern_sequence_active = False
+        self.pattern_sequence = []
+        self.current_pattern_index = 0
+        self.pattern_sequence_thread = None
+        self.pattern_sequence_interval = 0.0
+        self.pattern_sequence_loop = False
+        
+        # Projector-camera synchronization
+        self.projector_camera_sync_enabled = False
+        self.last_pattern_change_time = 0.0
+
         # Thread di controllo
         self.control_thread = None
 
@@ -131,6 +143,9 @@ class UnlookServer(EventEmitter):
             # Handlers del proiettore
             MessageType.PROJECTOR_MODE: self._handle_projector_mode,
             MessageType.PROJECTOR_PATTERN: self._handle_projector_pattern,
+            MessageType.PROJECTOR_PATTERN_SEQUENCE: self._handle_projector_pattern_sequence,
+            MessageType.PROJECTOR_PATTERN_SEQUENCE_STEP: self._handle_projector_pattern_sequence_step,
+            MessageType.PROJECTOR_PATTERN_SEQUENCE_STOP: self._handle_projector_pattern_sequence_stop,
 
             # Handlers della telecamera
             MessageType.CAMERA_LIST: self._handle_camera_list,
@@ -168,6 +183,7 @@ class UnlookServer(EventEmitter):
                     "projector_connected": self.projector is not None,
                     "camera_connected": self.camera_manager is not None,
                     "cameras_available": len(self.camera_manager.get_cameras()) if self.camera_manager else 0,
+                    "pattern_sequence_active": self.pattern_sequence_active  # Nuovo stato per sequenze pattern
                 },
                 "system_info": get_machine_info()
             }
@@ -187,7 +203,9 @@ class UnlookServer(EventEmitter):
                 "patterns": ["SolidField", "HorizontalLines", "VerticalLines", "Grid", "Checkerboard", "Colorbars"]
                 if self.projector else [],
                 "i2c_bus": 3,
-                "i2c_address": "0x1B"
+                "i2c_address": "0x1B",
+                "pattern_sequence": True,  # Capability for pattern sequences
+                "camera_sync": True  # Capability for projector-camera sync
             },
             "cameras": {
                 "available": self.camera_manager is not None,
@@ -671,6 +689,318 @@ class UnlookServer(EventEmitter):
 
         logger.info("Thread di streaming diretto terminato")
 
+    # Pattern sequence handling methods
+    def _handle_projector_pattern_sequence(self, message: Message) -> Message:
+        """Handle PROJECTOR_PATTERN_SEQUENCE messages."""
+        if not self.projector:
+            return Message.create_error(message, "Projector not available")
+
+        # Check if we're already running a sequence
+        if self.pattern_sequence_active:
+            # Stop the current sequence
+            self.stop_pattern_sequence()
+            logger.info("Stopping currently running pattern sequence")
+
+        # Get sequence parameters
+        sequence = message.payload.get("sequence", [])
+        if not sequence:
+            return Message.create_error(message, "No pattern sequence provided")
+
+        interval = message.payload.get("interval", 0.5)  # Default 500ms between patterns
+        loop = message.payload.get("loop", False)  # Default: don't loop
+        start_immediately = message.payload.get("start", True)  # Default: start immediately
+        sync_with_camera = message.payload.get("sync_with_camera", False)  # Default: no camera sync
+
+        # Store sequence parameters
+        self.pattern_sequence = sequence
+        self.pattern_sequence_interval = interval
+        self.pattern_sequence_loop = loop
+        self.projector_camera_sync_enabled = sync_with_camera
+        self.current_pattern_index = 0
+
+        # Set the projector to test pattern mode
+        try:
+            from .hardware.projector import OperatingMode
+            self.projector.set_operating_mode(OperatingMode.TestPatternGenerator)
+        except Exception as e:
+            return Message.create_error(message, f"Error setting TestPatternGenerator mode: {e}")
+
+        # Start sequence if requested
+        if start_immediately:
+            success = self.start_pattern_sequence()
+            if not success:
+                return Message.create_error(message, "Error starting pattern sequence")
+
+        return Message.create_reply(
+            message,
+            {
+                "success": True,
+                "sequence_length": len(sequence),
+                "interval": interval,
+                "loop": loop,
+                "started": start_immediately,
+                "sync_with_camera": sync_with_camera
+            }
+        )
+
+    def _handle_projector_pattern_sequence_step(self, message: Message) -> Message:
+        """Handle PROJECTOR_PATTERN_SEQUENCE_STEP messages."""
+        if not self.projector:
+            return Message.create_error(message, "Projector not available")
+
+        if not self.pattern_sequence:
+            return Message.create_error(message, "No pattern sequence defined")
+
+        # Check if automatic sequence is running
+        if self.pattern_sequence_active and self.pattern_sequence_thread and self.pattern_sequence_thread.is_alive():
+            # If the sequence is running automatically, we can either
+            # 1. Pause the sequence and step manually
+            # 2. Just step to the next pattern immediately
+            # Here we choose option 2
+            return Message.create_reply(
+                message,
+                {
+                    "success": False,
+                    "error": "Automatic sequence is running. Stop it first to step manually."
+                }
+            )
+        
+        # Get any specific step parameters
+        steps = message.payload.get("steps", 1)  # Default: advance 1 step
+        
+        # Move to the next pattern
+        self.current_pattern_index = (self.current_pattern_index + steps) % len(self.pattern_sequence)
+        
+        # Project the pattern
+        pattern_data = self.pattern_sequence[self.current_pattern_index]
+        success = self._apply_projector_pattern(pattern_data)
+        
+        if not success:
+            return Message.create_error(message, "Failed to apply pattern")
+            
+        # Record timing information
+        self.last_pattern_change_time = time.time()
+        
+        # Emit pattern change event
+        self.emit(EventType.PROJECTOR_PATTERN_CHANGED, {
+            "pattern": pattern_data,
+            "index": self.current_pattern_index,
+            "timestamp": self.last_pattern_change_time
+        })
+        
+        # Emit special sync event if camera sync is enabled
+        if self.projector_camera_sync_enabled:
+            self.emit(EventType.PROJECTOR_CAMERA_SYNC, {
+                "pattern": pattern_data,
+                "index": self.current_pattern_index,
+                "timestamp": self.last_pattern_change_time
+            })
+            
+        return Message.create_reply(
+            message,
+            {
+                "success": True,
+                "current_index": self.current_pattern_index,
+                "pattern": pattern_data,
+                "timestamp": self.last_pattern_change_time
+            }
+        )
+
+    def _handle_projector_pattern_sequence_stop(self, message: Message) -> Message:
+        """Handle PROJECTOR_PATTERN_SEQUENCE_STOP messages."""
+        if not self.pattern_sequence_active:
+            return Message.create_reply(
+                message,
+                {
+                    "success": True,
+                    "was_running": False
+                }
+            )
+            
+        # Stop the sequence
+        success = self.stop_pattern_sequence()
+        
+        # Optionally project a specific pattern after stopping
+        final_pattern = message.payload.get("final_pattern")
+        if success and final_pattern:
+            pattern_success = self._apply_projector_pattern(final_pattern)
+            if not pattern_success:
+                logger.warning(f"Failed to apply final pattern after stopping sequence")
+        
+        return Message.create_reply(
+            message,
+            {
+                "success": success,
+                "was_running": True,
+                "final_pattern_applied": bool(final_pattern) if success else False
+            }
+        )
+
+    def start_pattern_sequence(self) -> bool:
+        """Start running a projector pattern sequence.
+        
+        Returns:
+            bool: True if started successfully, False otherwise
+        """
+        if not self.pattern_sequence:
+            logger.error("Cannot start pattern sequence: no sequence defined")
+            return False
+            
+        if self.pattern_sequence_active:
+            logger.warning("Pattern sequence already running")
+            return True
+            
+        # Reset sequence state
+        self.pattern_sequence_active = True
+        self.current_pattern_index = 0
+        
+        # Start the sequence thread
+        self.pattern_sequence_thread = threading.Thread(
+            target=self._pattern_sequence_loop,
+            daemon=True
+        )
+        self.pattern_sequence_thread.start()
+        
+        logger.info(f"Pattern sequence started: {len(self.pattern_sequence)} patterns, "
+                   f"interval: {self.pattern_sequence_interval}s, loop: {self.pattern_sequence_loop}")
+        
+        # Emit sequence started event
+        self.emit(EventType.PROJECTOR_SEQUENCE_STARTED, {
+            "sequence_length": len(self.pattern_sequence),
+            "interval": self.pattern_sequence_interval,
+            "loop": self.pattern_sequence_loop
+        })
+        
+        return True
+        
+    def stop_pattern_sequence(self) -> bool:
+        """Stop a running projector pattern sequence.
+        
+        Returns:
+            bool: True if stopped successfully, False otherwise
+        """
+        if not self.pattern_sequence_active:
+            return True
+            
+        # Set stop flag
+        self.pattern_sequence_active = False
+        
+        # Wait for thread to terminate
+        if self.pattern_sequence_thread and self.pattern_sequence_thread.is_alive():
+            self.pattern_sequence_thread.join(timeout=2.0)
+            
+        self.pattern_sequence_thread = None
+        
+        logger.info("Pattern sequence stopped")
+        
+        # Emit sequence stopped event
+        self.emit(EventType.PROJECTOR_SEQUENCE_STOPPED, {
+            "completed": self.current_pattern_index >= len(self.pattern_sequence) - 1
+        })
+        
+        return True
+        
+    def _pattern_sequence_loop(self):
+        """Loop for running projector pattern sequences."""
+        logger.info("Pattern sequence thread started")
+        
+        try:
+            sequence_length = len(self.pattern_sequence)
+            
+            # Project the first pattern
+            if sequence_length > 0:
+                initial_pattern = self.pattern_sequence[0]
+                success = self._apply_projector_pattern(initial_pattern)
+                if success:
+                    self.last_pattern_change_time = time.time()
+                    # Emit pattern changed event
+                    self.emit(EventType.PROJECTOR_PATTERN_CHANGED, {
+                        "pattern": initial_pattern,
+                        "index": 0,
+                        "timestamp": self.last_pattern_change_time
+                    })
+                    
+                    # Emit camera sync event if needed
+                    if self.projector_camera_sync_enabled:
+                        self.emit(EventType.PROJECTOR_CAMERA_SYNC, {
+                            "pattern": initial_pattern,
+                            "index": 0,
+                            "timestamp": self.last_pattern_change_time
+                        })
+                else:
+                    logger.error("Failed to apply initial pattern in sequence")
+            
+            # Main sequence loop
+            while self.pattern_sequence_active:
+                # Wait for the next pattern interval
+                time.sleep(self.pattern_sequence_interval)
+                
+                # Check if we should still continue
+                if not self.pattern_sequence_active:
+                    break
+                
+                # Move to the next pattern
+                self.current_pattern_index += 1
+                
+                # Check if we've completed the sequence
+                if self.current_pattern_index >= sequence_length:
+                    if self.pattern_sequence_loop:
+                        # Loop back to the beginning
+                        self.current_pattern_index = 0
+                        # Emit sequence stepped event
+                        self.emit(EventType.PROJECTOR_SEQUENCE_STEPPED, {
+                            "index": self.current_pattern_index,
+                            "loop_completed": True
+                        })
+                    else:
+                        # We're done
+                        logger.info("Pattern sequence completed")
+                        # Emit sequence completed event
+                        self.emit(EventType.PROJECTOR_SEQUENCE_COMPLETED, {
+                            "sequence_length": sequence_length
+                        })
+                        self.pattern_sequence_active = False
+                        break
+                else:
+                    # Emit sequence stepped event
+                    self.emit(EventType.PROJECTOR_SEQUENCE_STEPPED, {
+                        "index": self.current_pattern_index,
+                        "loop_completed": False
+                    })
+                
+                # Project the next pattern
+                current_pattern = self.pattern_sequence[self.current_pattern_index]
+                success = self._apply_projector_pattern(current_pattern)
+                
+                if success:
+                    self.last_pattern_change_time = time.time()
+                    # Emit pattern changed event
+                    self.emit(EventType.PROJECTOR_PATTERN_CHANGED, {
+                        "pattern": current_pattern,
+                        "index": self.current_pattern_index,
+                        "timestamp": self.last_pattern_change_time
+                    })
+                    
+                    # Emit camera sync event if needed
+                    if self.projector_camera_sync_enabled:
+                        self.emit(EventType.PROJECTOR_CAMERA_SYNC, {
+                            "pattern": current_pattern,
+                            "index": self.current_pattern_index,
+                            "timestamp": self.last_pattern_change_time
+                        })
+                else:
+                    logger.error(f"Failed to apply pattern {self.current_pattern_index} in sequence")
+                
+        except Exception as e:
+            logger.error(f"Error in pattern sequence thread: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            
+        finally:
+            # Make sure to mark the sequence as inactive when done
+            self.pattern_sequence_active = False
+            logger.info("Pattern sequence thread terminated")
+
     def _apply_projector_pattern(self, pattern_data):
         """
         Applica un pattern al proiettore per la sincronizzazione.
@@ -770,6 +1100,10 @@ class UnlookServer(EventEmitter):
 
         # Stop direct streaming if active
         self.stop_direct_streaming()
+        
+        # Stop pattern sequence if active
+        if self.pattern_sequence_active:
+            self.stop_pattern_sequence()
 
         # Stop scanning if active
         self.stop_scan()
@@ -867,27 +1201,6 @@ class UnlookServer(EventEmitter):
                     "streaming": self.streaming_active,
                     "scanning": self.scanning
                 }
-            }
-        )
-
-    def _handle_info(self, message: Message) -> Message:
-        """Handle INFO messages."""
-        return Message.create_reply(
-            message,
-            {
-                "scanner_name": self.name,
-                "scanner_uuid": self.uuid,
-                "control_port": self.control_port,
-                "stream_port": self.stream_port,
-                "capabilities": self._get_capabilities(),
-                "status": {
-                    "streaming": self.streaming_active,
-                    "scanning": self.scanning,
-                    "projector_connected": self.projector is not None,
-                    "camera_connected": self.camera_manager is not None,
-                    "cameras_available": len(self.camera_manager.get_cameras()) if self.camera_manager else 0,
-                },
-                "system_info": get_machine_info()
             }
         )
 
@@ -1018,10 +1331,23 @@ class UnlookServer(EventEmitter):
                 )
 
             if success:
+                # Record pattern change time
+                self.last_pattern_change_time = time.time()
+                
+                # Emit pattern changed event
+                self.emit(EventType.PROJECTOR_PATTERN_CHANGED, {
+                    "pattern_type": pattern_type,
+                    "timestamp": self.last_pattern_change_time
+                })
+                
                 logger.info(f"Projector pattern generated: {pattern_type}")
                 return Message.create_reply(
                     message,
-                    {"success": True, "pattern_type": pattern_type}
+                    {
+                        "success": True, 
+                        "pattern_type": pattern_type,
+                        "timestamp": self.last_pattern_change_time
+                    }
                 )
             else:
                 return Message.create_error(
@@ -1330,50 +1656,6 @@ class UnlookServer(EventEmitter):
 
         logger.info(f"UnLook server started on port {self.control_port} (streaming: {self.stream_port})")
 
-    def stop(self):
-        """Stop the server."""
-        if not self.running:
-            return
-
-        logger.info("Stopping UnLook server...")
-
-        # Stop streaming if active
-        self.stop_streaming()
-
-        # Stop scanning if active
-        self.stop_scan()
-
-        # Deactivate projector
-        if self.projector:
-            try:
-                from .hardware.projector import OperatingMode
-                self.projector.set_operating_mode(OperatingMode.Standby)
-                self.projector.close()
-            except Exception as e:
-                logger.error(f"Error closing projector: {e}")
-
-        # Close camera manager
-        if self._camera_manager:
-            try:
-                self._camera_manager.close()
-            except Exception as e:
-                logger.error(f"Error closing camera manager: {e}")
-
-        # Stop control thread
-        self.running = False
-        if self.control_thread and self.control_thread.is_alive():
-            self.control_thread.join(timeout=2.0)
-
-        # Remove registration from discovery
-        self.discovery.unregister_scanner()
-
-        # Close ZMQ sockets
-        self.control_socket.close()
-        self.stream_socket.close()
-        self.zmq_context.term()
-
-        logger.info("UnLook server stopped")
-
     def _signal_handler(self, sig, frame):
         """Handle termination signals."""
         logger.info(f"Received signal {sig}, shutting down...")
@@ -1456,38 +1738,6 @@ class UnlookServer(EventEmitter):
                 f"Unsupported message type: {message.msg_type.value}",
                 error_code=400
             )
-
-    def _get_capabilities(self) -> Dict[str, Any]:
-        """
-        Return scanner capabilities.
-
-        Returns:
-            Dictionary with capabilities
-        """
-        capabilities = {
-            "projector": {
-                "available": self.projector is not None,
-                "type": "DLP342X" if self.projector else None,
-                "patterns": ["SolidField", "HorizontalLines", "VerticalLines", "Grid", "Checkerboard", "Colorbars"]
-                if self.projector else [],
-                "i2c_bus": 3,
-                "i2c_address": "0x1B"
-            },
-            "cameras": {
-                "available": self.camera_manager is not None,
-                "count": len(self.camera_manager.get_cameras()) if self.camera_manager else 0,
-                "stereo_capable": len(self.camera_manager.get_cameras()) >= 2 if self.camera_manager else False
-            },
-            "streaming": {
-                "available": self.camera_manager is not None,
-                "max_fps": 60
-            },
-            "scanning": {
-                "available": self.projector is not None and self.camera_manager is not None,
-                "multi_camera": len(self.camera_manager.get_cameras()) >= 2 if self.camera_manager else False
-            }
-        }
-        return capabilities
 
     def stop_streaming(self):
         """Stop video streaming."""

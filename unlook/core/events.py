@@ -31,6 +31,14 @@ class EventType(enum.Enum):
     DIRECT_STREAM_SYNC = "direct_stream_sync"  # Evento di sincronizzazione proiettore-camera
     DIRECT_STREAM_ERROR = "direct_stream_error"
     PATTERN_CHANGED = "pattern_changed"  # Evento di cambio pattern
+    
+    # Projector events
+    PROJECTOR_PATTERN_CHANGED = "projector_pattern_changed"
+    PROJECTOR_SEQUENCE_STARTED = "projector_sequence_started"
+    PROJECTOR_SEQUENCE_STEPPED = "projector_sequence_stepped"
+    PROJECTOR_SEQUENCE_COMPLETED = "projector_sequence_completed"
+    PROJECTOR_SEQUENCE_STOPPED = "projector_sequence_stopped"
+    PROJECTOR_CAMERA_SYNC = "projector_camera_sync"
 
     # Scanning events
     SCAN_STARTED = "scan_started"
