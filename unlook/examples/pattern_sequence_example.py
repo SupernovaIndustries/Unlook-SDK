@@ -180,7 +180,7 @@ def main():
     
     try:
         # Try to connect to any available scanner
-        scanners = client.discover_scanners(timeout=2.0)
+        scanners = client.discovered_scanners(timeout=2.0)
         if not scanners:
             logger.error("No scanner found. Please make sure the UnLook scanner server is running.")
             return
