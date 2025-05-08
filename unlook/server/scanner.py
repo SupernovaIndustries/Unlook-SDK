@@ -1485,7 +1485,7 @@ class UnlookServer(EventEmitter):
             )
 
     def _handle_camera_capture(self, message: Message) -> Message:
-        """Handle CAMERA_CAPTURE messages."""
+        """Handle CAMERA_CAPTURE messages with enhanced support for different formats and configurations."""
         if not self.camera_manager:
             return Message.create_error(message, "Camera manager not available")
 
@@ -1494,6 +1494,28 @@ class UnlookServer(EventEmitter):
             return Message.create_error(message, "Camera ID not specified")
 
         try:
+            # Get optional capture parameters
+            jpeg_quality = message.payload.get("jpeg_quality", self.jpeg_quality)
+            compression_format = message.payload.get("compression_format", "jpeg").lower()
+            resolution = message.payload.get("resolution", None)
+            crop_region = message.payload.get("crop_region", None)
+            
+            # Configure camera before capture if needed
+            config_before_capture = {}
+            
+            # Add resolution if specified
+            if resolution:
+                config_before_capture["resolution"] = resolution
+                
+            # Add crop region if specified
+            if crop_region:
+                config_before_capture["crop_region"] = crop_region
+                
+            # Apply temporary configuration if needed
+            if config_before_capture:
+                logger.info(f"Applying temporary camera config before capture: {config_before_capture}")
+                self.camera_manager.configure_camera(camera_id, config_before_capture)
+
             # Capture image
             image = self.camera_manager.capture_image(camera_id)
             if image is None:
@@ -1502,9 +1524,26 @@ class UnlookServer(EventEmitter):
                     f"Error capturing image from camera {camera_id}"
                 )
 
-            # Encode image to JPEG
-            jpeg_quality = message.payload.get("jpeg_quality", self.jpeg_quality)
-            jpeg_data = encode_image_to_jpeg(image, jpeg_quality)
+            # Handle different compression formats
+            binary_data = None
+            format_name = "jpeg"  # Default format name
+            
+            if compression_format == "png":
+                # Encode as PNG
+                import cv2
+                format_name = "png"
+                encode_params = [cv2.IMWRITE_PNG_COMPRESSION, 9]  # Max compression
+                _, binary_data = cv2.imencode('.png', image, encode_params)
+                binary_data = binary_data.tobytes()
+                
+            elif compression_format == "raw":
+                # Just use raw bytes
+                format_name = "raw"
+                binary_data = image.tobytes()
+                
+            else:
+                # Default to JPEG
+                binary_data = encode_image_to_jpeg(image, jpeg_quality)
 
             # Prepare metadata
             height, width = image.shape[:2]
@@ -1512,16 +1551,29 @@ class UnlookServer(EventEmitter):
                 "width": width,
                 "height": height,
                 "channels": image.shape[2] if len(image.shape) > 2 else 1,
-                "format": "jpeg",
+                "format": format_name,
                 "camera_id": camera_id,
+                "compression_format": compression_format,
                 "timestamp": time.time()
             }
+            
+            # Add jpeg_quality if applicable
+            if compression_format == "jpeg":
+                metadata["jpeg_quality"] = jpeg_quality
+                
+            # Add resolution if applicable
+            if resolution:
+                metadata["resolution"] = resolution
+                
+            # Add crop information if applicable  
+            if crop_region:
+                metadata["crop_region"] = crop_region
 
             # Create a special message of string type (not enum) for the response
             binary_response = serialize_binary_message(
-                "camera_capture_response",  # Use a string instead of an enum
+                "camera_capture_response",
                 metadata,
-                jpeg_data
+                binary_data
             )
 
             # Send binary response directly
@@ -1530,6 +1582,8 @@ class UnlookServer(EventEmitter):
 
         except Exception as e:
             logger.error(f"Error capturing image: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return Message.create_error(
                 message,
                 f"Error capturing image: {e}"
@@ -1553,8 +1607,26 @@ class UnlookServer(EventEmitter):
                         f"Error opening camera {camera_id}"
                     )
 
-            # Synchronized capture
+            # Get capture parameters
             jpeg_quality = message.payload.get("jpeg_quality", self.jpeg_quality)
+            compression_format = message.payload.get("compression_format", "jpeg").lower()
+            resolution = message.payload.get("resolution", None)
+            crop_region = message.payload.get("crop_region", None)
+            
+            # Apply temporary configuration if needed
+            if resolution or crop_region:
+                config_before_capture = {}
+                if resolution:
+                    config_before_capture["resolution"] = resolution
+                if crop_region:
+                    config_before_capture["crop_region"] = crop_region
+                    
+                # Apply to all cameras
+                for camera_id in camera_ids:
+                    logger.info(f"Applying temporary config to camera {camera_id}: {config_before_capture}")
+                    self.camera_manager.configure_camera(camera_id, config_before_capture)
+
+            # Synchronized capture
             cameras = {}
 
             for camera_id in camera_ids:
@@ -1566,28 +1638,71 @@ class UnlookServer(EventEmitter):
                         f"Error capturing image from camera {camera_id}"
                     )
 
-                # Encode image to JPEG
-                jpeg_data = encode_image_to_jpeg(image, jpeg_quality)
+                # Handle different compression formats
+                binary_data = None
+                format_name = "jpeg"  # Default format name
+                
+                if compression_format == "png":
+                    # Encode as PNG
+                    import cv2
+                    format_name = "png"
+                    encode_params = [cv2.IMWRITE_PNG_COMPRESSION, 9]  # Max compression
+                    _, binary_data = cv2.imencode('.png', image, encode_params)
+                    binary_data = binary_data.tobytes()
+                    
+                elif compression_format == "raw":
+                    # Just use raw bytes
+                    format_name = "raw"
+                    binary_data = image.tobytes()
+                    
+                else:
+                    # Default to JPEG
+                    binary_data = encode_image_to_jpeg(image, jpeg_quality)
 
                 # Prepare metadata
                 height, width = image.shape[:2]
+                camera_metadata = {
+                    "width": width,
+                    "height": height,
+                    "channels": image.shape[2] if len(image.shape) > 2 else 1,
+                    "format": format_name,
+                    "timestamp": time.time(),
+                    "compression_format": compression_format
+                }
+                
+                # Add resolution if applicable
+                if resolution:
+                    camera_metadata["resolution"] = resolution
+                    
+                # Add crop information if applicable
+                if crop_region:
+                    camera_metadata["crop_region"] = crop_region
+                    
+                # Add jpeg_quality for JPEG format
+                if compression_format == "jpeg":
+                    camera_metadata["jpeg_quality"] = jpeg_quality
+                
                 cameras[camera_id] = {
-                    "jpeg_data": jpeg_data,
-                    "metadata": {
-                        "width": width,
-                        "height": height,
-                        "channels": image.shape[2] if len(image.shape) > 2 else 1,
-                        "format": "jpeg",
-                        "timestamp": time.time()
-                    }
+                    "jpeg_data": binary_data,  # May not be JPEG, but we keep the field name for backwards compatibility
+                    "metadata": camera_metadata
                 }
 
             # Create complete payload
             payload = {
                 "cameras": cameras,
                 "timestamp": time.time(),
-                "num_cameras": len(cameras)
+                "num_cameras": len(cameras),
+                "format": compression_format,  # Global format for all cameras
+                "ulmc_version": "2.0"  # Advanced format with multi-format support
             }
+            
+            # Add resolution if configured for all cameras
+            if resolution:
+                payload["resolution"] = resolution
+                
+            # Add crop_region if configured for all cameras
+            if crop_region:
+                payload["crop_region"] = crop_region
 
             # Serialize with ULMC format
             binary_response = serialize_binary_message(
@@ -1601,7 +1716,7 @@ class UnlookServer(EventEmitter):
 
             # Debug log
             logger.debug(
-                f"Sent {len(cameras)} images in ULMC format, total size: {len(binary_response)} bytes")
+                f"Sent {len(cameras)} images in ULMC format ({compression_format}), total size: {len(binary_response)} bytes")
 
             return None  # Response already sent
 

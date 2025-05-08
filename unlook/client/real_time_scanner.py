@@ -550,19 +550,45 @@ class RealTimeScanner:
         # Create camera configuration
         camera_config = CameraConfig()
         
-        # Apply settings from scanner configuration
+        # Apply basic settings from scanner configuration
         camera_config.exposure_time = self.config.exposure_time
         camera_config.gain = self.config.gain
-        camera_config.auto_exposure = False
-        camera_config.auto_gain = False
+        camera_config.auto_exposure = False  # For structured light, we want manual exposure
+        camera_config.auto_gain = False      # For structured light, we want manual gain
         camera_config.jpeg_quality = self.config.jpeg_quality
         
-        # For scanning, we typically want grayscale mode for better pattern detection
-        if self.config.pattern_type in [PatternType.PHASE_SHIFT, PatternType.GRAY_CODE]:
-            camera_config.color_mode = ColorMode.GRAYSCALE
+        # Apply color mode from config or set default based on pattern type
+        if self.config.color_mode is not None:
+            camera_config.color_mode = self.config.color_mode
+        elif self.config.pattern_type in [PatternType.PHASE_SHIFT, PatternType.GRAY_CODE, 
+                                         PatternType.ADVANCED_GRAY_CODE, PatternType.ADVANCED_PHASE_SHIFT]:
+            camera_config.color_mode = ColorMode.GRAYSCALE  # Grayscale is better for pattern detection
             camera_config.contrast = 1.2  # Slightly higher contrast for pattern recognition
         else:
             camera_config.color_mode = ColorMode.COLOR
+        
+        # Configure image format if specified
+        if self.config.image_format is not None:
+            camera_config.compression_format = self.config.image_format
+        
+        # Apply image quality preset if specified
+        if self.config.image_quality_preset is not None:
+            camera_config.set_quality_preset(self.config.image_quality_preset)
+        
+        # Apply image processing settings
+        camera_config.denoise = self.config.use_denoise
+        camera_config.hdr_mode = self.config.use_hdr
+        camera_config.sharpness = self.config.sharpness
+        camera_config.contrast = self.config.contrast
+        camera_config.brightness = self.config.brightness
+        
+        # Apply resolution if specified
+        if self.config.custom_resolution is not None:
+            camera_config.resolution = self.config.custom_resolution
+        
+        # Apply crop region if specified
+        if self.config.crop_region is not None:
+            camera_config.crop_region = self.config.crop_region
         
         # Configure for the target framerate based on pattern interval
         target_fps = max(15, min(60, int(1.0 / self.config.pattern_interval)))
@@ -907,10 +933,27 @@ class RealTimeScanner:
             # Small delay to allow pattern to display fully
             time.sleep(self.config.pattern_interval / 2)
             
-            # Capture from all cameras
+            # Prepare capture parameters based on configuration
+            capture_params = {
+                "jpeg_quality": self.config.jpeg_quality,
+            }
+            
+            # Add image format if specified
+            if self.config.image_format is not None:
+                capture_params["format"] = self.config.image_format
+                
+            # Add resolution if specified
+            if self.config.custom_resolution is not None:
+                capture_params["resolution"] = self.config.custom_resolution
+                
+            # Add crop region if specified
+            if self.config.crop_region is not None:
+                capture_params["crop_region"] = self.config.crop_region
+            
+            # Capture from all cameras with full configuration
             captures = self.client.camera.capture_multi(
                 camera_ids,
-                jpeg_quality=self.config.jpeg_quality
+                **capture_params
             )
             
             # Get pattern info - handle different response types
@@ -939,7 +982,10 @@ class RealTimeScanner:
                     metadata={
                         "sequence_index": 0,  # Will be updated for multiple sequences
                         "pattern_type": pattern.get("pattern_type"),
-                        "total_patterns": len(patterns)
+                        "total_patterns": len(patterns),
+                        "image_format": self.config.image_format.value if self.config.image_format else "jpeg",
+                        "resolution": self.config.custom_resolution,
+                        "crop_region": self.config.crop_region
                     }
                 )
                 
@@ -1126,13 +1172,40 @@ class RealTimeScanner:
             
             os.makedirs(pattern_dir, exist_ok=True)
             
-            # Save image
-            filename = os.path.join(pattern_dir, f"camera_{frame_data.camera_id}.png")
-            cv2.imwrite(filename, frame_data.image)
+            # Determine file extension based on image format in metadata
+            format_value = frame_data.metadata.get("image_format", "jpeg").lower()
             
-            logger.debug(f"Saved raw image to {filename}")
+            if format_value == "png":
+                ext = ".png"
+            elif format_value == "raw":
+                ext = ".raw"
+            else:  # Default to jpeg
+                ext = ".jpg"
+                
+            # Save image with appropriate format
+            filename = os.path.join(pattern_dir, f"camera_{frame_data.camera_id}{ext}")
+            
+            # Save with appropriate compression
+            if format_value == "png":
+                cv2.imwrite(filename, frame_data.image, [cv2.IMWRITE_PNG_COMPRESSION, 9])
+            elif format_value == "raw":
+                # For raw format, save the numpy array directly
+                np.save(filename, frame_data.image)
+            else:
+                # For JPEG, use the configured quality
+                quality = self.config.jpeg_quality
+                cv2.imwrite(filename, frame_data.image, [cv2.IMWRITE_JPEG_QUALITY, quality])
+            
+            # Verify file was saved
+            if os.path.exists(filename):
+                file_size = os.path.getsize(filename)
+                logger.debug(f"Saved raw image to {filename} ({file_size} bytes)")
+            else:
+                logger.warning(f"Failed to save image: {filename} does not exist after save operation")
         except Exception as e:
             logger.error(f"Error saving raw image: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
     
     def _save_point_cloud(self, points: np.ndarray, colors: np.ndarray, filepath: str):
         """

@@ -184,14 +184,31 @@ class PiCamera2Manager:
                 - resolution: [width, height]
                 - fps: Frame rate
                 - mode: Acquisition mode ("video", "preview", "still")
-                - exposure: Exposure time in microseconds
-                - gain: Analog gain
-                - awb: White balance ("auto" or "manual")
-                - awb_gains: White balance gains [red_gain, blue_gain]
-                - color_mode: Color mode ("rgb", "bgr", "grayscale")
-                - roi: Region of interest [x, y, width, height]
+                - exposure_time: Exposure time in microseconds
+                - auto_exposure: Whether to use auto exposure (True/False)
+                - exposure_compensation: EV compensation (-4.0 to 4.0)
+                - gain: Analog gain value
+                - auto_gain: Whether to use auto gain (True/False)
+                - iso: ISO setting (camera dependent)
+                - color_mode: Color mode ("color", "grayscale")
+                - compression_format: Image format ("jpeg", "png", "raw")
+                - jpeg_quality: JPEG compression quality (0-100)
+                - crop_region: ROI crop (x, y, width, height)
+                - sharpness: Sharpness adjustment (0=default, 1=max)
+                - denoise: Enable noise reduction (True/False)
+                - hdr_mode: Enable HDR mode (True/False)
+                - stabilization: Enable image stabilization (True/False)
+                - binning: Pixel binning factor (1, 2, 4)
+                - framerate: Target framerate in FPS
+                - contrast: Contrast enhancement factor
+                - brightness: Brightness adjustment (-1.0 to 1.0)
+                - saturation: Color saturation (grayscale=0, normal=1.0)
+                - gamma: Gamma correction (1.0=linear)
                 - hflip: Flip horizontally (True/False)
                 - vflip: Flip vertically (True/False)
+                - awb: White balance mode ("auto" or "manual")
+                - awb_gains: White balance gains [red_gain, blue_gain]
+                - backend_settings: Custom settings for specific backends
 
         Returns:
             True if successful, False otherwise
@@ -214,8 +231,13 @@ class PiCamera2Manager:
             camera = self.active_cameras[camera_id]
 
             try:
-                # Configuration required for resolution or mode change
-                needs_reconfigure = "resolution" in config or "mode" in config or "color_mode" in config
+                # Log configuration for debugging
+                logger.debug(f"Configuring camera {camera_id} with settings: {config}")
+                
+                # Handle configuration requiring camera restart
+                needs_reconfigure = any(key in config for key in [
+                    "resolution", "mode", "color_mode", "compression_format", "crop_region"
+                ])
 
                 # If reconfiguration is required, stop the camera
                 if needs_reconfigure:
@@ -227,70 +249,83 @@ class PiCamera2Manager:
                     # Get resolution
                     width, height = config.get("resolution", self.cameras[camera_id].get("resolution", [1920, 1080]))
 
-                    # Get color mode
-                    color_mode = config.get("color_mode", "rgb")
+                    # Get color mode - support for both strings and EnumNamespace.ColorMode values
+                    color_mode_raw = config.get("color_mode", "color")
+                    # Handle if color_mode is an enum value object with .value attribute
+                    color_mode = color_mode_raw.lower() if isinstance(color_mode_raw, str) else str(color_mode_raw).lower()
+                    
+                    # Map client color modes to PiCamera color formats
+                    if color_mode == "grayscale":
+                        format_name = "YUV420"
+                    elif color_mode == "bgr" or color_mode == "color.bgr":
+                        format_name = "BGR888"
+                    else:  # default: rgb/color
+                        format_name = "RGB888"
 
-                    # Create appropriate configuration
+                    # Create appropriate configuration based on mode
                     if mode == "video":
-                        # Video configuration with support for different color formats
-                        if color_mode == "grayscale":
-                            camera_config = camera.create_video_configuration(
-                                main={"size": (width, height), "format": "YUV420"}
-                            )
-                        elif color_mode == "bgr":
-                            camera_config = camera.create_video_configuration(
-                                main={"size": (width, height), "format": "BGR888"}
-                            )
-                        else:  # default: rgb
-                            camera_config = camera.create_video_configuration(
-                                main={"size": (width, height), "format": "RGB888"}
-                            )
+                        camera_config = camera.create_video_configuration(
+                            main={"size": (width, height), "format": format_name}
+                        )
                     elif mode == "preview":
-                        # Preview configuration with support for different color formats
-                        if color_mode == "grayscale":
-                            camera_config = camera.create_preview_configuration(
-                                main={"size": (width, height), "format": "YUV420"}
-                            )
-                        elif color_mode == "bgr":
-                            camera_config = camera.create_preview_configuration(
-                                main={"size": (width, height), "format": "BGR888"}
-                            )
-                        else:  # default: rgb
-                            camera_config = camera.create_preview_configuration(
-                                main={"size": (width, height), "format": "RGB888"}
-                            )
+                        camera_config = camera.create_preview_configuration(
+                            main={"size": (width, height), "format": format_name}
+                        )
                     else:  # default: still
-                        # Still configuration with support for different color formats
-                        if color_mode == "grayscale":
-                            camera_config = camera.create_still_configuration(
-                                main={"size": (width, height), "format": "YUV420"}
-                            )
-                        elif color_mode == "bgr":
-                            camera_config = camera.create_still_configuration(
-                                main={"size": (width, height), "format": "BGR888"}
-                            )
-                        else:  # default: rgb
-                            camera_config = camera.create_still_configuration(
-                                main={"size": (width, height), "format": "RGB888"}
-                            )
+                        camera_config = camera.create_still_configuration(
+                            main={"size": (width, height), "format": format_name}
+                        )
 
                     # Apply configuration
                     camera.configure(camera_config)
 
-                # Build a dictionary of controls to set
+                # Build a dictionary of camera controls to set
                 controls = {}
 
-                # Exposure
-                if "exposure" in config:
-                    controls["ExposureTime"] = config["exposure"]
-                    if "exposure_mode" in config and config["exposure_mode"] == "manual":
-                        controls["AeEnable"] = False
-                    else:
-                        controls["AeEnable"] = True
+                # Exposure settings
+                if "exposure_time" in config:
+                    controls["ExposureTime"] = int(config["exposure_time"])
+                
+                if "auto_exposure" in config:
+                    controls["AeEnable"] = bool(config["auto_exposure"])
+                elif "exposure_mode" in config:  # Legacy support
+                    controls["AeEnable"] = config["exposure_mode"] != "manual"
+                
+                if "exposure_compensation" in config:
+                    controls["ExposureValue"] = float(config["exposure_compensation"])
 
-                # Gain
+                # Gain settings
                 if "gain" in config:
-                    controls["AnalogueGain"] = config["gain"]
+                    controls["AnalogueGain"] = float(config["gain"])
+                
+                if "auto_gain" in config:
+                    # Some cameras may have separate gain control
+                    # This might need to be mapped to a camera-specific control
+                    pass  # PiCamera doesn't have separate auto gain control
+
+                # Image adjustments
+                if "brightness" in config:
+                    controls["Brightness"] = float(config["brightness"])
+                
+                if "contrast" in config:
+                    controls["Contrast"] = float(config["contrast"])
+                
+                if "saturation" in config:
+                    controls["Saturation"] = float(config["saturation"])
+                
+                if "sharpness" in config:
+                    controls["Sharpness"] = float(config["sharpness"])
+
+                # Denoise and HDR
+                if "denoise" in config:
+                    # Map to camera-specific noise reduction mode if available
+                    noiseReductionMode = 2 if config["denoise"] else 0  # Example mapping
+                    controls["NoiseReductionMode"] = noiseReductionMode
+                
+                if "hdr_mode" in config:
+                    # Map to camera-specific HDR mode if available
+                    # This is highly camera-dependent
+                    pass
 
                 # White balance
                 if "awb" in config:
@@ -301,36 +336,57 @@ class PiCamera2Manager:
                         if "awb_gains" in config:
                             controls["ColourGains"] = tuple(config["awb_gains"])
 
-                # Region of interest
-                if "roi" in config:
-                    x, y, w, h = config["roi"]
-                    controls["ScalerCrop"] = (x, y, w, h)
+                # Region of interest / Crop
+                if "crop_region" in config:
+                    crop_region = config["crop_region"]
+                    if isinstance(crop_region, (list, tuple)) and len(crop_region) == 4:
+                        x, y, w, h = crop_region
+                        controls["ScalerCrop"] = (int(x), int(y), int(w), int(h))
+                        logger.info(f"Setting crop region to {controls['ScalerCrop']}")
+                elif "roi" in config:  # Legacy support
+                    roi = config["roi"]
+                    if isinstance(roi, (list, tuple)) and len(roi) == 4:
+                        x, y, w, h = roi
+                        controls["ScalerCrop"] = (int(x), int(y), int(w), int(h))
 
                 # Flipping
                 if "hflip" in config:
-                    controls["HFlip"] = config["hflip"]
+                    controls["HFlip"] = bool(config["hflip"])
                 if "vflip" in config:
-                    controls["VFlip"] = config["vflip"]
+                    controls["VFlip"] = bool(config["vflip"])
 
-                # Set controls
+                # Apply all controls
                 if controls:
+                    logger.debug(f"Setting camera controls: {controls}")
                     camera.set_controls(controls)
 
                 # Start camera if it was stopped
                 if needs_reconfigure:
                     camera.start()
 
-                # Update camera information
+                # Update camera information in our cache
                 updated_info = self.cameras[camera_id].copy()
 
+                # Update resolution info
                 if "resolution" in config:
                     updated_info["configured_resolution"] = config["resolution"]
 
-                if "fps" in config:
-                    updated_info["configured_fps"] = config["fps"]
+                # Update framerate info
+                if "framerate" in config or "fps" in config:
+                    fps = config.get("framerate", config.get("fps", 30))
+                    updated_info["configured_fps"] = fps
 
+                # Update color mode
                 if "color_mode" in config:
-                    updated_info["color_mode"] = config["color_mode"]
+                    updated_info["color_mode"] = color_mode
+
+                # Update compression format
+                if "compression_format" in config:
+                    updated_info["compression_format"] = config["compression_format"]
+
+                # Update jpeg quality
+                if "jpeg_quality" in config:
+                    updated_info["jpeg_quality"] = config["jpeg_quality"]
 
                 # Update cache
                 self.cameras[camera_id] = updated_info
@@ -340,6 +396,8 @@ class PiCamera2Manager:
 
             except Exception as e:
                 logger.error(f"Error configuring camera {camera_id}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 return False
 
     def capture_image(self, camera_id: str) -> Optional[np.ndarray]:

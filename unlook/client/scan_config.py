@@ -4,6 +4,7 @@ Configuration class for real-time 3D scanning.
 
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 from enum import Enum
+from .camera_config import ColorMode, CompressionFormat, ImageQualityPreset
 
 
 class PatternType(Enum):
@@ -52,6 +53,20 @@ class RealTimeScannerConfig:
         self.exposure_time = 10000  # in microseconds
         self.gain = 1.0
         self.jpeg_quality = 85
+        self.color_mode = None  # Uses default based on pattern type
+        self.use_hdr = False  # High Dynamic Range mode
+        self.image_quality_preset = None  # Quality preset (None = manual settings)
+        self.image_format = None  # Defaults to JPEG
+        
+        # Image processing
+        self.use_denoise = False  # Noise reduction
+        self.sharpness = 0.0  # Default sharpness
+        self.contrast = 1.0  # Default contrast
+        self.brightness = 0.0  # Default brightness
+        
+        # Resolution and cropping
+        self.custom_resolution = None  # Custom resolution (width, height)
+        self.crop_region = None  # ROI crop (x, y, width, height)
         
         # Scan settings
         self.use_stereo = True  # Use stereo cameras if available
@@ -193,6 +208,134 @@ class RealTimeScannerConfig:
             self.output_directory = output_dir
         
         return self
+        
+    def set_image_quality(self, preset: ImageQualityPreset) -> 'RealTimeScannerConfig':
+        """
+        Set image quality preset for scanning.
+        
+        Args:
+            preset: Image quality preset
+            
+        Returns:
+            Self for method chaining
+        """
+        self.image_quality_preset = preset
+        
+        # Update JPEG quality based on preset
+        if preset == ImageQualityPreset.LOWEST:
+            self.jpeg_quality = 40
+        elif preset == ImageQualityPreset.LOW:
+            self.jpeg_quality = 60
+        elif preset == ImageQualityPreset.MEDIUM:
+            self.jpeg_quality = 75
+        elif preset == ImageQualityPreset.HIGH:
+            self.jpeg_quality = 90
+        elif preset == ImageQualityPreset.HIGHEST:
+            self.jpeg_quality = 98
+        
+        return self
+        
+    def set_image_format(self, format: CompressionFormat) -> 'RealTimeScannerConfig':
+        """
+        Set image format for scanning.
+        
+        Args:
+            format: Image compression format
+            
+        Returns:
+            Self for method chaining
+        """
+        self.image_format = format
+        return self
+        
+    def set_color_mode(self, mode: ColorMode) -> 'RealTimeScannerConfig':
+        """
+        Set color mode for scanning.
+        
+        Args:
+            mode: Color mode (COLOR or GRAYSCALE)
+            
+        Returns:
+            Self for method chaining
+        """
+        self.color_mode = mode
+        return self
+        
+    def set_image_processing(self, 
+                           denoise: bool = None,
+                           hdr: bool = None,
+                           sharpness: float = None,
+                           contrast: float = None,
+                           brightness: float = None) -> 'RealTimeScannerConfig':
+        """
+        Set image processing options.
+        
+        Args:
+            denoise: Enable noise reduction
+            hdr: Enable High Dynamic Range mode
+            sharpness: Sharpness adjustment (0=default, 1=max)
+            contrast: Contrast enhancement factor
+            brightness: Brightness adjustment (-1.0 to 1.0)
+            
+        Returns:
+            Self for method chaining
+        """
+        if denoise is not None:
+            self.use_denoise = denoise
+            
+        if hdr is not None:
+            self.use_hdr = hdr
+            
+        if sharpness is not None:
+            self.sharpness = sharpness
+            
+        if contrast is not None:
+            self.contrast = contrast
+            
+        if brightness is not None:
+            self.brightness = brightness
+            
+        return self
+        
+    def set_resolution(self, width: int, height: int) -> 'RealTimeScannerConfig':
+        """
+        Set custom resolution for scanning.
+        
+        Args:
+            width: Image width in pixels
+            height: Image height in pixels
+            
+        Returns:
+            Self for method chaining
+        """
+        self.custom_resolution = (width, height)
+        return self
+        
+    def set_crop_region(self, x: int, y: int, width: int, height: int) -> 'RealTimeScannerConfig':
+        """
+        Set region of interest (ROI) crop for scanning.
+        
+        Args:
+            x: Left coordinate
+            y: Top coordinate
+            width: ROI width
+            height: ROI height
+            
+        Returns:
+            Self for method chaining
+        """
+        self.crop_region = (x, y, width, height)
+        return self
+        
+    def reset_crop_region(self) -> 'RealTimeScannerConfig':
+        """
+        Reset to use the full camera frame (no cropping).
+        
+        Returns:
+            Self for method chaining
+        """
+        self.crop_region = None
+        return self
     
     def to_dict(self) -> Dict[str, Any]:
         """
@@ -201,7 +344,7 @@ class RealTimeScannerConfig:
         Returns:
             Dictionary representation of the configuration
         """
-        return {
+        config_dict = {
             "mode": self.mode.value,
             "quality": self.quality.value,
             "pattern_type": self.pattern_type.value,
@@ -215,5 +358,26 @@ class RealTimeScannerConfig:
             "save_raw_images": self.save_raw_images,
             "output_directory": self.output_directory,
             "custom_pattern_sequence": self.custom_pattern_sequence,
-            "custom_camera_ids": self.custom_camera_ids
+            "custom_camera_ids": self.custom_camera_ids,
+            
+            # Advanced image settings
+            "use_denoise": self.use_denoise,
+            "use_hdr": self.use_hdr,
+            "sharpness": self.sharpness,
+            "contrast": self.contrast,
+            "brightness": self.brightness,
+            "custom_resolution": self.custom_resolution,
+            "crop_region": self.crop_region
         }
+        
+        # Add enum values correctly
+        if self.color_mode is not None:
+            config_dict["color_mode"] = self.color_mode.value
+            
+        if self.image_format is not None:
+            config_dict["image_format"] = self.image_format.value
+            
+        if self.image_quality_preset is not None:
+            config_dict["image_quality_preset"] = self.image_quality_preset.value
+            
+        return config_dict

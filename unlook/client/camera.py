@@ -12,7 +12,7 @@ from ..core.protocol import MessageType
 from ..core.utils import decode_jpeg_to_image, deserialize_binary_message
 from ..core.constants import DEFAULT_JPEG_QUALITY
 from ..core.events import EventType
-from .camera_config import CameraConfig, ColorMode
+from .camera_config import CameraConfig, ColorMode, CompressionFormat, ImageQualityPreset
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +166,149 @@ class CameraClient:
         """
         config = {"color_mode": color_mode.value}
         return self.configure(camera_id, config)
+        
+    def set_image_quality(self, camera_id: str, preset: ImageQualityPreset) -> bool:
+        """
+        Apply an image quality preset to the camera.
+        
+        Args:
+            camera_id: Camera ID
+            preset: Quality preset to apply
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # Create new config with the preset
+        config = CameraConfig()
+        config.set_quality_preset(preset)
+        
+        # Apply the configuration
+        return self.configure(camera_id, config)
+        
+    def set_compression(self, camera_id: str, format: CompressionFormat, jpeg_quality: int = None) -> bool:
+        """
+        Set the image compression settings.
+        
+        Args:
+            camera_id: Camera ID
+            format: Compression format (JPEG, PNG, RAW)
+            jpeg_quality: JPEG quality (0-100), only applicable for JPEG format
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        config = {"compression_format": format.value}
+        
+        if format == CompressionFormat.JPEG and jpeg_quality is not None:
+            config["jpeg_quality"] = max(0, min(100, jpeg_quality))
+            
+        return self.configure(camera_id, config)
+        
+    def set_crop_region(self, camera_id: str, x: int, y: int, width: int, height: int) -> bool:
+        """
+        Set a region of interest (ROI) crop for the camera.
+        
+        Args:
+            camera_id: Camera ID
+            x: Left coordinate
+            y: Top coordinate
+            width: ROI width
+            height: ROI height
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        config = {"crop_region": (x, y, width, height)}
+        return self.configure(camera_id, config)
+        
+    def reset_crop_region(self, camera_id: str) -> bool:
+        """
+        Reset to use the full camera frame (no cropping).
+        
+        Args:
+            camera_id: Camera ID
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        config = {"crop_region": None}
+        return self.configure(camera_id, config)
+        
+    def set_image_adjustments(self, camera_id: str, 
+                             brightness: float = None,
+                             contrast: float = None,
+                             saturation: float = None,
+                             sharpness: float = None,
+                             gamma: float = None) -> bool:
+        """
+        Set image adjustment parameters.
+        
+        Args:
+            camera_id: Camera ID
+            brightness: Brightness adjustment (-1.0 to 1.0)
+            contrast: Contrast enhancement factor
+            saturation: Color saturation
+            sharpness: Sharpness adjustment (0=default, 1=max)
+            gamma: Gamma correction (1.0=linear)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        config = {}
+        
+        if brightness is not None:
+            config["brightness"] = brightness
+        
+        if contrast is not None:
+            config["contrast"] = contrast
+        
+        if saturation is not None:
+            config["saturation"] = saturation
+            
+        if sharpness is not None:
+            config["sharpness"] = sharpness
+            
+        if gamma is not None:
+            config["gamma"] = gamma
+            
+        if not config:
+            # Nothing to set
+            return True
+            
+        return self.configure(camera_id, config)
+        
+    def set_image_processing(self, camera_id: str,
+                           denoise: bool = None,
+                           hdr_mode: bool = None,
+                           stabilization: bool = None) -> bool:
+        """
+        Set image processing options.
+        
+        Args:
+            camera_id: Camera ID
+            denoise: Enable noise reduction
+            hdr_mode: Enable High Dynamic Range mode
+            stabilization: Enable image stabilization
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        config = {}
+        
+        if denoise is not None:
+            config["denoise"] = denoise
+            
+        if hdr_mode is not None:
+            config["hdr_mode"] = hdr_mode
+            
+        if stabilization is not None:
+            config["stabilization"] = stabilization
+            
+        if not config:
+            # Nothing to set
+            return True
+            
+        return self.configure(camera_id, config)
 
     def set_white_balance(self, camera_id: str, mode: str, red_gain: Optional[float] = None,
                           blue_gain: Optional[float] = None) -> bool:
@@ -222,56 +365,135 @@ class CameraClient:
 
         return results
 
-    def capture(self, camera_id: str, jpeg_quality: int = DEFAULT_JPEG_QUALITY) -> Optional[np.ndarray]:
+    def capture(self, 
+              camera_id: str, 
+              jpeg_quality: int = DEFAULT_JPEG_QUALITY,
+              format: CompressionFormat = CompressionFormat.JPEG,
+              resolution: Tuple[int, int] = None,
+              crop_region: Tuple[int, int, int, int] = None) -> Optional[np.ndarray]:
         """
-        Capture an image from a camera.
+        Capture an image from a camera with advanced configuration options.
 
         Args:
             camera_id: Camera ID
             jpeg_quality: JPEG quality (0-100)
+            format: Image compression format
+            resolution: Optional resolution override (width, height)
+            crop_region: Optional crop region (x, y, width, height)
 
         Returns:
             Image as numpy array, None if error
         """
+        # Prepare capture request parameters
+        params = {
+            "camera_id": camera_id,
+            "compression_format": format.value
+        }
+        
+        # Add JPEG quality if needed
+        if format == CompressionFormat.JPEG:
+            params["jpeg_quality"] = jpeg_quality
+        
+        # Add resolution if specified
+        if resolution is not None:
+            params["resolution"] = resolution
+        
+        # Add crop region if specified
+        if crop_region is not None:
+            params["crop_region"] = crop_region
+        
+        # Send capture request
         success, response, binary_data = self.client.send_message(
             MessageType.CAMERA_CAPTURE,
-            {
-                "camera_id": camera_id,
-                "jpeg_quality": jpeg_quality
-            },
+            params,
             binary_response=True
         )
 
         if success and binary_data:
             try:
-                # Decode JPEG image
-                image = decode_jpeg_to_image(binary_data)
+                # Decode image based on format
+                if format == CompressionFormat.JPEG:
+                    image = decode_jpeg_to_image(binary_data)
+                elif format == CompressionFormat.PNG:
+                    # Decode PNG using OpenCV
+                    import cv2
+                    import numpy as np
+                    nparr = np.frombuffer(binary_data, np.uint8)
+                    image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+                elif format == CompressionFormat.RAW:
+                    # Process raw data based on response metadata
+                    if response and hasattr(response, 'payload'):
+                        metadata = response.payload
+                        width = metadata.get('width', 0)
+                        height = metadata.get('height', 0)
+                        channels = metadata.get('channels', 1)
+                        
+                        if width > 0 and height > 0:
+                            # Convert raw bytes to numpy array
+                            image = np.frombuffer(binary_data, dtype=np.uint8)
+                            image = image.reshape((height, width, channels))
+                        else:
+                            logger.error("Invalid raw image dimensions")
+                            return None
+                    else:
+                        logger.error("Missing metadata for raw image format")
+                        return None
+                else:
+                    logger.error(f"Unsupported image format: {format}")
+                    return None
+                    
                 return image
             except Exception as e:
                 logger.error(f"Error decoding image: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
                 return None
         else:
             logger.error(f"Error capturing image from camera {camera_id}")
             return None
 
-    def capture_multi(self, camera_ids: List[str], jpeg_quality: int = DEFAULT_JPEG_QUALITY) -> Dict[str, Optional[np.ndarray]]:
+    def capture_multi(self, 
+                  camera_ids: List[str], 
+                  jpeg_quality: int = DEFAULT_JPEG_QUALITY,
+                  format: CompressionFormat = CompressionFormat.JPEG,
+                  resolution: Tuple[int, int] = None,
+                  crop_region: Tuple[int, int, int, int] = None) -> Dict[str, Optional[np.ndarray]]:
         """
-        Capture synchronized images from multiple cameras.
+        Capture synchronized images from multiple cameras with advanced configuration options.
         Uses the improved deserialize_binary_message function to support different formats.
 
         Args:
             camera_ids: List of camera IDs
             jpeg_quality: JPEG quality (0-100)
+            format: Image compression format
+            resolution: Optional resolution override (width, height)
+            crop_region: Optional crop region (x, y, width, height)
 
         Returns:
             Dictionary {camera_id: image} with captured images
         """
+        # Prepare capture request parameters
+        params = {
+            "camera_ids": camera_ids,
+            "compression_format": format.value
+        }
+        
+        # Add JPEG quality if needed
+        if format == CompressionFormat.JPEG:
+            params["jpeg_quality"] = jpeg_quality
+        
+        # Add resolution if specified
+        if resolution is not None:
+            params["resolution"] = resolution
+        
+        # Add crop region if specified
+        if crop_region is not None:
+            params["crop_region"] = crop_region
+            
+        # Send synchronized capture request
         success, response, binary_data = self.client.send_message(
             MessageType.CAMERA_CAPTURE_MULTI,
-            {
-                "camera_ids": camera_ids,
-                "jpeg_quality": jpeg_quality
-            },
+            params,
             binary_response=True
         )
 
