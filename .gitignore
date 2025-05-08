@@ -12,3 +12,6 @@ unlook/client/__pycache__/__init__.cpython-312.pyc
 
 **/.claude/settings.local.json
 /output
+/unlook/examples/scan_output
+/unlook/client/__pycache__
+/unlook/client/__pycache__

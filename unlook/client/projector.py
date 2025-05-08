@@ -31,6 +31,15 @@ class ProjectorClient:
         self.current_sequence_id = None
         self.sequence_active = False
         
+        # Initialize event callbacks dictionary
+        self._event_callbacks = {
+            EventType.PROJECTOR_PATTERN_CHANGED: [],
+            EventType.PROJECTOR_SEQUENCE_STARTED: [],
+            EventType.PROJECTOR_SEQUENCE_STEPPED: [],
+            EventType.PROJECTOR_SEQUENCE_COMPLETED: [],
+            EventType.PROJECTOR_SEQUENCE_STOPPED: []
+        }
+        
         # Register for projector events from parent client
         if hasattr(parent_client, 'events') and isinstance(parent_client.events, EventEmitter):
             self._register_event_handlers()
@@ -45,15 +54,6 @@ class ProjectorClient:
         self.client.events.on(EventType.PROJECTOR_SEQUENCE_STEPPED, self._on_sequence_stepped)
         self.client.events.on(EventType.PROJECTOR_SEQUENCE_COMPLETED, self._on_sequence_completed)
         self.client.events.on(EventType.PROJECTOR_SEQUENCE_STOPPED, self._on_sequence_stopped)
-        
-        # Event callbacks dictionary
-        self._event_callbacks = {
-            EventType.PROJECTOR_PATTERN_CHANGED: [],
-            EventType.PROJECTOR_SEQUENCE_STARTED: [],
-            EventType.PROJECTOR_SEQUENCE_STEPPED: [],
-            EventType.PROJECTOR_SEQUENCE_COMPLETED: [],
-            EventType.PROJECTOR_SEQUENCE_STOPPED: []
-        }
     
     def on_pattern_changed(self, callback: Callable):
         """
@@ -457,9 +457,20 @@ class ProjectorClient:
             
             logger.info(f"Pattern sequence started: {len(patterns)} patterns, "
                        f"interval: {interval}s, loop: {loop}")
+            # Normalize the response - convert Message object to dictionary
+            if hasattr(response, 'payload'):
+                return response.payload
             return response
         else:
-            error_msg = response.get("error_message", "Unknown error") if response else "No response"
+            error_msg = ""
+            if response:
+                if hasattr(response, 'payload'):
+                    error_msg = response.payload.get("error_message", "Unknown error")
+                else:
+                    error_msg = response.get("error_message", "Unknown error")
+            else:
+                error_msg = "No response"
+            
             logger.error(f"Error starting pattern sequence: {error_msg}")
             return None
     
@@ -484,9 +495,20 @@ class ProjectorClient:
         
         if success and response:
             logger.info(f"Pattern sequence stepped by {steps}")
+            # Normalize the response - convert Message object to dictionary
+            if hasattr(response, 'payload'):
+                return response.payload
             return response
         else:
-            error_msg = response.get("error_message", "Unknown error") if response else "No response"
+            error_msg = ""
+            if response:
+                if hasattr(response, 'payload'):
+                    error_msg = response.payload.get("error_message", "Unknown error")
+                else:
+                    error_msg = response.get("error_message", "Unknown error")
+            else:
+                error_msg = "No response"
+            
             logger.error(f"Error stepping pattern sequence: {error_msg}")
             return None
     
@@ -518,9 +540,20 @@ class ProjectorClient:
             # Update local state
             self.sequence_active = False
             logger.info("Pattern sequence stopped")
+            # Normalize the response - convert Message object to dictionary
+            if hasattr(response, 'payload'):
+                return response.payload
             return response
         else:
-            error_msg = response.get("error_message", "Unknown error") if response else "No response"
+            error_msg = ""
+            if response:
+                if hasattr(response, 'payload'):
+                    error_msg = response.payload.get("error_message", "Unknown error")
+                else:
+                    error_msg = response.get("error_message", "Unknown error")
+            else:
+                error_msg = "No response"
+            
             logger.error(f"Error stopping pattern sequence: {error_msg}")
             return None
             

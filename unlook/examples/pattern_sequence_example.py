@@ -179,16 +179,23 @@ def main():
     client = UnlookClient()
     
     try:
+        # Make sure discovery is started
+        client.start_discovery()
+        
+        # Wait a bit for scanners to be discovered
+        logger.info("Waiting for scanners to be discovered...")
+        time.sleep(3.0)
+        
         # Try to connect to any available scanner
-        scanners = client.discovered_scanners(timeout=2.0)
+        scanners = client.get_discovered_scanners()
         if not scanners:
             logger.error("No scanner found. Please make sure the UnLook scanner server is running.")
             return
         
         scanner_info = scanners[0]
-        logger.info(f"Connecting to scanner: {scanner_info['name']} at {scanner_info['address']}:{scanner_info['port']}")
+        logger.info(f"Connecting to scanner: {scanner_info.name} at {scanner_info.host}:{scanner_info.port}")
         
-        if not client.connect(scanner_info["address"], scanner_info["port"]):
+        if not client.connect(scanner_info):
             logger.error("Failed to connect to scanner")
             return
         

@@ -773,6 +773,12 @@ class UnlookServer(EventEmitter):
         
         # Project the pattern
         pattern_data = self.pattern_sequence[self.current_pattern_index]
+        
+        # Add detailed debug output to see what pattern is being sent
+        logger.debug(f"Stepping to pattern index {self.current_pattern_index}")
+        logger.debug(f"Pattern data being sent to _apply_projector_pattern: {pattern_data}")
+        
+        # Apply the pattern
         success = self._apply_projector_pattern(pattern_data)
         
         if not success:
@@ -1021,48 +1027,90 @@ class UnlookServer(EventEmitter):
             # Prima imposta la modalità test pattern
             self.projector.set_operating_mode(OperatingMode.TestPatternGenerator)
 
-            # Ottieni il tipo di pattern
-            pattern_type = pattern_data.get("type", "solid_field")
+            # Ottieni il tipo di pattern e standardizza i nomi
+            # Log raw pattern data for debugging
+            logger.info(f"Raw pattern data received: {pattern_data}")
+            
+            # Extract pattern type with fallbacks
+            pattern_type = pattern_data.get("pattern_type", pattern_data.get("type", "solid_field"))
+            logger.info(f"Applying pattern: {pattern_type} with parameters: {pattern_data}")
 
             # Converti stringhe colore in oggetti Color
             def get_color(color_name):
                 try:
                     return Color[color_name]
                 except (KeyError, TypeError):
+                    logger.warning(f"Invalid color name: {color_name}, defaulting to White")
                     return Color.White  # Default a bianco
 
             # Genera il pattern in base al tipo
             if pattern_type == "solid_field":
-                color = get_color(pattern_data.get("color", "White"))
+                color_name = pattern_data.get("color", "White")
+                color = get_color(color_name)
+                logger.info(f"Generating solid field, color: {color_name}")
                 return self.projector.generate_solid_field(color)
 
             elif pattern_type == "horizontal_lines":
-                bg_color = get_color(pattern_data.get("bg_color", "Black"))
-                fg_color = get_color(pattern_data.get("fg_color", "White"))
-                fg_width = pattern_data.get("fg_width", 4)
-                bg_width = pattern_data.get("bg_width", 20)
-
+                # Get color parameters, checking both naming styles
+                bg_color_name = pattern_data.get("background_color", pattern_data.get("bg_color", "Black"))
+                fg_color_name = pattern_data.get("foreground_color", pattern_data.get("fg_color", "White"))
+                bg_color = get_color(bg_color_name)
+                fg_color = get_color(fg_color_name)
+                
+                # Get width parameters, checking both naming styles
+                fg_width = pattern_data.get("foreground_width", pattern_data.get("fg_width", 4))
+                bg_width = pattern_data.get("background_width", pattern_data.get("bg_width", 4))
+                
+                # Get phase shift if available
+                phase_shift = pattern_data.get("phase_shift", 0)
+                
+                # Log pattern details
+                logger.info(f"Generating horizontal lines: fg={fg_color_name}({fg_width}), bg={bg_color_name}({bg_width}), phase={phase_shift}")
+                
+                # Generate pattern - note that phase shift is applied at a higher level by shifting the pattern start position
                 return self.projector.generate_horizontal_lines(
                     bg_color, fg_color, fg_width, bg_width
                 )
 
             elif pattern_type == "vertical_lines":
-                bg_color = get_color(pattern_data.get("bg_color", "Black"))
-                fg_color = get_color(pattern_data.get("fg_color", "White"))
-                fg_width = pattern_data.get("fg_width", 4)
-                bg_width = pattern_data.get("bg_width", 20)
-
+                # Get color parameters, checking both naming styles
+                bg_color_name = pattern_data.get("background_color", pattern_data.get("bg_color", "Black"))
+                fg_color_name = pattern_data.get("foreground_color", pattern_data.get("fg_color", "White"))
+                bg_color = get_color(bg_color_name)
+                fg_color = get_color(fg_color_name)
+                
+                # Get width parameters, checking both naming styles
+                fg_width = pattern_data.get("foreground_width", pattern_data.get("fg_width", 4))
+                bg_width = pattern_data.get("background_width", pattern_data.get("bg_width", 4))
+                
+                # Get phase shift if available
+                phase_shift = pattern_data.get("phase_shift", 0)
+                
+                # Log pattern details
+                logger.info(f"Generating vertical lines: fg={fg_color_name}({fg_width}), bg={bg_color_name}({bg_width}), phase={phase_shift}")
+                
+                # Generate pattern - note that phase shift is applied at a higher level by shifting the pattern start position
                 return self.projector.generate_vertical_lines(
                     bg_color, fg_color, fg_width, bg_width
                 )
 
             elif pattern_type == "grid":
-                bg_color = get_color(pattern_data.get("bg_color", "Black"))
-                fg_color = get_color(pattern_data.get("fg_color", "White"))
-                h_fg_width = pattern_data.get("h_fg_width", 4)
-                h_bg_width = pattern_data.get("h_bg_width", 20)
-                v_fg_width = pattern_data.get("v_fg_width", 4)
-                v_bg_width = pattern_data.get("v_bg_width", 20)
+                # Get color parameters, checking both naming styles
+                bg_color_name = pattern_data.get("background_color", pattern_data.get("bg_color", "Black"))
+                fg_color_name = pattern_data.get("foreground_color", pattern_data.get("fg_color", "White"))
+                bg_color = get_color(bg_color_name)
+                fg_color = get_color(fg_color_name)
+                
+                # Get horizontal width parameters, checking both naming styles
+                h_fg_width = pattern_data.get("h_foreground_width", pattern_data.get("h_fg_width", 4))
+                h_bg_width = pattern_data.get("h_background_width", pattern_data.get("h_bg_width", 16))
+                
+                # Get vertical width parameters, checking both naming styles
+                v_fg_width = pattern_data.get("v_foreground_width", pattern_data.get("v_fg_width", 4))
+                v_bg_width = pattern_data.get("v_background_width", pattern_data.get("v_bg_width", 16))
+                
+                # Log pattern details
+                logger.info(f"Generating grid: fg={fg_color_name}, bg={bg_color_name}, h={h_fg_width}/{h_bg_width}, v={v_fg_width}/{v_bg_width}")
 
                 return self.projector.generate_grid(
                     bg_color, fg_color,
@@ -1071,14 +1119,27 @@ class UnlookServer(EventEmitter):
                 )
 
             elif pattern_type == "checkerboard":
-                bg_color = get_color(pattern_data.get("bg_color", "Black"))
-                fg_color = get_color(pattern_data.get("fg_color", "White"))
-                h_count = pattern_data.get("h_count", 8)
-                v_count = pattern_data.get("v_count", 6)
+                # Get color parameters, checking both naming styles
+                bg_color_name = pattern_data.get("background_color", pattern_data.get("bg_color", "Black"))
+                fg_color_name = pattern_data.get("foreground_color", pattern_data.get("fg_color", "White"))
+                bg_color = get_color(bg_color_name)
+                fg_color = get_color(fg_color_name)
+                
+                # Get count parameters, checking both naming styles
+                h_count = pattern_data.get("horizontal_count", pattern_data.get("h_count", 8))
+                v_count = pattern_data.get("vertical_count", pattern_data.get("v_count", 6))
+                
+                # Log pattern details
+                logger.info(f"Generating checkerboard: fg={fg_color_name}, bg={bg_color_name}, h_count={h_count}, v_count={v_count}")
 
                 return self.projector.generate_checkerboard(
                     bg_color, fg_color, h_count, v_count
                 )
+
+            elif pattern_type == "colorbars":
+                # Log pattern details
+                logger.info("Generating colorbars")
+                return self.projector.generate_colorbars()
 
             else:
                 logger.warning(f"Tipo di pattern non supportato: {pattern_type}")
@@ -1086,6 +1147,8 @@ class UnlookServer(EventEmitter):
 
         except Exception as e:
             logger.error(f"Errore nell'applicazione del pattern: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False
 
     def stop(self):

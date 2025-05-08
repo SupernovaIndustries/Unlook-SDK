@@ -248,6 +248,25 @@ class DLPC342XController:
         self.summary["Command"] = "Write Horizontal Lines"
 
         try:
+            # Convert to integers if they're strings or not integers
+            if not isinstance(foreground_line_width, int):
+                try:
+                    foreground_line_width = int(foreground_line_width)
+                except (ValueError, TypeError):
+                    foreground_line_width = 4  # Default
+                    logger.warning(f"Invalid foreground_line_width: {foreground_line_width}, using default (4)")
+            
+            if not isinstance(background_line_width, int):
+                try:
+                    background_line_width = int(background_line_width)
+                except (ValueError, TypeError):
+                    background_line_width = 4  # Default
+                    logger.warning(f"Invalid background_line_width: {background_line_width}, using default (4)")
+            
+            # Validate width values to prevent crashes
+            foreground_line_width = max(1, min(255, foreground_line_width))
+            background_line_width = max(1, min(255, background_line_width))
+
             # Pack the data according to the WriteHorizontalLines function
             packer.packerinit()
             value = packer.setbits(3, 4, 0)  # Pattern type 3 = horizontal lines
@@ -264,10 +283,12 @@ class DLPC342XController:
             success = self._write_command(command_bytes)
             self.summary["Successful"] = success
 
-            logger.info(f"Generate horizontal lines: {'Success' if success else 'Failed'}")
+            logger.info(f"Generate horizontal lines: fg={foreground_color.name}({foreground_line_width}px), bg={background_color.name}({background_line_width}px) - {'Success' if success else 'Failed'}")
             return success
         except Exception as e:
             logger.error(f"Error generating horizontal lines: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             self.summary["Successful"] = False
             return False
 
@@ -289,6 +310,25 @@ class DLPC342XController:
         self.summary["Command"] = "Write Vertical Lines"
 
         try:
+            # Convert to integers if they're strings or not integers
+            if not isinstance(foreground_line_width, int):
+                try:
+                    foreground_line_width = int(foreground_line_width)
+                except (ValueError, TypeError):
+                    foreground_line_width = 4  # Default
+                    logger.warning(f"Invalid foreground_line_width: {foreground_line_width}, using default (4)")
+            
+            if not isinstance(background_line_width, int):
+                try:
+                    background_line_width = int(background_line_width)
+                except (ValueError, TypeError):
+                    background_line_width = 4  # Default
+                    logger.warning(f"Invalid background_line_width: {background_line_width}, using default (4)")
+            
+            # Validate width values to prevent crashes
+            foreground_line_width = max(1, min(255, foreground_line_width))
+            background_line_width = max(1, min(255, background_line_width))
+
             # Pack the data according to the WriteVerticalLines function
             packer.packerinit()
             value = packer.setbits(5, 4, 0)  # Pattern type 5 = vertical lines
@@ -305,10 +345,12 @@ class DLPC342XController:
             success = self._write_command(command_bytes)
             self.summary["Successful"] = success
 
-            logger.info(f"Generate vertical lines: {'Success' if success else 'Failed'}")
+            logger.info(f"Generate vertical lines: fg={foreground_color.name}({foreground_line_width}px), bg={background_color.name}({background_line_width}px) - {'Success' if success else 'Failed'}")
             return success
         except Exception as e:
             logger.error(f"Error generating vertical lines: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             self.summary["Successful"] = False
             return False
 
@@ -374,6 +416,34 @@ class DLPC342XController:
         self.summary["Command"] = "Write Grid Lines"
 
         try:
+            # Convert to integers if they're strings or not integers
+            params = [
+                ('horizontal_foreground_width', horizontal_foreground_width, 4),
+                ('horizontal_background_width', horizontal_background_width, 20),
+                ('vertical_foreground_width', vertical_foreground_width, 4),
+                ('vertical_background_width', vertical_background_width, 20)
+            ]
+            
+            result_values = {}
+            
+            for name, value, default in params:
+                if not isinstance(value, int):
+                    try:
+                        value = int(value)
+                    except (ValueError, TypeError):
+                        value = default
+                        logger.warning(f"Invalid {name}: {value}, using default ({default})")
+                
+                # Validate width values to prevent crashes
+                value = max(1, min(255, value))
+                result_values[name] = value
+            
+            # Extract converted values
+            h_fg_width = result_values['horizontal_foreground_width']
+            h_bg_width = result_values['horizontal_background_width']
+            v_fg_width = result_values['vertical_foreground_width']
+            v_bg_width = result_values['vertical_background_width']
+
             # Pack the data according to the WriteGridLines function
             packer.packerinit()
             value = packer.setbits(6, 4, 0)  # Pattern type 6 = grid
@@ -386,18 +456,21 @@ class DLPC342XController:
             # Build the command
             command_bytes = [
                 11, value, color_value,
-                horizontal_foreground_width, horizontal_background_width,
-                vertical_foreground_width, vertical_background_width
+                h_fg_width, h_bg_width,
+                v_fg_width, v_bg_width
             ]
 
             # Send the command
             success = self._write_command(command_bytes)
             self.summary["Successful"] = success
 
-            logger.info(f"Generate grid: {'Success' if success else 'Failed'}")
+            logger.info(f"Generate grid: fg={foreground_color.name}, bg={background_color.name}, "
+                       f"h={h_fg_width}/{h_bg_width}, v={v_fg_width}/{v_bg_width} - {'Success' if success else 'Failed'}")
             return success
         except Exception as e:
             logger.error(f"Error generating grid: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             self.summary["Successful"] = False
             return False
 
