@@ -22,6 +22,13 @@ from .core.discovery import ScannerInfo, DiscoveryService
 # Client API - For applications that need to connect to a scanner
 from .client import UnlookClient
 
+# High-level 3D scanning API
+try:
+    from .client.scanner3d import UnlookScanner
+except ImportError:
+    # Optional dependencies might not be available
+    UnlookScanner = None
+    
 # Conditional import for server components - Only import on Raspberry Pi
 import platform
 import sys
@@ -78,6 +85,7 @@ __all__ = [
     # Main classes
     'UnlookClient',
     'UnlookServer',
+    'UnlookScanner',
 
     # Utility functions
     'get_projector_classes'

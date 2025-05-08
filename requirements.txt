@@ -1,0 +1,14 @@
+numpy>=1.19.0
+opencv-python>=4.5.0
+
+# Optional dependencies
+# For structured light pattern generation and decoding (recommended for 3D scanning)
+# Install ONE of the following:
+# opencv-contrib-python>=4.5.0      # For regular systems
+# opencv-contrib-python-headless>=4.5.0  # For headless systems (no GUI)
+
+# For point cloud processing, visualization and mesh generation
+# open3d>=0.15.0; platform_system!="Windows" or python_version>="3.8"  
+
+# For saving point clouds in HDF5 format
+# h5py>=3.1.0

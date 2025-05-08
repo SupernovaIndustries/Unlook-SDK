@@ -23,6 +23,12 @@
   - **✨ NEW! Low-latency direct streams** for real-time applications
   - **✨ NEW! Automated pattern sequences** for structured light scanning
   - Precise projector-camera synchronization
+- **3D Scanning**:
+  - **✨ NEW! Simplified 3D scanning API** - create a 3D scan in just a few lines of code
+  - Gray code pattern projection and processing
+  - Stereo camera calibration and rectification
+  - Point cloud generation and filtering
+  - Mesh creation and export to multiple formats
 - **Optimized Communication**: Efficient image transfer and control using ZeroMQ
 - **Easy Expandability**: Modular architecture to add new hardware and algorithms
 
@@ -65,8 +71,11 @@ The new **direct streaming** feature is designed for applications requiring mini
 git clone https://github.com/YourOrganization/unlook.git
 cd unlook
 
-# Install dependencies
+# Basic installation with required dependencies
 pip install -r requirements.txt
+
+# For 3D scanning with advanced point cloud processing (recommended)
+pip install open3d
 
 # Development installation
 pip install -e .
@@ -116,6 +125,89 @@ if scanners:
     client.projector.start_pattern_sequence(patterns, interval=0.5, loop=True)
 ```
 
+### Simplified 3D Scanning (Recommended)
+
+```python
+from unlook import UnlookScanner
+
+# Create scanner with auto-detection of hardware
+scanner = UnlookScanner.auto_connect()
+
+# Perform a 3D scan with one line (uses reasonable defaults)
+point_cloud = scanner.perform_3d_scan()
+
+# Create a mesh from the point cloud
+mesh = scanner.create_mesh(point_cloud)
+
+# Save the results
+scanner.save_scan(point_cloud, "my_scan.ply")
+scanner.save_mesh(mesh, "my_scan_mesh.obj")
+
+# Visualize the results
+scanner.visualize_point_cloud(point_cloud)
+```
+
+### Advanced 3D Scanning Example
+
+```python
+from unlook import UnlookClient
+from unlook.client.structured_light import (
+    StereoStructuredLightScanner, 
+    StereoCalibrator,
+    create_scanning_demo
+)
+
+# Set up scanner with default calibration for testing
+output_dir = "./scan_results"
+scanner = create_scanning_demo(output_dir)
+
+# Connect to scanner
+client = UnlookClient()
+client.start_discovery()
+scanners = client.get_discovered_scanners()
+if scanners:
+    client.connect(scanners[0])
+
+    # Generate scanning patterns
+    patterns = scanner.generate_scan_patterns()
+    
+    # Set up projector and cameras
+    projector = client.projector
+    camera = client.camera
+    
+    # Get the first two cameras
+    cameras = camera.get_cameras()
+    if len(cameras) >= 2:
+        left_camera_id = cameras[0]["id"]
+        right_camera_id = cameras[1]["id"]
+        
+        # Capture structured light images
+        left_images = []
+        right_images = []
+        
+        for pattern in patterns:
+            # Project pattern
+            projector.show_pattern(pattern)
+            time.sleep(0.5)  # Wait for projector to update
+            
+            # Capture from both cameras
+            left_img = camera.capture(left_camera_id)
+            right_img = camera.capture(right_camera_id)
+            
+            left_images.append(left_img)
+            right_images.append(right_img)
+        
+        # Process scan to get point cloud
+        point_cloud = scanner.process_scan(left_images, right_images)
+        
+        # Save point cloud
+        scanner.save_point_cloud(point_cloud, f"{output_dir}/scan.ply")
+        
+        # Create and save 3D mesh
+        mesh = scanner.create_mesh_from_point_cloud(point_cloud)
+        scanner.save_mesh(mesh, f"{output_dir}/scan_mesh.ply")
+```
+
 ### Using as a Server
 
 ```python
@@ -161,7 +253,10 @@ Communication between client and server happens through structured messages over
 - Pattern generation and projection
 - **Automated pattern sequences** with timing control
 - Camera-projector synchronization
-- Phase unwrapping and 3D reconstruction
+- Gray code and phase shift pattern generation
+- Stereo camera calibration
+- Enhanced 3D reconstruction with point cloud filtering
+- Mesh generation from point clouds
 
 ### Depth Sensor Module
 
