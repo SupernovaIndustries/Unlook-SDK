@@ -87,9 +87,22 @@ class DLPC342XController:
         logger.info(f"DLPC342X I2C controller initialized (bus={bus}, address=0x{address:02X})")
 
     def close(self):
-        """Close the I2C bus."""
-        self.bus.close()
-        logger.info("I2C bus closed")
+        """Close the I2C bus safely.
+        
+        This method should be called after all commands have been sent.
+        """
+        try:
+            # Only close if bus still exists and is valid
+            if hasattr(self, 'bus') and self.bus is not None:
+                self.bus.close()
+                self.bus = None
+                logger.info("I2C bus closed successfully")
+            else:
+                logger.warning("I2C bus already closed or invalid")
+        except Exception as e:
+            logger.error(f"Error closing I2C bus: {e}")
+            # Set to None to prevent further use
+            self.bus = None
 
     def _write_command(self, command_bytes):
         """Write a command to the projector.
@@ -100,6 +113,11 @@ class DLPC342XController:
         Returns:
             True if successful, False otherwise
         """
+        # Check if bus is valid
+        if not hasattr(self, 'bus') or self.bus is None:
+            logger.error("I2C bus is closed or invalid, cannot write command")
+            return False
+            
         try:
             # The first byte is the command, the rest are parameters
             command = command_bytes[0]
@@ -111,6 +129,10 @@ class DLPC342XController:
             return True
         except Exception as e:
             logger.error(f"I2C write error: {e}")
+            # If we get an I/O error, mark the bus as invalid
+            if "I/O" in str(e) or "argument must be an int" in str(e):
+                logger.warning("I2C bus appears to be in an invalid state, marking as closed")
+                self.bus = None
             return False
 
     def _read_command(self, command_byte, length):
@@ -123,6 +145,11 @@ class DLPC342XController:
         Returns:
             List of read bytes
         """
+        # Check if bus is valid
+        if not hasattr(self, 'bus') or self.bus is None:
+            logger.error("I2C bus is closed or invalid, cannot read command")
+            return [0] * length
+            
         try:
             # First write the command to specify what to read
             self.bus.write_byte(self.address, command_byte)
@@ -140,6 +167,10 @@ class DLPC342XController:
             return read_data
         except Exception as e:
             logger.error(f"I2C read error: {e}")
+            # If we get an I/O error, mark the bus as invalid
+            if "I/O" in str(e) or "argument must be an int" in str(e):
+                logger.warning("I2C bus appears to be in an invalid state, marking as closed")
+                self.bus = None
             return [0] * length
 
     def set_operating_mode(self, mode):

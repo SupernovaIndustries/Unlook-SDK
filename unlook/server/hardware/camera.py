@@ -246,8 +246,17 @@ class PiCamera2Manager:
                     # Get acquisition mode
                     mode = config.get("mode", "still")  # Default: still
 
-                    # Get resolution
-                    width, height = config.get("resolution", self.cameras[camera_id].get("resolution", [1920, 1080]))
+                    # Get resolution with better error handling
+                    resolution = config.get("resolution")
+                    if resolution is None:
+                        # Try to get from camera info
+                        resolution = self.cameras[camera_id].get("resolution")
+                    
+                    # Default to 1920x1080 if neither is available
+                    if resolution is None or not isinstance(resolution, (list, tuple)) or len(resolution) != 2:
+                        resolution = [1920, 1080]
+                        
+                    width, height = resolution
 
                     # Get color mode - support for both strings and EnumNamespace.ColorMode values
                     color_mode_raw = config.get("color_mode", "color")
@@ -336,18 +345,29 @@ class PiCamera2Manager:
                         if "awb_gains" in config:
                             controls["ColourGains"] = tuple(config["awb_gains"])
 
-                # Region of interest / Crop
+                # Region of interest / Crop with better error handling
                 if "crop_region" in config:
                     crop_region = config["crop_region"]
-                    if isinstance(crop_region, (list, tuple)) and len(crop_region) == 4:
-                        x, y, w, h = crop_region
-                        controls["ScalerCrop"] = (int(x), int(y), int(w), int(h))
-                        logger.info(f"Setting crop region to {controls['ScalerCrop']}")
+                    try:
+                        if isinstance(crop_region, (list, tuple)) and len(crop_region) == 4:
+                            x, y, w, h = crop_region
+                            controls["ScalerCrop"] = (int(x), int(y), int(w), int(h))
+                            logger.info(f"Setting crop region to {controls['ScalerCrop']}")
+                        else:
+                            logger.warning(f"Invalid crop_region format, expected list/tuple of 4 elements, got: {crop_region}")
+                    except (TypeError, ValueError) as e:
+                        logger.warning(f"Error setting crop_region: {e}")
+                        
                 elif "roi" in config:  # Legacy support
                     roi = config["roi"]
-                    if isinstance(roi, (list, tuple)) and len(roi) == 4:
-                        x, y, w, h = roi
-                        controls["ScalerCrop"] = (int(x), int(y), int(w), int(h))
+                    try:
+                        if isinstance(roi, (list, tuple)) and len(roi) == 4:
+                            x, y, w, h = roi
+                            controls["ScalerCrop"] = (int(x), int(y), int(w), int(h))
+                        else:
+                            logger.warning(f"Invalid roi format, expected list/tuple of 4 elements, got: {roi}")
+                    except (TypeError, ValueError) as e:
+                        logger.warning(f"Error setting roi: {e}")
 
                 # Flipping
                 if "hflip" in config:

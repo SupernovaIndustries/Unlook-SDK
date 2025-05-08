@@ -1171,14 +1171,42 @@ class UnlookServer(EventEmitter):
         # Stop scanning if active
         self.stop_scan()
 
-        # Deactivate projector
+        # Deactivate projector with improved shutdown sequence
         if self.projector:
             try:
                 from .hardware.projector import OperatingMode
-                self.projector.set_operating_mode(OperatingMode.Standby)
+                
+                # First, show a black pattern as fallback to prevent bright light
+                try:
+                    from .hardware.projector import Color
+                    self.projector.generate_solid_field(Color.Black)
+                    logger.info("Set projector to black during shutdown")
+                    # Small delay to ensure the command is processed
+                    time.sleep(0.1)
+                except Exception as pattern_error:
+                    logger.warning(f"Error setting black pattern during shutdown: {pattern_error}")
+                
+                # Then try to set standby mode
+                try:
+                    standby_result = self.projector.set_operating_mode(OperatingMode.Standby)
+                    if standby_result:
+                        logger.info("Projector set to standby mode")
+                    else:
+                        logger.warning("Failed to set projector to standby mode")
+                    # Small delay to ensure command is processed
+                    time.sleep(0.1)
+                except Exception as standby_error:
+                    logger.warning(f"Error setting projector to standby mode: {standby_error}")
+                
+                # Finally close the I2C bus
                 self.projector.close()
+                # Clear the reference to prevent further use
+                self._projector = None
+                
             except Exception as e:
-                logger.error(f"Error closing projector: {e}")
+                logger.error(f"Error during projector shutdown: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
 
         # Close camera manager
         if self._camera_manager:
@@ -1511,10 +1539,17 @@ class UnlookServer(EventEmitter):
             if crop_region:
                 config_before_capture["crop_region"] = crop_region
                 
-            # Apply temporary configuration if needed
+            # Apply temporary configuration if needed with better error handling
             if config_before_capture:
-                logger.info(f"Applying temporary camera config before capture: {config_before_capture}")
-                self.camera_manager.configure_camera(camera_id, config_before_capture)
+                try:
+                    logger.info(f"Applying temporary camera config before capture: {config_before_capture}")
+                    success = self.camera_manager.configure_camera(camera_id, config_before_capture)
+                    if not success:
+                        logger.warning(f"Failed to apply configuration to camera {camera_id}")
+                except Exception as e:
+                    logger.error(f"Error applying temporary configuration to camera {camera_id}: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
 
             # Capture image
             image = self.camera_manager.capture_image(camera_id)
@@ -1621,10 +1656,17 @@ class UnlookServer(EventEmitter):
                 if crop_region:
                     config_before_capture["crop_region"] = crop_region
                     
-                # Apply to all cameras
+                # Apply to all cameras with better error handling
                 for camera_id in camera_ids:
-                    logger.info(f"Applying temporary config to camera {camera_id}: {config_before_capture}")
-                    self.camera_manager.configure_camera(camera_id, config_before_capture)
+                    try:
+                        logger.info(f"Applying temporary config to camera {camera_id}: {config_before_capture}")
+                        success = self.camera_manager.configure_camera(camera_id, config_before_capture)
+                        if not success:
+                            logger.warning(f"Failed to apply configuration to camera {camera_id}")
+                    except Exception as e:
+                        logger.error(f"Error applying configuration to camera {camera_id}: {e}")
+                        import traceback
+                        logger.error(traceback.format_exc())
 
             # Synchronized capture
             cameras = {}
