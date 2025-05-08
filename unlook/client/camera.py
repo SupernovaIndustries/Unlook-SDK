@@ -4,7 +4,7 @@ Client for managing UnLook scanner cameras.
 
 import logging
 import time
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Tuple, Optional, Any, Union
 
 import numpy as np
 
@@ -12,6 +12,7 @@ from ..core.protocol import MessageType
 from ..core.utils import decode_jpeg_to_image, deserialize_binary_message
 from ..core.constants import DEFAULT_JPEG_QUALITY
 from ..core.events import EventType
+from .camera_config import CameraConfig, ColorMode
 
 logger = logging.getLogger(__name__)
 
@@ -70,22 +71,31 @@ class CameraClient:
 
         return self.cameras.get(camera_id)
 
-    def configure(self, camera_id: str, config: Dict[str, Any]) -> bool:
+    def configure(self, camera_id: str, config: Union[Dict[str, Any], CameraConfig]) -> bool:
         """
         Configure a camera.
 
         Args:
             camera_id: Camera ID
-            config: Camera configuration
+            config: Camera configuration (dict or CameraConfig object)
 
         Returns:
             True if configuration was successful, False otherwise
         """
+        # Convert CameraConfig to dict if needed
+        if isinstance(config, CameraConfig):
+            config_dict = config.to_dict()
+        else:
+            config_dict = config
+            
+        # Log what we're doing
+        logger.info(f"Configuring camera {camera_id} with: {config_dict}")
+            
         success, response, _ = self.client.send_message(
             MessageType.CAMERA_CONFIG,
             {
                 "camera_id": camera_id,
-                "config": config
+                "config": config_dict
             }
         )
 
@@ -93,9 +103,9 @@ class CameraClient:
             # Update cache if camera exists
             if camera_id in self.cameras:
                 self.cameras[camera_id].update({
-                    "configured_resolution": config.get("resolution",
+                    "configured_resolution": config_dict.get("resolution",
                                                       self.cameras[camera_id].get("resolution")),
-                    "configured_fps": config.get("fps",
+                    "configured_fps": config_dict.get("framerate",
                                                 self.cameras[camera_id].get("fps"))
                 })
 
@@ -104,22 +114,57 @@ class CameraClient:
         else:
             logger.error(f"Error configuring camera {camera_id}")
             return False
-
-    def set_exposure(self, camera_id: str, exposure_time: int, gain: Optional[float] = None) -> bool:
+            
+    def apply_camera_config(self, camera_id: str, config: CameraConfig) -> bool:
         """
-        Set camera exposure.
+        Apply a complete camera configuration using the CameraConfig object.
+        
+        Args:
+            camera_id: Camera ID
+            config: Complete camera configuration
+            
+        Returns:
+            True if configuration was successful, False otherwise
+        """
+        return self.configure(camera_id, config)
+
+    def set_exposure(self, camera_id: str, exposure_time: int, gain: Optional[float] = None, auto_exposure: bool = False, auto_gain: bool = False) -> bool:
+        """
+        Set camera exposure and gain settings.
 
         Args:
             camera_id: Camera ID
             exposure_time: Exposure time in microseconds
             gain: Analog gain (optional)
+            auto_exposure: Whether to use auto exposure (default: False)
+            auto_gain: Whether to use auto gain (default: False)
 
         Returns:
             True if successful, False otherwise
         """
-        config = {"exposure": exposure_time}
+        config = {
+            "exposure": exposure_time,
+            "auto_exposure": auto_exposure
+        }
+        
         if gain is not None:
             config["gain"] = gain
+            config["auto_gain"] = auto_gain
+            
+        return self.configure(camera_id, config)
+        
+    def set_color_mode(self, camera_id: str, color_mode: ColorMode) -> bool:
+        """
+        Set the camera color mode (color or grayscale).
+        
+        Args:
+            camera_id: Camera ID
+            color_mode: Color mode to use
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        config = {"color_mode": color_mode.value}
         return self.configure(camera_id, config)
 
     def set_white_balance(self, camera_id: str, mode: str, red_gain: Optional[float] = None,

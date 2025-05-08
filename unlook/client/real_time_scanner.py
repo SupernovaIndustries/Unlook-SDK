@@ -12,6 +12,8 @@ import cv2
 import numpy as np
 
 from .scan_config import RealTimeScannerConfig, ScanningMode, PatternType, ScanningQuality
+from .camera_config import CameraConfig, ColorMode
+from .structured_light import GrayCodeGenerator, PhaseShiftPatternGenerator
 from ..core.events import EventType
 from ..core.constants import DEFAULT_JPEG_QUALITY
 
@@ -541,20 +543,39 @@ class RealTimeScanner:
             logger.warning("No valid results generated during processing")
     
     def _configure_cameras(self):
-        """Configure cameras for scanning."""
+        """Configure cameras for scanning with advanced settings."""
         # Get camera IDs
         camera_ids = self._get_camera_ids()
+        
+        # Create camera configuration
+        camera_config = CameraConfig()
+        
+        # Apply settings from scanner configuration
+        camera_config.exposure_time = self.config.exposure_time
+        camera_config.gain = self.config.gain
+        camera_config.auto_exposure = False
+        camera_config.auto_gain = False
+        camera_config.jpeg_quality = self.config.jpeg_quality
+        
+        # For scanning, we typically want grayscale mode for better pattern detection
+        if self.config.pattern_type in [PatternType.PHASE_SHIFT, PatternType.GRAY_CODE]:
+            camera_config.color_mode = ColorMode.GRAYSCALE
+            camera_config.contrast = 1.2  # Slightly higher contrast for pattern recognition
+        else:
+            camera_config.color_mode = ColorMode.COLOR
+        
+        # Configure for the target framerate based on pattern interval
+        target_fps = max(15, min(60, int(1.0 / self.config.pattern_interval)))
+        camera_config.framerate = target_fps
+        
+        # Log the camera configuration we're applying
+        logger.info(f"Applying camera configuration: {camera_config.to_dict()}")
         
         # Configure each camera
         for camera_id in camera_ids:
             try:
-                # Set exposure and gain
-                self.client.camera.set_exposure(
-                    camera_id,
-                    exposure_time=self.config.exposure_time,
-                    gain=self.config.gain
-                )
-                
+                # Apply the complete camera configuration
+                self.client.camera.apply_camera_config(camera_id, camera_config)
                 logger.info(f"Configured camera {camera_id} for scanning")
             except Exception as e:
                 logger.warning(f"Error configuring camera {camera_id}: {e}")
@@ -568,6 +589,21 @@ class RealTimeScanner:
         # Create appropriate pattern sequence based on type
         patterns = []
         
+        # For advanced pattern types, use our specialized generators
+        if self.config.pattern_type == PatternType.ADVANCED_GRAY_CODE:
+            # Use the advanced Gray code generator
+            logger.info("Using advanced Gray code generator from structured-light-stereo")
+            gray_code_gen = GrayCodeGenerator(width=1920, height=1080, white_threshold=5)
+            return gray_code_gen.generate_pattern_sequence()
+            
+        elif self.config.pattern_type == PatternType.ADVANCED_PHASE_SHIFT:
+            # Use the advanced phase shift generator
+            logger.info("Using advanced phase shift generator from structured-light-stereo")
+            frequencies = [16, 32, 64, 128]  # Multiple frequencies for phase unwrapping
+            phase_shift_gen = PhaseShiftPatternGenerator(width=1920, height=1080, phases=4, frequencies=frequencies)
+            return phase_shift_gen.generate_pattern_sequence()
+            
+        # For standard pattern types, use the traditional pattern generation
         # Add white and black reference patterns at the start for calibration
         patterns.append({"pattern_type": "solid_field", "color": "White"})
         patterns.append({"pattern_type": "solid_field", "color": "Black"})

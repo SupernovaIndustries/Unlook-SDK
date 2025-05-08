@@ -12,6 +12,8 @@ class PatternType(Enum):
     VERTICAL_LINES = "vertical_lines"
     GRAY_CODE = "gray_code"
     PHASE_SHIFT = "phase_shift"
+    ADVANCED_GRAY_CODE = "advanced_gray_code"  # Advanced Gray code from structured-light-stereo
+    ADVANCED_PHASE_SHIFT = "advanced_phase_shift"  # Advanced phase shift from structured-light-stereo
 
 
 class ScanningQuality(Enum):

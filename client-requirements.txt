@@ -1,0 +1,18 @@
+# UnLook SDK Client Requirements
+# These packages are needed to run the UnLook client applications
+
+# Core requirements
+numpy>=1.20.0
+opencv-python>=4.5.0
+pyzmq>=22.0.0
+msgpack>=1.0.2
+pyyaml>=6.0
+
+# For 3D scanning and visualization
+open3d>=0.15.0     # For mesh generation and point cloud processing
+matplotlib>=3.4.0  # For data visualization
+
+# For examples and utilities
+pillow>=8.0.0      # Image processing
+tqdm>=4.60.0       # Progress bars
+scipy>=1.7.0       # Scientific computing
