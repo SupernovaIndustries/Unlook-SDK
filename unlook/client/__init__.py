@@ -4,15 +4,17 @@ Client module for connecting to UnLook scanners.
 
 # Import only the main client class directly
 from .scanner import UnlookClient
+from .camera_calibration import StereoCalibrator
 
 # Import other modules and classes dynamically to avoid circular dependencies
 
 __all__ = [
     'UnlookClient',
+    'StereoCalibrator',
     # Classes that will be lazy-loaded:
     # 'CameraClient', 'ProjectorClient', 'StreamClient',
     # 'Calibrator', 'CalibrationData',
-    # 'StereoCalibrator', 'StereoCalibrationData', 'StereoProcessor',
+    # 'StereoCalibrationData', 'StereoProcessor',
     # 'ModelExporter'
 ]
 

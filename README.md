@@ -147,6 +147,39 @@ scanner.save_mesh(mesh, "my_scan_mesh.obj")
 scanner.visualize_point_cloud(point_cloud)
 ```
 
+### Camera Calibration
+
+```python
+from unlook.client import StereoCalibrator
+
+# Create a calibrator instance
+calibrator = StereoCalibrator(
+    checkerboard_size=(9, 6),  # inner corners
+    square_size=0.025  # in meters
+)
+
+# Load calibration images
+left_images = [cv2.imread(f"calibration/left/left_{i:02d}.png") for i in range(20)]
+right_images = [cv2.imread(f"calibration/right/right_{i:02d}.png") for i in range(20)]
+
+# Run calibration
+result = calibrator.calibrate_stereo(left_images, right_images)
+
+# Save calibration parameters
+calibrator.save_calibration("calibration_params.json")
+
+# Use with scanner
+scanner = UnlookScanner.auto_connect(use_default_calibration=False)
+scanner.set_calibration_params(
+    camera_matrix_left=calibrator.camera_matrix_left,
+    dist_coeffs_left=calibrator.dist_coeffs_left,
+    camera_matrix_right=calibrator.camera_matrix_right,
+    dist_coeffs_right=calibrator.dist_coeffs_right,
+    R=calibrator.R,
+    T=calibrator.T
+)
+```
+
 ### Advanced 3D Scanning Example
 
 ```python

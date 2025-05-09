@@ -3,15 +3,15 @@
 Example script demonstrating the enhanced 3D scanning capabilities of the UnLook SDK.
 
 This example demonstrates:
-1. Setting up the stereo structured light scanner with calibration
-2. Generating scanning patterns
-3. Capturing structured light images
-4. Processing the images to create a 3D point cloud
+1. Setting up the improved stereo structured light scanner with advanced algorithms
+2. Generating different types of structured light patterns (Gray code and phase shift)
+3. Capturing structured light images with different quality settings
+4. Processing the images to create high-quality 3D point clouds
 5. Creating a 3D mesh from the point cloud
 6. Saving results to disk
 
 Usage:
-    python enhanced_3d_scanning_example.py
+    python enhanced_3d_scanning_example.py [--pattern gray_code|phase_shift|combined] [--quality low|medium|high|ultra]
 """
 
 import os
@@ -42,7 +42,11 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Import the simplified scanner interface that includes the advanced algorithms
 from unlook import UnlookClient
+from unlook.client.scanner3d import UnlookScanner
+
+# Also import the low-level modules for direct access if needed
 try:
     from unlook.client.structured_light import (
         StereoStructuredLightScanner, 
@@ -50,8 +54,13 @@ try:
         StereoCameraParameters,
         create_scanning_demo
     )
+    from unlook.client.advanced_structured_light import (
+        EnhancedGrayCodeGenerator,
+        PhaseShiftGenerator,
+        EnhancedStereoScanner
+    )
 except ImportError as e:
-    logger.error(f"Error importing structured_light module: {e}")
+    logger.error(f"Error importing structured light modules: {e}")
     print("Please make sure you have the required dependencies installed:")
     print("  numpy, opencv-python")
     print("For full functionality, also install:")
@@ -732,10 +741,22 @@ def main():
     parser = argparse.ArgumentParser(description="Enhanced 3D scanning example")
     parser.add_argument("--output", "-o", type=str, default="./scans",
                         help="Base output directory for scan results")
+    parser.add_argument("--pattern", "-p", type=str, default="gray_code",
+                        choices=["gray_code", "phase_shift", "combined"],
+                        help="Type of structured light pattern to use")
+    parser.add_argument("--quality", "-q", type=str, default="medium",
+                        choices=["low", "medium", "high", "ultra"],
+                        help="Quality setting for the scan")
+    parser.add_argument("--interval", "-i", type=float, default=0.5,
+                        help="Time interval between pattern projections (seconds)")
     parser.add_argument("--synthetic", "-s", action="store_true",
                         help="Use synthetic test data instead of real cameras")
+    parser.add_argument("--visualize", "-v", action="store_true",
+                        help="Visualize the point cloud after scanning")
     parser.add_argument("--debug", "-d", action="store_true",
                         help="Enable debug mode with additional logging and diagnostics")
+    parser.add_argument("--basic", "-b", action="store_true",
+                        help="Use basic scanner instead of enhanced scanner")
     args = parser.parse_args()
     
     # Set logging level based on debug flag
@@ -744,62 +765,128 @@ def main():
         logger.setLevel(logging.DEBUG)
         logger.debug("Debug mode enabled")
     
-    # Create timestamped output directories
-    scan_dir, captures_dir, results_dir = create_timestamped_scan_folder(args.output)
+    # Create output directory if not exists
+    os.makedirs(args.output, exist_ok=True)
     
-    # Create UnLook client
-    client = UnlookClient()
+    # Log configuration
+    logger.info(f"Scan configuration:")
+    logger.info(f"  Pattern type: {args.pattern}")
+    logger.info(f"  Quality: {args.quality}")
+    logger.info(f"  Interval: {args.interval}s")
+    logger.info(f"  Output directory: {args.output}")
+    logger.info(f"  Scanner type: {'Basic' if args.basic else 'Enhanced'}")
     
     try:
-        # Discover scanners and connect
-        client.start_discovery()
-        logger.info("Waiting for scanners to be discovered...")
-        time.sleep(3.0)
+        # Use the simplified UnlookScanner class that abstracts the complexity
+        logger.info("Creating 3D scanner with enhanced algorithms")
         
-        scanners = client.get_discovered_scanners()
-        
-        if not scanners and not args.synthetic:
-            logger.error("No scanner found. Please make sure the UnLook scanner server is running.")
-            logger.info("Falling back to synthetic mode for demonstration purposes.")
-            args.synthetic = True
-        elif not args.synthetic:
-            # Connect to the first scanner
-            scanner_info = scanners[0]
-            logger.info(f"Connecting to scanner: {scanner_info.name} at {scanner_info.endpoint}")
+        if args.synthetic:
+            logger.info("Synthetic mode enabled - creating simulated scanner")
+            # In synthetic mode, we just demonstrate the API
+            scanner = UnlookScanner(use_enhanced_scanner=not args.basic)
             
-            if not client.connect(scanner_info):
+            # Create example point cloud
+            logger.info("Creating synthetic point cloud for demonstration")
+            
+            if OPEN3D_AVAILABLE:
+                # Create a basic sphere point cloud
+                sphere = o3d.geometry.TriangleMesh.create_sphere(radius=1.0, resolution=30)
+                pcd = sphere.sample_points_poisson_disk(number_of_points=5000)
+                
+                # Create mesh from point cloud
+                mesh = scanner.create_mesh(pcd, depth=9, smooth_iterations=3)
+                
+                # Save results to output directory
+                point_cloud_path = os.path.join(args.output, "synthetic_point_cloud.ply")
+                mesh_path = os.path.join(args.output, "synthetic_mesh.ply")
+                
+                scanner.save_scan(pcd, point_cloud_path)
+                scanner.save_mesh(mesh, mesh_path)
+                
+                logger.info(f"Saved synthetic results to {args.output}")
+                
+                # Visualize if requested
+                if args.visualize:
+                    o3d.visualization.draw_geometries([pcd], window_name="Synthetic Point Cloud")
+            else:
+                logger.error("open3d is required for synthetic mode")
+                
+        else:
+            # Connect to scanner automatically
+            logger.info("Connecting to scanner...")
+            scanner_type = "basic" if args.basic else "robust"
+            scanner = UnlookScanner.auto_connect(
+                timeout=5, 
+                use_default_calibration=True,
+                scanner_type=scanner_type
+            )
+            
+            if not scanner.is_connected:
                 logger.error("Failed to connect to scanner")
                 return
             
-            logger.info("Connected to scanner")
-        
-        # Set up the scanner
-        structured_light_scanner = setup_scanner(client, scan_dir)
-        
-        # Capture structured light images (or generate synthetic ones)
-        if args.synthetic:
-            logger.info("Using synthetic test data")
-            patterns = structured_light_scanner.generate_scan_patterns()
-            left_images, right_images = generate_test_images(patterns, captures_dir)
-        else:
-            logger.info("Capturing structured light images")
-            left_images, right_images = capture_structured_light_images(
-                client, structured_light_scanner, captures_dir
+            logger.info(f"Connected to scanner: {scanner.scanner_info.name}")
+            
+            # Perform scan with specified parameters
+            logger.info(f"Starting 3D scan with quality={args.quality}, pattern={args.pattern}")
+            
+            # Create timestamped output directory
+            timestamped_output = os.path.join(
+                args.output, 
+                f"scan_{time.strftime('%Y%m%d_%H%M%S')}_{args.pattern}_{args.quality}"
             )
-        
-        # Process the scans
-        process_scans(structured_light_scanner, left_images, right_images, results_dir)
-        
-        logger.info(f"3D scanning complete. Results saved to {scan_dir}")
+            
+            # Perform the scan
+            point_cloud = scanner.perform_3d_scan(
+                output_dir=timestamped_output,
+                mask_threshold=5,  # Default threshold
+                interval=args.interval,
+                visualize=args.visualize,
+                scanner_type=scanner_type,
+                scan_quality=args.quality,
+                pattern_type=args.pattern,
+                debug_output=True
+            )
+            
+            logger.info(f"Generated point cloud with {len(point_cloud.points)} points")
+            
+            # Create mesh if we have enough points
+            if len(point_cloud.points) >= 1000:
+                logger.info("Creating mesh from point cloud")
+                
+                # Adjust parameters based on quality
+                depth = 8  # Default
+                smooth_iterations = 2
+                
+                if args.quality == 'high':
+                    depth = 9
+                    smooth_iterations = 3
+                elif args.quality == 'ultra':
+                    depth = 10
+                    smooth_iterations = 5
+                
+                mesh = scanner.create_mesh(
+                    point_cloud, 
+                    depth=depth, 
+                    smooth_iterations=smooth_iterations
+                )
+                
+                # Save mesh
+                if hasattr(mesh, 'triangles') and len(mesh.triangles) > 0:
+                    mesh_path = os.path.join(timestamped_output, "scan_mesh.obj")
+                    scanner.save_mesh(mesh, mesh_path)
+                    logger.info(f"Saved mesh with {len(mesh.triangles)} triangles to {mesh_path}")
+            
+            # Disconnect from scanner
+            scanner.disconnect()
+            logger.info("Disconnected from scanner")
+            
+        logger.info("3D scanning complete")
         
     except Exception as e:
         logger.error(f"Error in enhanced 3D scanning: {e}")
         import traceback
         logger.error(traceback.format_exc())
-    finally:
-        if client.connected:
-            client.disconnect()
-            logger.info("Disconnected from scanner")
 
 
 if __name__ == "__main__":
