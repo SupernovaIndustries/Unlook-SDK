@@ -1,5 +1,5 @@
 """
-Configuration class for real-time 3D scanning.
+Configuration classes for 3D scanning.
 """
 
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
@@ -30,6 +30,249 @@ class ScanningMode(Enum):
     SINGLE = "single"          # One-time scan
     CONTINUOUS = "continuous"  # Continuous scanning
     TRIGGERED = "triggered"    # Scan on trigger
+
+
+class ScanConfig:
+    """
+    Configuration class for 3D scanning with the robust structured light scanner.
+    """
+    
+    def __init__(self):
+        """Initialize scanner configuration with default values."""
+        # Pattern generation settings
+        self.pattern_resolution = (1920, 1080)
+        self.num_gray_codes = 10
+        self.num_phase_shifts = 8
+        self.phase_shift_frequencies = [1, 8, 16]
+        
+        # Scanning settings
+        self.quality = ScanningQuality.HIGH
+        self.mode = ScanningMode.SINGLE
+        self.pattern_type = PatternType.ADVANCED_GRAY_CODE
+        
+        # Image acquisition settings
+        self.exposure_time = 10000  # in microseconds
+        self.gain = 1.0
+        self.image_size = (1280, 720)
+        self.color_mode = ColorMode.GRAYSCALE
+        
+        # Output settings
+        self.save_raw_images = True
+        self.output_directory = "scan_output"
+        self.save_debug_info = True
+        
+        # Processing settings
+        self.filter_points = True
+        self.mesh_quality = 9  # Poisson reconstruction depth
+        self.smoothing_iterations = 5
+        
+        # Advanced settings
+        self.custom_camera_ids = None
+        self.custom_pattern_sequence = None
+    
+    @classmethod
+    def create_preset(cls, quality: ScanningQuality) -> 'ScanConfig':
+        """
+        Create a configuration preset based on quality setting.
+        
+        Args:
+            quality: Quality preset to use
+            
+        Returns:
+            Configuration object with preset values
+        """
+        config = cls()
+        config.quality = quality
+        
+        # Adjust settings based on quality preset
+        if quality == ScanningQuality.LOW:
+            config.num_gray_codes = 8
+            config.num_phase_shifts = 4
+            config.phase_shift_frequencies = [1]
+            config.mesh_quality = 7
+            config.smoothing_iterations = 2
+        
+        elif quality == ScanningQuality.MEDIUM:
+            config.num_gray_codes = 10
+            config.num_phase_shifts = 4
+            config.phase_shift_frequencies = [1, 8]
+            config.mesh_quality = 8
+            config.smoothing_iterations = 3
+        
+        elif quality == ScanningQuality.HIGH:
+            config.num_gray_codes = 10
+            config.num_phase_shifts = 8
+            config.phase_shift_frequencies = [1, 8, 16]
+            config.mesh_quality = 9
+            config.smoothing_iterations = 5
+        
+        elif quality == ScanningQuality.ULTRA:
+            config.num_gray_codes = 12
+            config.num_phase_shifts = 12
+            config.phase_shift_frequencies = [1, 8, 16, 32]
+            config.mesh_quality = 10
+            config.smoothing_iterations = 7
+        
+        return config
+    
+    def set_image_size(self, width: int, height: int) -> 'ScanConfig':
+        """
+        Set the camera image size.
+        
+        Args:
+            width: Image width in pixels
+            height: Image height in pixels
+            
+        Returns:
+            Self for method chaining
+        """
+        self.image_size = (width, height)
+        return self
+    
+    def set_pattern_resolution(self, width: int, height: int) -> 'ScanConfig':
+        """
+        Set the projector pattern resolution.
+        
+        Args:
+            width: Pattern width in pixels
+            height: Pattern height in pixels
+            
+        Returns:
+            Self for method chaining
+        """
+        self.pattern_resolution = (width, height)
+        return self
+    
+    def set_camera_settings(self, exposure_time: int = None, gain: float = None) -> 'ScanConfig':
+        """
+        Set camera exposure and gain settings.
+        
+        Args:
+            exposure_time: Exposure time in microseconds
+            gain: Camera gain value
+            
+        Returns:
+            Self for method chaining
+        """
+        if exposure_time is not None:
+            self.exposure_time = exposure_time
+        
+        if gain is not None:
+            self.gain = gain
+        
+        return self
+    
+    def set_gray_code_settings(self, num_codes: int) -> 'ScanConfig':
+        """
+        Set Gray code settings.
+        
+        Args:
+            num_codes: Number of Gray code patterns
+            
+        Returns:
+            Self for method chaining
+        """
+        self.num_gray_codes = num_codes
+        return self
+    
+    def set_phase_shift_settings(self, num_shifts: int, frequencies: List[int]) -> 'ScanConfig':
+        """
+        Set phase shift settings.
+        
+        Args:
+            num_shifts: Number of phase shifts per frequency
+            frequencies: List of frequencies to use
+            
+        Returns:
+            Self for method chaining
+        """
+        self.num_phase_shifts = num_shifts
+        self.phase_shift_frequencies = frequencies
+        return self
+    
+    def set_mesh_settings(self, quality: int = None, smoothing: int = None) -> 'ScanConfig':
+        """
+        Set mesh generation settings.
+        
+        Args:
+            quality: Mesh quality (Poisson reconstruction depth)
+            smoothing: Number of smoothing iterations
+            
+        Returns:
+            Self for method chaining
+        """
+        if quality is not None:
+            self.mesh_quality = quality
+        
+        if smoothing is not None:
+            self.smoothing_iterations = smoothing
+        
+        return self
+    
+    def set_output_settings(self, 
+                         save_raw_images: bool = None, 
+                         save_debug_info: bool = None,
+                         output_directory: str = None) -> 'ScanConfig':
+        """
+        Set output settings.
+        
+        Args:
+            save_raw_images: Whether to save raw captured images
+            save_debug_info: Whether to save debug information
+            output_directory: Directory for saving results
+            
+        Returns:
+            Self for method chaining
+        """
+        if save_raw_images is not None:
+            self.save_raw_images = save_raw_images
+        
+        if save_debug_info is not None:
+            self.save_debug_info = save_debug_info
+        
+        if output_directory is not None:
+            self.output_directory = output_directory
+        
+        return self
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert configuration to a dictionary.
+        
+        Returns:
+            Dictionary representation of the configuration
+        """
+        config_dict = {
+            "pattern_resolution": self.pattern_resolution,
+            "num_gray_codes": self.num_gray_codes,
+            "num_phase_shifts": self.num_phase_shifts,
+            "phase_shift_frequencies": self.phase_shift_frequencies,
+            "quality": self.quality.value,
+            "mode": self.mode.value,
+            "pattern_type": self.pattern_type.value,
+            "exposure_time": self.exposure_time,
+            "gain": self.gain,
+            "image_size": self.image_size,
+            "save_raw_images": self.save_raw_images,
+            "output_directory": self.output_directory,
+            "save_debug_info": self.save_debug_info,
+            "filter_points": self.filter_points,
+            "mesh_quality": self.mesh_quality,
+            "smoothing_iterations": self.smoothing_iterations,
+        }
+        
+        # Add enum values correctly
+        if self.color_mode is not None:
+            config_dict["color_mode"] = self.color_mode.value
+        
+        # Add conditionally present settings
+        if self.custom_camera_ids is not None:
+            config_dict["custom_camera_ids"] = self.custom_camera_ids
+        
+        if self.custom_pattern_sequence is not None:
+            config_dict["custom_pattern_sequence"] = self.custom_pattern_sequence
+        
+        return config_dict
 
 
 class RealTimeScannerConfig:

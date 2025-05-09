@@ -216,82 +216,111 @@ class EnhancedGrayCodeGenerator:
                 # Already grayscale, just add a copy
                 grayscale_images.append(img.copy())
 
-        # Extract white and black images from grayscale images
-        white_img = grayscale_images[0]
-        black_img = grayscale_images[1]
+        # Apply contrast normalization to enhance patterns
+        normalized_images = []
+        for img in grayscale_images:
+            # Apply adaptive histogram equalization for better contrast
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            enhanced = clahe.apply(img)
+            normalized_images.append(enhanced)
 
-        # Store grayscale versions for debugging
-        white_img_gray = white_img
-        black_img_gray = black_img
+        # Extract white and black images from normalized images
+        white_img = normalized_images[0]
+        black_img = normalized_images[1]
 
-        # Compute shadow mask
+        # Compute shadow mask - store for debugging
         mask = self._compute_shadow_mask(black_img, white_img)
+        # Save the raw difference as class attribute for debug visualization
+        self.raw_diff = cv2.absdiff(white_img, black_img)
 
-        # Extract pattern images (already in grayscale) (starting from index 2)
+        # Store enhanced mask information for debugging
+        self.shadow_mask = mask.copy()
+
+        # Extract pattern images (starting from index 2)
         # Handle case where we have fewer patterns than expected
-        num_patterns = min(2 * (self.bits_x + self.bits_y), len(grayscale_images) - 2)
-        pattern_images = grayscale_images[2:2 + num_patterns]
+        num_patterns = min(2 * (self.bits_x + self.bits_y), len(normalized_images) - 2)
+        pattern_images = normalized_images[2:2 + num_patterns]
         logger.info(f"Using {len(pattern_images)} pattern images for decoding")
 
-        # No need to convert again since all images are already grayscale
-        gray_pattern_images = pattern_images
-        
         # Get image dimensions
         height, width = mask.shape
-        
+
         # Initialize projector correspondence map
         cam_proj = np.zeros((height, width, 2), dtype=np.float32)
-        
-        # Process each pixel
+
+        # Create mask for tracking valid bits
+        self.valid_bits_mask = np.zeros((height, width), dtype=bool)
+        self.ambiguous_bits_mask = np.zeros((height, width), dtype=bool)
+
+        # Process each pixel with enhanced noise handling
         for y in range(height):
             for x in range(width):
                 if mask[y, x] == 0:
                     continue  # Skip shadowed pixels
-                
+
+                # Track valid and ambiguous bits for this pixel
+                valid_bits_x = 0
+                valid_bits_y = 0
+
                 # Decode X coordinate (horizontal patterns)
                 x_code = 0
                 for bit in range(self.bits_x):
                     # Get normal pattern and its inverse for this bit
                     idx = bit * 2
-                    if idx < len(gray_pattern_images) and idx + 1 < len(gray_pattern_images):
-                        normal = gray_pattern_images[idx][y, x]
-                        inverse = gray_pattern_images[idx + 1][y, x]
+                    if idx < len(pattern_images) and idx + 1 < len(pattern_images):
+                        normal = int(pattern_images[idx][y, x])
+                        inverse = int(pattern_images[idx + 1][y, x])
 
-                        # Check if difference is significant enough
-                        if abs(int(normal) - int(inverse)) > self.min_brightness:
+                        # Enhanced contrast checking - lower threshold for more points
+                        min_brightness = max(3, self.min_brightness)
+                        if abs(normal - inverse) > min_brightness:
                             # Set bit if normal is brighter than inverse
                             if normal > inverse:
                                 x_code |= (1 << bit)
+                            valid_bits_x += 1
+                        # Mark as ambiguous if the difference is borderline
+                        elif abs(normal - inverse) > min_brightness/2:
+                            self.ambiguous_bits_mask[y, x] = True
                     else:
                         # Not enough patterns, skip this bit
-                        logger.debug(f"Skipping X bit {bit} due to missing patterns")
+                        pass
 
                 # Decode Y coordinate (vertical patterns)
                 y_code = 0
                 for bit in range(self.bits_y):
                     # Get normal pattern and its inverse for this bit
                     idx = 2 * self.bits_x + bit * 2
-                    if idx < len(gray_pattern_images) and idx + 1 < len(gray_pattern_images):
-                        normal = gray_pattern_images[idx][y, x]
-                        inverse = gray_pattern_images[idx + 1][y, x]
+                    if idx < len(pattern_images) and idx + 1 < len(pattern_images):
+                        normal = int(pattern_images[idx][y, x])
+                        inverse = int(pattern_images[idx + 1][y, x])
 
-                        # Check if difference is significant enough
-                        if abs(int(normal) - int(inverse)) > self.min_brightness:
+                        # Enhanced contrast checking - lower threshold for more points
+                        min_brightness = max(3, self.min_brightness)
+                        if abs(normal - inverse) > min_brightness:
                             # Set bit if normal is brighter than inverse
                             if normal > inverse:
                                 y_code |= (1 << bit)
+                            valid_bits_y += 1
                     else:
                         # Not enough patterns, skip this bit
-                        logger.debug(f"Skipping Y bit {bit} due to missing patterns")
-                
-                # Convert from Gray code to binary
-                x_proj = self._gray_to_binary(x_code)
-                y_proj = self._gray_to_binary(y_code)
-                
-                # Store projector coordinates if within bounds
-                if 0 <= x_proj < self.proj_w and 0 <= y_proj < self.proj_h:
-                    cam_proj[y, x, 0] = y_proj  # Row (V)
-                    cam_proj[y, x, 1] = x_proj  # Column (U)
+                        pass
+
+                # Consider a pixel valid if it has enough valid bits
+                # More lenient check - require at least half the bits to be valid
+                min_valid_bits_x = max(1, self.bits_x // 2)
+                min_valid_bits_y = max(1, self.bits_y // 2)
+
+                if valid_bits_x >= min_valid_bits_x and valid_bits_y >= min_valid_bits_y:
+                    self.valid_bits_mask[y, x] = True
+
+                    # Convert from Gray code to binary
+                    x_proj = self._gray_to_binary(x_code)
+                    y_proj = self._gray_to_binary(y_code)
+
+                    # Store projector coordinates with relaxed bounds checking
+                    if 0 <= x_proj < self.proj_w and 0 <= y_proj < self.proj_h:
+                        cam_proj[y, x, 0] = y_proj  # Row (V)
+                        cam_proj[y, x, 1] = x_proj  # Column (U)
         
         return cam_proj, mask
     
@@ -1022,85 +1051,129 @@ class EnhancedStereoScanner:
                              output_dir: Optional[str] = None) -> np.ndarray:
         """
         Find correspondences between left and right cameras using projector as intermediary.
-        
+
         Args:
             left_cam_proj: Left camera-projector correspondence
             right_cam_proj: Right camera-projector correspondence
             mask: Combined mask
-            
+            output_dir: Optional output directory for debug information
+
         Returns:
             Array of 3D points
         """
         height, width = mask.shape
         points_left = []
         points_right = []
-        
-        # Enhanced correspondence matching with spatial neighborhood and epipolar constraints
-        
-        # Build projector-to-right camera map with spatial neighborhood
+
+        # Count mask pixels for debugging
+        valid_pixels = np.sum(mask)
+        logger.info(f"Finding correspondences with {valid_pixels} valid pixels in mask")
+
+        if valid_pixels < 100:
+            logger.warning("Very few valid pixels in mask, may not find good correspondences")
+
+        # Enhanced correspondence matching with more relaxed spatial neighborhood
+
+        # Build projector-to-right camera map with larger spatial neighborhood for better matching
         proj_to_right = {}
         for y in range(height):
             for x in range(width):
                 if mask[y, x] == 0:
                     continue
-                
+
                 # Get projector coordinates
                 proj_v = int(right_cam_proj[y, x, 0])
                 proj_u = int(right_cam_proj[y, x, 1])
-                
-                if proj_v <= 0 or proj_u <= 0 or proj_v >= self.projector_height or proj_u >= self.projector_width:
+
+                # More relaxed bounds checking
+                if proj_v < 0 or proj_u < 0 or proj_v >= self.projector_height or proj_u >= self.projector_width:
                     continue
-                
-                # Store with neighborhood
-                for dv in [-1, 0, 1]:
-                    for du in [-1, 0, 1]:
+
+                # Store with larger neighborhood for better matching
+                for dv in [-2, -1, 0, 1, 2]:  # Increased from [-1,0,1]
+                    for du in [-2, -1, 0, 1, 2]:  # Increased from [-1,0,1]
                         key = (proj_v + dv, proj_u + du)
                         if key not in proj_to_right:
                             proj_to_right[key] = []
                         proj_to_right[key].append((x, y))
-        
-        # Find correspondences
+
+        # Log how many projector keys we found
+        logger.info(f"Built projector-to-right map with {len(proj_to_right)} distinct coordinates")
+
+        # Find correspondences with more relaxed epipolar constraint
         for y in range(height):
             for x in range(width):
                 if mask[y, x] == 0:
                     continue
-                
+
                 # Get projector coordinates for left camera
                 proj_v = int(left_cam_proj[y, x, 0])
                 proj_u = int(left_cam_proj[y, x, 1])
-                
-                if proj_v <= 0 or proj_u <= 0 or proj_v >= self.projector_height or proj_u >= self.projector_width:
+
+                # More relaxed bounds checking
+                if proj_v < 0 or proj_u < 0 or proj_v >= self.projector_height or proj_u >= self.projector_width:
                     continue
-                
+
                 # Search for matches
                 key = (proj_v, proj_u)
+
+                # First try exact match
                 if key in proj_to_right and proj_to_right[key]:
                     # Select best match (closest to epipolar line)
                     # For rectified images, epipolar lines are horizontal
                     best_match = None
                     min_v_diff = float('inf')
-                    
+
                     for rx, ry in proj_to_right[key]:
                         # In rectified images, corresponding points should have similar y-coordinates
                         v_diff = abs(y - ry)
                         if v_diff < min_v_diff:
                             min_v_diff = v_diff
                             best_match = (rx, ry)
-                    
-                    # Use match only if within epipolar tolerance
-                    if min_v_diff <= 3:  # 3-pixel tolerance for epipolar constraint
+
+                    # More relaxed epipolar constraint (5 pixels instead of 3)
+                    if min_v_diff <= 5:  # Increased tolerance from 3 to 5 pixels
                         right_x, right_y = best_match
                         points_left.append([x, y])
                         points_right.append([right_x, right_y])
+                # If no exact match found, try nearby coordinates for more robust matching
+                elif len(points_left) < 50:  # Only try this if we don't have many points yet
+                    # Try neighborhood keys for more matches
+                    for dv in [-1, 0, 1]:
+                        for du in [-1, 0, 1]:
+                            alt_key = (proj_v + dv, proj_u + du)
+                            if alt_key != key and alt_key in proj_to_right and proj_to_right[alt_key]:
+                                # Find best match along epipolar line
+                                best_match = None
+                                min_v_diff = float('inf')
+
+                                for rx, ry in proj_to_right[alt_key]:
+                                    v_diff = abs(y - ry)
+                                    if v_diff < min_v_diff:
+                                        min_v_diff = v_diff
+                                        best_match = (rx, ry)
+
+                                # Very relaxed constraint for these secondary matches
+                                if min_v_diff <= 10:  # More lenient threshold for neighborhood matches
+                                    right_x, right_y = best_match
+                                    points_left.append([x, y])
+                                    points_right.append([right_x, right_y])
+                                    break  # Only take one match from neighborhood
+                        if len(points_left) > 0 and points_left[-1][0] == x and points_left[-1][1] == y:
+                            break  # Stop if we found a match
         
         # Convert to numpy arrays
         points_left = np.array(points_left, dtype=np.float32).reshape(-1, 1, 2)
         points_right = np.array(points_right, dtype=np.float32).reshape(-1, 1, 2)
         
         if len(points_left) < 10:
-            logger.warning("Too few correspondences for triangulation")
-            return np.array([])
-        
+            logger.warning(f"Too few correspondences for triangulation: {len(points_left)} points found, need at least 10")
+            # Instead of returning empty array, return the points we have - even a few points are better than none
+            if len(points_left) > 0:
+                logger.info(f"Continuing with limited points: {len(points_left)}")
+            else:
+                return np.array([])
+
         logger.info(f"Found {len(points_left)} corresponding points")
 
         # Save correspondence visualization if output directory provided
@@ -1134,21 +1207,58 @@ class EnhancedStereoScanner:
             except Exception as e:
                 logger.warning(f"Failed to create correspondence visualization: {e}")
         
-        # Triangulate points
-        points_4d = cv2.triangulatePoints(self.P1, self.P2, points_left, points_right)
-        points_4d = points_4d.T
-        
-        # Convert from homogeneous to 3D
-        points_3d = points_4d[:, :3] / points_4d[:, 3:]
-        
-        # Filter by distance
-        dist_from_origin = np.linalg.norm(points_3d, axis=1)
-        valid_dist_mask = dist_from_origin < 5000  # Adjust based on your scene scale
-        
-        points_3d = points_3d[valid_dist_mask]
-        logger.info(f"After distance filtering: {len(points_3d)} points")
-        
-        return points_3d
+        # Triangulate points with error handling
+        try:
+            if len(points_left) == 0 or len(points_right) == 0:
+                logger.warning("No correspondences found for triangulation")
+                return np.array([])
+
+            # Triangulate points
+            points_4d = cv2.triangulatePoints(self.P1, self.P2, points_left, points_right)
+            points_4d = points_4d.T
+
+            # Convert from homogeneous to 3D
+            # Handle divide by zero
+            valid_w = np.abs(points_4d[:, 3]) > 1e-8
+            if not np.any(valid_w):
+                logger.warning("Invalid homogeneous coordinates (all w ≈ 0)")
+                return np.array([])
+
+            # Only use points with valid w coordinates
+            points_4d_valid = points_4d[valid_w]
+            if len(points_4d_valid) < 1:
+                logger.warning("No valid homogeneous coordinates after filtering")
+                return np.array([])
+
+            # Convert to 3D (divide by w)
+            points_3d = points_4d_valid[:, :3] / points_4d_valid[:, 3:]
+
+            # Check for NaN or infinite values
+            valid_points = np.all(np.isfinite(points_3d), axis=1)
+            if not np.any(valid_points):
+                logger.warning("No valid points after filtering NaN/Inf values")
+                return np.array([])
+
+            points_3d = points_3d[valid_points]
+
+            # Filter by distance - more lenient bounds
+            dist_from_origin = np.linalg.norm(points_3d, axis=1)
+            max_dist = 10000  # More lenient than before (was 5000)
+            valid_dist_mask = dist_from_origin < max_dist
+
+            if not np.any(valid_dist_mask):
+                logger.warning("No points within valid distance range")
+                return np.array([])
+
+            points_3d = points_3d[valid_dist_mask]
+            logger.info(f"After filtering: {len(points_3d)} points from {len(points_left)} correspondences")
+
+            return points_3d
+
+        except Exception as e:
+            logger.error(f"Error during triangulation: {e}")
+            # Return empty array on error
+            return np.array([])
     
     def _filter_point_cloud(self, pcd: o3dg.PointCloud, 
                           nb_neighbors: int = 30, 

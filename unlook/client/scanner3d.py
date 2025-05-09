@@ -580,65 +580,70 @@ class UnlookScanner:
         # Set up projector
         projector = self.client.projector
 
-        # Configure projector with maximum intensity mode for enhanced scanner
+        # Configure projector for optimal pattern visibility
         try:
             if use_scanner_type == "enhanced":
-                # Set projector to maximum intensity mode with enhanced settings
-                # Based on observation of underexposed patterns, we need maximum possible brightness
-
-                # Apply multiple brightness-enhancing settings that might be supported by the hardware
-                enhanced_config = {
-                    # Standard settings
-                    "brightness": 100,            # Maximum brightness (0-100)
-                    "high_intensity_mode": True,  # Enable high intensity mode
-
-                    # Additional settings that might be available on some projectors
-                    "led_current": 255,           # Maximum LED current if available
-                    "laser_power": 100,           # Maximum laser power for laser projectors
-                    "contrast": 100,              # Maximum contrast
-                    "power_mode": "high",         # High power mode
-                    "eco_mode": False,            # Disable eco mode
-
-                    # Pattern enhancement settings
-                    "pattern_brightness_boost": True,  # Enable pattern brightness boost if available
-                    "white_level": 255,               # Maximum white level
-                    "black_level": 0                  # Minimum black level for maximum contrast
-                }
-
-                # Send direct configuration message
-                projector.client.send_message(
-                    MessageType.PROJECTOR_CONFIG,
-                    enhanced_config
-                )
-
-                # Try additional method specific to DLP
+                # Prepare the projector using only supported message types
                 try:
-                    projector.client.send_message(
-                        MessageType.PROJECTOR_DLP_CONFIG,
-                        {
-                            "led_current_red": 255,    # Maximum red LED current
-                            "led_current_green": 255,  # Maximum green LED current
-                            "led_current_blue": 255,   # Maximum blue LED current
-                            "sequence_mode": "high_brightness"  # Use high brightness sequence
-                        }
-                    )
-                except Exception:
-                    # This is expected to fail on non-DLP projectors
-                    pass
+                    # Set the projector to test pattern mode for optimal pattern projection
+                    projector.set_mode("TestPatternGenerator")
+                    logger.info("Set projector to test pattern mode for enhanced scanning")
 
-                logger.info("Configured projector for maximum intensity mode with enhanced settings")
+                    # For maximum brightness, display a pure white pattern first
+                    # This helps "warm up" the projector to full brightness
+                    success = projector.show_solid_field("White")
+                    if success:
+                        logger.info("Displayed reference white field to prepare projector")
+                        # Wait a moment for projector to adjust
+                        time.sleep(0.25)
+
+                    # Then show black as baseline for good contrast
+                    success = projector.show_solid_field("Black")
+                    if success:
+                        logger.info("Displayed reference black field to prepare projector")
+                        # Wait a moment for projector to adjust
+                        time.sleep(0.25)
+
+                    # Display a test pattern with lines to ensure projector is ready
+                    # for detailed structured light patterns
+                    if scan_quality in ["high", "ultra"]:
+                        # For high quality, use finer lines to warm up the projector
+                        success = projector.show_vertical_lines(
+                            foreground_color="White",
+                            background_color="Black",
+                            foreground_width=4,
+                            background_width=4
+                        )
+                        if success:
+                            logger.info("Displayed fine test pattern to prepare projector for high quality scan")
+                            time.sleep(0.2)
+                    else:
+                        # For other quality settings, use standard lines
+                        success = projector.show_horizontal_lines(
+                            foreground_color="White",
+                            background_color="Black",
+                            foreground_width=8,
+                            background_width=8
+                        )
+                        if success:
+                            logger.info("Displayed test pattern to prepare projector")
+                            time.sleep(0.2)
+
+                    logger.info("Successfully prepared projector for enhanced scanning")
+                except Exception as mode_err:
+                    logger.warning(f"Error preparing projector: {mode_err}")
         except Exception as e:
-            logger.warning(f"Failed to set projector maximum intensity mode: {e}")
+            logger.warning(f"Failed to prepare projector for scanning: {e}")
 
-            # Fallback method - try basic brightness setting
+            # Fallback method - simple preparation
             try:
-                projector.client.send_message(
-                    MessageType.PROJECTOR_BRIGHTNESS,
-                    {"brightness": 100}
-                )
-                logger.info("Applied fallback brightness setting to projector")
+                projector.set_mode("TestPatternGenerator")
+                projector.show_solid_field("White")
+                time.sleep(0.2)
+                projector.show_solid_field("Black")
+                logger.info("Applied fallback projector preparation")
             except Exception:
-                logger.warning("Failed to apply even basic brightness settings to projector")
+                logger.warning("Failed to prepare projector")
 
         # Set projector to black to start
         projector.show_solid_field("Black")
@@ -708,19 +713,23 @@ class UnlookScanner:
                     # Try direct method to set exposure and gain
                     camera.set_exposure(cam_id, exposure, gain=camera_config["gain"], auto_exposure=False, auto_gain=False)
 
-                # Force a direct apply command to ensure settings take effect on hardware
+                # Let's try to make sure settings are applied by configuring camera again
                 try:
-                    # Send direct apply command to server
-                    camera.client.send_message(
-                        MessageType.CAMERA_APPLY_SETTINGS,
-                        {
-                            "camera_id": cam_id,
-                            "force_hardware_update": True
-                        }
-                    )
-                    logger.info(f"Sent direct hardware settings update to camera {cam_id}")
+                    # Instead of using the unsupported CAMERA_APPLY_SETTINGS message type,
+                    # we'll use the standard configuration method again to reinforce our settings
+                    success = camera.configure(cam_id, camera_config)
+                    if success:
+                        logger.info(f"Applied additional configuration to camera {cam_id} to ensure settings take effect")
+                    else:
+                        # Let's try one more time with a delay
+                        time.sleep(0.1)
+                        success = camera.configure(cam_id, camera_config)
+                        if success:
+                            logger.info(f"Applied delayed configuration to camera {cam_id}")
+                        else:
+                            logger.warning(f"Failed to apply additional configuration to camera {cam_id}")
                 except Exception as e:
-                    logger.warning(f"Failed to send direct settings update: {e}")
+                    logger.warning(f"Failed to ensure camera settings applied: {e}")
         except Exception as e:
             logger.warning(f"Camera configuration failed: {e}")
             
@@ -997,66 +1006,57 @@ class UnlookScanner:
         # Set up projector
         projector = self.client.projector
 
-        # Configure projector with maximum possible intensity for single camera mode
-        # Single camera mode requires even more brightness than stereo mode
+        # Configure projector for maximum visibility in single camera mode
+        # Single camera mode requires good pattern contrast
         try:
-            # Set projector to maximum intensity mode with enhanced settings
-            # Based on observation of underexposed patterns, we need maximum possible brightness
-
-            # Apply multiple brightness-enhancing settings that might be supported by the hardware
-            enhanced_config = {
-                # Standard settings - maximum values for all
-                "brightness": 100,            # Maximum brightness (0-100)
-                "high_intensity_mode": True,  # Enable high intensity mode
-
-                # Additional settings that might be available on some projectors
-                "led_current": 255,           # Maximum LED current if available
-                "laser_power": 100,           # Maximum laser power for laser projectors
-                "contrast": 100,              # Maximum contrast
-                "power_mode": "high",         # High power mode
-                "eco_mode": False,            # Disable eco mode
-
-                # Pattern enhancement settings - critical for single camera structured light
-                "pattern_brightness_boost": True,  # Enable pattern brightness boost if available
-                "white_level": 255,               # Maximum white level
-                "black_level": 0,                 # Minimum black level for maximum contrast
-                "special_mode": "structured_light" # Enable any special structured light mode if available
-            }
-
-            # Send direct configuration message
-            projector.client.send_message(
-                MessageType.PROJECTOR_CONFIG,
-                enhanced_config
-            )
-
-            # Try additional method specific to DLP
+            # Prepare the projector using only supported message types and methods
+            # Set projector to test pattern mode for pattern projection
             try:
-                projector.client.send_message(
-                    MessageType.PROJECTOR_DLP_CONFIG,
-                    {
-                        "led_current_red": 255,    # Maximum red LED current
-                        "led_current_green": 255,  # Maximum green LED current
-                        "led_current_blue": 255,   # Maximum blue LED current
-                        "sequence_mode": "high_brightness"  # Use high brightness sequence
-                    }
-                )
-            except Exception:
-                # This is expected to fail on non-DLP projectors
-                pass
+                # Set the projector to test pattern mode
+                projector.set_mode("TestPatternGenerator")
+                logger.info("Set projector to test pattern mode for single camera scanning")
 
-            logger.info("Configured projector for maximum intensity mode for single camera scanning")
+                # For maximum brightness, we'll first show a pure white pattern
+                # This can help "warm up" the projector to full brightness and prepare the hardware
+                success = projector.show_solid_field("White")
+                if success:
+                    logger.info("Displayed reference white field to prepare projector")
+                    # Wait a moment for projector to adjust
+                    time.sleep(0.3)  # Slightly longer wait for single camera mode
+
+                # Then show a black pattern for contrast optimization
+                success = projector.show_solid_field("Black")
+                if success:
+                    logger.info("Displayed reference black field to prepare projector")
+                    # Wait a moment for projector to adjust
+                    time.sleep(0.3)  # Slightly longer wait for single camera mode
+
+                # For single camera mode, we'll also display a test pattern with lines
+                # to ensure the projector is properly warmed up for fine patterns
+                success = projector.show_horizontal_lines(
+                    foreground_color="White",
+                    background_color="Black",
+                    foreground_width=8,   # Wider white lines for better visibility
+                    background_width=8    # Equal spacing for good contrast
+                )
+                if success:
+                    logger.info("Displayed test line pattern to prepare projector")
+                    time.sleep(0.2)
+
+                logger.info("Successfully prepared projector for single camera scanning")
+            except Exception as mode_err:
+                logger.warning(f"Error preparing projector for single camera scanning: {mode_err}")
         except Exception as e:
-            logger.warning(f"Failed to set projector maximum intensity mode: {e}")
+            logger.warning(f"Failed to prepare projector for single camera scanning: {e}")
 
-            # Fallback method - try basic brightness setting
+            # Fallback method - basic preparation
             try:
-                projector.client.send_message(
-                    MessageType.PROJECTOR_BRIGHTNESS,
-                    {"brightness": 100}
-                )
-                logger.info("Applied fallback brightness setting to projector")
+                projector.set_mode("TestPatternGenerator")
+                projector.show_solid_field("White")
+                time.sleep(0.2)
+                logger.info("Applied fallback projector preparation for single camera scanning")
             except Exception:
-                logger.warning("Failed to apply even basic brightness settings to projector")
+                logger.warning("Failed to prepare projector for single camera scanning")
 
         # Set projector to black to start
         projector.show_solid_field("Black")
@@ -1117,19 +1117,28 @@ class UnlookScanner:
                 # Try direct method to set exposure and gain
                 camera.set_exposure(camera_id, exposure, gain=gain, auto_exposure=False, auto_gain=False)
 
-            # Force a direct apply command to ensure settings take effect on hardware
+            # Ensure settings are applied by configuring camera again
             try:
-                # Send direct apply command to server
-                camera.client.send_message(
-                    MessageType.CAMERA_APPLY_SETTINGS,
-                    {
-                        "camera_id": camera_id,
-                        "force_hardware_update": True
-                    }
-                )
-                logger.info(f"Sent direct hardware settings update to camera {camera_id}")
+                # Instead of using the unsupported CAMERA_APPLY_SETTINGS message type,
+                # we'll apply the configuration again to reinforce settings
+                success = camera.configure(camera_id, camera_config)
+                if success:
+                    logger.info(f"Applied additional configuration to camera {camera_id} to ensure settings take effect")
+                else:
+                    # Try once more with a delay
+                    time.sleep(0.1)
+                    success = camera.configure(camera_id, camera_config)
+                    if success:
+                        logger.info(f"Applied delayed configuration to camera {camera_id}")
+                    else:
+                        logger.warning(f"Failed to apply additional configuration to camera {camera_id}")
+
+                # For single camera mode, we need to ensure good exposure
+                # Try setting exposure directly one more time
+                camera.set_exposure(camera_id, exposure, gain=gain, auto_exposure=False, auto_gain=False)
+                logger.info(f"Reinforced exposure and gain settings for single camera mode")
             except Exception as e:
-                logger.warning(f"Failed to send direct settings update: {e}")
+                logger.warning(f"Failed to ensure camera settings applied: {e}")
         except Exception as e:
             logger.warning(f"Camera configuration failed: {e}")
 
@@ -1256,43 +1265,8 @@ class UnlookScanner:
             # For all structured light patterns, we want to ensure maximum possible visibility
             # This helps significantly with pattern detection on the object
 
-            # Before each pattern, boost projector settings to maximum to ensure pattern visibility
-            try:
-                # Adjust projector settings based on pattern type for optimal visibility
-                if 'white' in pattern_name or 'black' in pattern_name:
-                    # For reference patterns, ensure maximum contrast and brightness
-                    projector.client.send_message(
-                        MessageType.PROJECTOR_CONFIG,
-                        {
-                            "contrast": 100,       # Maximum contrast
-                            "brightness": 100,     # Maximum brightness
-                            "led_current": 255,    # Maximum LED current
-                            "white_level": 255,    # Maximum white level for white pattern
-                            "black_level": 0       # Minimum black level for black pattern
-                        }
-                    )
-                elif 'gray_code' in pattern_name or 'phase' in pattern_name:
-                    # For actual scanning patterns, optimize specifically for pattern visibility
-                    # Higher brightness makes pattern visible on darker objects
-                    pattern_settings = {
-                        "contrast": 100,            # Maximum contrast for strong black/white differentiation
-                        "brightness": 100,          # Maximum brightness for visibility on dark objects
-                        "pattern_enhancement": True,  # Enable any special pattern enhancement modes
-                        "led_current": 255          # Maximum LED current for brightest possible patterns
-                    }
-
-                    # For phase patterns, even higher brightness if possible
-                    if 'phase' in pattern_name:
-                        pattern_settings["brightness_boost"] = True
-
-                    projector.client.send_message(
-                        MessageType.PROJECTOR_CONFIG,
-                        pattern_settings
-                    )
-
-                logger.debug(f"Optimized projector settings for pattern {idx}: {pattern_name}")
-            except Exception as e:
-                logger.warning(f"Failed to optimize projector settings for pattern: {e}")
+            # NOTE: The previous version tried to use PROJECTOR_CONFIG which isn't supported
+            # We'll use the standard projector methods which are supported by the server
 
             if pattern_type == "raw_image" and 'image' in pattern:
                 # For raw images with binary data, try to use direct image display if available
@@ -1310,8 +1284,19 @@ class UnlookScanner:
             if pattern_type == "raw_image":
                 # For raw images, we approximate with built-in patterns
                 if 'white' in pattern_name:
+                    # For white reference pattern, adjust for maximum brightness
+                    # First set operating mode to test pattern
+                    try:
+                        projector.set_mode("TestPatternGenerator")
+                    except Exception:
+                        pass
                     projector.show_solid_field("White")
                 elif 'black' in pattern_name:
+                    # For black reference pattern
+                    try:
+                        projector.set_mode("TestPatternGenerator")
+                    except Exception:
+                        pass
                     projector.show_solid_field("Black")
                 elif 'gray_code_x' in pattern_name or 'horizontal' in pattern_name:
                     # For horizontal Gray code patterns, use fine horizontal lines
@@ -1338,11 +1323,22 @@ class UnlookScanner:
                     fg_color = "Black" if is_inverse else "White"
                     bg_color = "White" if is_inverse else "Black"
 
+                    # Use larger foreground width for better visibility
+                    # This compensates for the lack of direct brightness control
+                    if not is_inverse:
+                        # For regular patterns, make white lines wider
+                        fg_width = width + 1
+                        bg_width = max(1, width - 1)
+                    else:
+                        # For inverse patterns, make black lines thinner
+                        fg_width = max(1, width - 1)
+                        bg_width = width + 1
+
                     projector.show_horizontal_lines(
                         foreground_color=fg_color,
                         background_color=bg_color,
-                        foreground_width=width,
-                        background_width=width
+                        foreground_width=fg_width,
+                        background_width=bg_width
                     )
                 elif 'gray_code_y' in pattern_name or 'vertical' in pattern_name:
                     # For vertical Gray code patterns, use fine vertical lines
@@ -1369,11 +1365,22 @@ class UnlookScanner:
                     fg_color = "Black" if is_inverse else "White"
                     bg_color = "White" if is_inverse else "Black"
 
+                    # Use larger foreground width for better visibility
+                    # This compensates for the lack of direct brightness control
+                    if not is_inverse:
+                        # For regular patterns, make white lines wider
+                        fg_width = width + 1
+                        bg_width = max(1, width - 1)
+                    else:
+                        # For inverse patterns, make black lines thinner
+                        fg_width = max(1, width - 1)
+                        bg_width = width + 1
+
                     projector.show_vertical_lines(
                         foreground_color=fg_color,
                         background_color=bg_color,
-                        foreground_width=width,
-                        background_width=width
+                        foreground_width=fg_width,
+                        background_width=bg_width
                     )
                 elif 'checkerboard' in pattern_name:
                     # Use a checkerboard pattern
@@ -1397,12 +1404,15 @@ class UnlookScanner:
                             except (IndexError, ValueError):
                                 pass
                         # Adjust line width based on frequency
+                        # Make white lines thicker for better visibility
                         width = max(1, int(64 / freq))
+                        fw_width = width + 1  # Slightly wider white lines for better visibility
+                        bg_width = max(1, width - 1)  # Slightly narrower black gaps
                         projector.show_horizontal_lines(
                             foreground_color="White",
                             background_color="Black",
-                            foreground_width=width,
-                            background_width=width
+                            foreground_width=fw_width,
+                            background_width=bg_width
                         )
                     else:
                         # Vertical stripes of varying widths
@@ -1416,12 +1426,15 @@ class UnlookScanner:
                             except (IndexError, ValueError):
                                 pass
                         # Adjust line width based on frequency
+                        # Make white lines thicker for better visibility
                         width = max(1, int(64 / freq))
+                        fw_width = width + 1  # Slightly wider white lines for better visibility
+                        bg_width = max(1, width - 1)  # Slightly narrower black gaps
                         projector.show_vertical_lines(
                             foreground_color="White",
                             background_color="Black",
-                            foreground_width=width,
-                            background_width=width
+                            foreground_width=fw_width,
+                            background_width=bg_width
                         )
                 else:
                     # Fallback to a checkerboard pattern
@@ -1432,22 +1445,48 @@ class UnlookScanner:
                         vertical_count=4 + (idx % 4)
                     )
             else:
+                # First make sure we're in test pattern mode
+                try:
+                    projector.set_mode("TestPatternGenerator")
+                except Exception:
+                    pass
+
                 # For predefined patterns, use the appropriate method
                 if pattern_type == "solid_field":
                     projector.show_solid_field(pattern.get("color", "White"))
                 elif pattern_type == "horizontal_lines":
+                    # Adjust widths for optimal visibility - slightly wider white lines
+                    fg_width = pattern.get("foreground_width", 4)
+                    bg_width = pattern.get("background_width", 20)
+                    fg_color = pattern.get("foreground_color", "White")
+
+                    # If foreground is white, make it slightly wider for better visibility
+                    if fg_color == "White":
+                        fg_width += 1
+                        bg_width = max(1, bg_width - 1)
+
                     projector.show_horizontal_lines(
-                        foreground_color=pattern.get("foreground_color", "White"),
+                        foreground_color=fg_color,
                         background_color=pattern.get("background_color", "Black"),
-                        foreground_width=pattern.get("foreground_width", 4),
-                        background_width=pattern.get("background_width", 20)
+                        foreground_width=fg_width,
+                        background_width=bg_width
                     )
                 elif pattern_type == "vertical_lines":
+                    # Adjust widths for optimal visibility - slightly wider white lines
+                    fg_width = pattern.get("foreground_width", 4)
+                    bg_width = pattern.get("background_width", 20)
+                    fg_color = pattern.get("foreground_color", "White")
+
+                    # If foreground is white, make it slightly wider for better visibility
+                    if fg_color == "White":
+                        fg_width += 1
+                        bg_width = max(1, bg_width - 1)
+
                     projector.show_vertical_lines(
-                        foreground_color=pattern.get("foreground_color", "White"),
+                        foreground_color=fg_color,
                         background_color=pattern.get("background_color", "Black"),
-                        foreground_width=pattern.get("foreground_width", 4),
-                        background_width=pattern.get("background_width", 20)
+                        foreground_width=fg_width,
+                        background_width=bg_width
                     )
                 else:
                     # Default to a grid for other types

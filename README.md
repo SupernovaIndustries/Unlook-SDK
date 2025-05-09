@@ -25,7 +25,7 @@
   - Precise projector-camera synchronization
 - **3D Scanning**:
   - **✨ NEW! Simplified 3D scanning API** - create a 3D scan in just a few lines of code
-  - Gray code pattern projection and processing
+  - **✨ NEW! Robust structured light scanning** - combining Gray code and Phase Shift for reliable results
   - Stereo camera calibration and rectification
   - Point cloud generation and filtering
   - Mesh creation and export to multiple formats
@@ -38,7 +38,7 @@ Unlook is designed as a modular platform with interchangeable scanning modules, 
 
 | Scanning Module | Technology | Status |
 |-----------------|------------|--------|
-| Structured Light | Pattern projection & triangulation | ✅ Available |
+| Robust Structured Light | Advanced pattern projection & triangulation | ✅ Available |
 | Depth Sensor | Time-of-flight or structured light | 🔜 Coming soon |
 | Point Projector | Laser/IR dot pattern | 🔜 Coming soon |
 | Custom Modules | User-created scanning solutions | 📝 Supported |
@@ -128,23 +128,36 @@ if scanners:
 ### Simplified 3D Scanning (Recommended)
 
 ```python
-from unlook import UnlookScanner
+from unlook import RobustStructuredLightScanner, ScanConfig
 
-# Create scanner with auto-detection of hardware
-scanner = UnlookScanner.auto_connect()
+# Set up hardware components
+from unlook.client.camera import StereoCamera
+from unlook.client.projector import Projector
 
-# Perform a 3D scan with one line (uses reasonable defaults)
-point_cloud = scanner.perform_3d_scan()
+# Create camera and projector instances
+camera = StereoCamera()
+projector = Projector()
 
-# Create a mesh from the point cloud
+# Configure scan quality (supported presets: "fast", "medium", "high", "ultra")
+config = ScanConfig()
+config.quality = "high"  # Balance between quality and speed
+
+# Create scanner with components and configuration
+scanner = RobustStructuredLightScanner(
+    camera=camera,
+    projector=projector,
+    config=config
+)
+
+# Perform a complete 3D scan
+point_cloud = scanner.scan(output_dir="scan_results")
+
+# Create a mesh from the point cloud (requires Open3D)
 mesh = scanner.create_mesh(point_cloud)
 
 # Save the results
-scanner.save_scan(point_cloud, "my_scan.ply")
-scanner.save_mesh(mesh, "my_scan_mesh.obj")
-
-# Visualize the results
-scanner.visualize_point_cloud(point_cloud)
+scanner.save_point_cloud(point_cloud, "scan_results/my_scan.ply")
+scanner.save_mesh(mesh, "scan_results/my_scan_mesh.ply")
 ```
 
 ### Camera Calibration
@@ -169,76 +182,72 @@ result = calibrator.calibrate_stereo(left_images, right_images)
 calibrator.save_calibration("calibration_params.json")
 
 # Use with scanner
-scanner = UnlookScanner.auto_connect(use_default_calibration=False)
-scanner.set_calibration_params(
-    camera_matrix_left=calibrator.camera_matrix_left,
-    dist_coeffs_left=calibrator.dist_coeffs_left,
-    camera_matrix_right=calibrator.camera_matrix_right,
-    dist_coeffs_right=calibrator.dist_coeffs_right,
-    R=calibrator.R,
-    T=calibrator.T
+from unlook import RobustStructuredLightScanner, ScanConfig
+from unlook.client.camera import StereoCamera
+from unlook.client.projector import Projector
+
+scanner = RobustStructuredLightScanner(
+    camera=StereoCamera(),
+    projector=Projector(),
+    config=ScanConfig(),
+    calibration_file="calibration_params.json"
 )
 ```
 
-### Advanced 3D Scanning Example
+### Robust 3D Scanning Example
 
 ```python
-from unlook import UnlookClient
-from unlook.client.structured_light import (
-    StereoStructuredLightScanner, 
-    StereoCalibrator,
-    create_scanning_demo
+import os
+import time
+import numpy as np
+import cv2
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+
+# Import Unlook SDK components
+from unlook.client.robust_structured_light import RobustStructuredLightScanner
+from unlook.client.scan_config import ScanConfig
+from unlook.client.camera import StereoCamera
+from unlook.client.projector import Projector
+
+# Create output directory
+output_dir = "scan_results"
+os.makedirs(output_dir, exist_ok=True)
+
+# Set up hardware
+camera = StereoCamera()
+projector = Projector()
+
+# Configure scanning parameters
+config = ScanConfig()
+config.pattern_resolution = (1024, 768)  # Projector resolution
+config.num_gray_codes = 10                # Number of Gray code patterns
+config.num_phase_shifts = 8               # Number of phase shifts per frequency
+config.phase_shift_frequencies = [1, 8, 16]  # Frequencies for phase shifting
+
+# Create robust scanner
+scanner = RobustStructuredLightScanner(
+    camera=camera,
+    projector=projector,
+    config=config
 )
 
-# Set up scanner with default calibration for testing
-output_dir = "./scan_results"
-scanner = create_scanning_demo(output_dir)
+# Execute scan
+point_cloud = scanner.scan(output_dir=output_dir)
+print(f"Scan complete: {len(point_cloud.points)} points")
 
-# Connect to scanner
-client = UnlookClient()
-client.start_discovery()
-scanners = client.get_discovered_scanners()
-if scanners:
-    client.connect(scanners[0])
+# Create mesh (requires Open3D)
+mesh = scanner.create_mesh(point_cloud)
+print(f"Mesh created: {len(mesh.triangles)} triangles")
 
-    # Generate scanning patterns
-    patterns = scanner.generate_scan_patterns()
-    
-    # Set up projector and cameras
-    projector = client.projector
-    camera = client.camera
-    
-    # Get the first two cameras
-    cameras = camera.get_cameras()
-    if len(cameras) >= 2:
-        left_camera_id = cameras[0]["id"]
-        right_camera_id = cameras[1]["id"]
-        
-        # Capture structured light images
-        left_images = []
-        right_images = []
-        
-        for pattern in patterns:
-            # Project pattern
-            projector.show_pattern(pattern)
-            time.sleep(0.5)  # Wait for projector to update
-            
-            # Capture from both cameras
-            left_img = camera.capture(left_camera_id)
-            right_img = camera.capture(right_camera_id)
-            
-            left_images.append(left_img)
-            right_images.append(right_img)
-        
-        # Process scan to get point cloud
-        point_cloud = scanner.process_scan(left_images, right_images)
-        
-        # Save point cloud
-        scanner.save_point_cloud(point_cloud, f"{output_dir}/scan.ply")
-        
-        # Create and save 3D mesh
-        mesh = scanner.create_mesh_from_point_cloud(point_cloud)
-        scanner.save_mesh(mesh, f"{output_dir}/scan_mesh.ply")
+# Save results
+pc_path = os.path.join(output_dir, "scan_point_cloud.ply")
+mesh_path = os.path.join(output_dir, "scan_mesh.ply")
+scanner.save_point_cloud(point_cloud, pc_path)
+scanner.save_mesh(mesh, mesh_path)
+print(f"Results saved to {output_dir}")
 ```
 
 ### Using as a Server
@@ -281,14 +290,14 @@ Communication between client and server happens through structured messages over
 
 ## 🔄 Module-Specific Features
 
-### Structured Light Module
+### Robust Structured Light Module
 
-- Pattern generation and projection
+- Advanced pattern generation and projection
+- Combined Gray code and Phase Shift for improved accuracy
 - **Automated pattern sequences** with timing control
 - Camera-projector synchronization
-- Gray code and phase shift pattern generation
-- Stereo camera calibration
-- Enhanced 3D reconstruction with point cloud filtering
+- Enhanced stereo camera calibration
+- Advanced 3D reconstruction with point cloud filtering
 - Mesh generation from point clouds
 
 ### Depth Sensor Module

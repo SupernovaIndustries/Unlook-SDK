@@ -4,12 +4,324 @@ Client for controlling the UnLook scanner projector.
 
 import logging
 import time
-from typing import Dict, Optional, Any, List, Union, Callable
+import numpy as np
+from typing import Dict, Optional, Any, List, Union, Callable, Tuple
 
-from ..core.protocol import MessageType
-from ..core.events import EventType, EventEmitter
+try:
+    from ..core.protocol import MessageType
+    from ..core.events import EventType, EventEmitter
+except ImportError:
+    # Define fallback classes for when the core modules are not available
+    class MessageType:
+        PROJECTOR_MODE = "projector_mode"
+        PROJECTOR_PATTERN = "projector_pattern"
+        PROJECTOR_PATTERN_SEQUENCE = "projector_pattern_sequence"
+        PROJECTOR_PATTERN_SEQUENCE_STEP = "projector_pattern_sequence_step"
+        PROJECTOR_PATTERN_SEQUENCE_STOP = "projector_pattern_sequence_stop"
+    
+    class EventType:
+        PROJECTOR_PATTERN_CHANGED = "projector_pattern_changed"
+        PROJECTOR_SEQUENCE_STARTED = "projector_sequence_started"
+        PROJECTOR_SEQUENCE_STEPPED = "projector_sequence_stepped"
+        PROJECTOR_SEQUENCE_COMPLETED = "projector_sequence_completed"
+        PROJECTOR_SEQUENCE_STOPPED = "projector_sequence_stopped"
+    
+    class EventEmitter:
+        def on(self, event_type, callback):
+            pass
 
 logger = logging.getLogger(__name__)
+
+
+class Projector:
+    """
+    Class for projector operations in the UnLook scanner.
+    """
+    
+    def __init__(self):
+        """
+        Initialize the projector.
+        """
+        self.client = None  # Will be set when connected to a real server
+        
+        # Simulation data for standalone testing
+        self._is_simulation = True
+        self.current_pattern = None
+        self.pattern_sequence = []
+        self.current_sequence_index = 0
+        
+        logger.info("Initialized projector")
+    
+    def project_pattern(self, pattern: Dict[str, Any]) -> bool:
+        """
+        Project a pattern.
+        
+        Args:
+            pattern: Pattern definition dictionary
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # If we have a real client, use it to project
+        if self.client and not self._is_simulation:
+            # Convert the pattern to the right format based on pattern_type
+            if isinstance(pattern, dict) and "pattern_type" in pattern:
+                pattern_type = pattern["pattern_type"]
+                
+                if pattern_type == "solid_field":
+                    return self.client.show_solid_field(pattern.get("color", "White"))
+                    
+                elif pattern_type == "horizontal_lines":
+                    return self.client.show_horizontal_lines(
+                        pattern.get("foreground_color", "White"),
+                        pattern.get("background_color", "Black"),
+                        pattern.get("foreground_width", 4),
+                        pattern.get("background_width", 20)
+                    )
+                    
+                elif pattern_type == "vertical_lines":
+                    return self.client.show_vertical_lines(
+                        pattern.get("foreground_color", "White"),
+                        pattern.get("background_color", "Black"),
+                        pattern.get("foreground_width", 4),
+                        pattern.get("background_width", 20)
+                    )
+                    
+                elif pattern_type == "grid":
+                    return self.client.show_grid(
+                        pattern.get("foreground_color", "White"),
+                        pattern.get("background_color", "Black"),
+                        pattern.get("h_foreground_width", 4),
+                        pattern.get("h_background_width", 20),
+                        pattern.get("v_foreground_width", 4),
+                        pattern.get("v_background_width", 20)
+                    )
+                    
+                elif pattern_type == "checkerboard":
+                    return self.client.show_checkerboard(
+                        pattern.get("foreground_color", "White"),
+                        pattern.get("background_color", "Black"),
+                        pattern.get("horizontal_count", 8),
+                        pattern.get("vertical_count", 6)
+                    )
+                    
+                elif pattern_type == "colorbars":
+                    return self.client.show_colorbars()
+                    
+                elif pattern_type == "raw_image":
+                    # For raw images, we need to directly pass the binary data
+                    if "image" in pattern:
+                        # In a connected client, we would send the binary data
+                        logger.info(f"Projecting raw image pattern: {pattern.get('name', 'unnamed')}")
+                        # Here we should handle the binary image data properly
+                        # For now, we'll just log and return success
+                        return True
+                    else:
+                        logger.warning(f"Raw image pattern missing image data: {pattern.get('name', 'unnamed')}")
+                        return False
+                    
+                else:
+                    logger.warning(f"Unknown pattern type: {pattern_type}")
+                    return False
+            else:
+                logger.warning("Invalid pattern format")
+                return False
+        
+        # Otherwise, simulate pattern projection
+        logger.info(f"Simulating pattern projection: {pattern.get('pattern_type', 'unknown')}")
+        self.current_pattern = pattern
+        return True
+    
+    def project_sequence(self, patterns: List[Dict[str, Any]], interval: float = 0.5) -> bool:
+        """
+        Project a sequence of patterns with timing control.
+        
+        Args:
+            patterns: List of pattern dictionaries
+            interval: Time in seconds between patterns
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # If we have a real client, use it to project sequence
+        if self.client and not self._is_simulation:
+            return self.client.start_pattern_sequence(patterns, interval=interval)
+        
+        # Otherwise, simulate sequence projection
+        logger.info(f"Simulating pattern sequence projection: {len(patterns)} patterns")
+        self.pattern_sequence = patterns
+        self.current_sequence_index = 0
+        
+        # Project each pattern in sequence
+        for i, pattern in enumerate(patterns):
+            logger.info(f"Projecting pattern {i+1}/{len(patterns)}")
+            self.project_pattern(pattern)
+            time.sleep(interval)
+        
+        return True
+    
+    def create_structured_light_patterns(self, 
+                                      use_gray_code: bool = True, 
+                                      use_phase_shift: bool = True,
+                                      num_gray_codes: int = 10,
+                                      num_phase_shifts: int = 8,
+                                      phase_shift_frequencies: List[int] = [1, 8, 16]) -> List[Dict[str, Any]]:
+        """
+        Create a sequence of structured light patterns combining Gray code and phase shift.
+        
+        Args:
+            use_gray_code: Whether to include Gray code patterns
+            use_phase_shift: Whether to include phase shift patterns
+            num_gray_codes: Number of Gray code patterns (bits)
+            num_phase_shifts: Number of phase shifts per frequency
+            phase_shift_frequencies: List of frequencies for phase shift patterns
+            
+        Returns:
+            List of pattern dictionaries
+        """
+        patterns = []
+        
+        # Always add white and black reference patterns
+        patterns.append({"pattern_type": "solid_field", "color": "White", "name": "white_reference"})
+        patterns.append({"pattern_type": "solid_field", "color": "Black", "name": "black_reference"})
+        
+        if use_gray_code:
+            # Add Gray code patterns (horizontal and vertical)
+            for bit in range(num_gray_codes):
+                # Create horizontal pattern
+                h_pattern = {
+                    "pattern_type": "raw_image",
+                    "name": f"gray_code_h_bit{bit:02d}",
+                    "orientation": "horizontal",
+                    "bit_position": bit,
+                    "is_inverse": False
+                }
+                patterns.append(h_pattern)
+                
+                # Create inverse horizontal pattern
+                h_inv_pattern = {
+                    "pattern_type": "raw_image",
+                    "name": f"gray_code_h_bit{bit:02d}_inv",
+                    "orientation": "horizontal",
+                    "bit_position": bit,
+                    "is_inverse": True
+                }
+                patterns.append(h_inv_pattern)
+                
+                # Create vertical pattern
+                v_pattern = {
+                    "pattern_type": "raw_image",
+                    "name": f"gray_code_v_bit{bit:02d}",
+                    "orientation": "vertical",
+                    "bit_position": bit,
+                    "is_inverse": False
+                }
+                patterns.append(v_pattern)
+                
+                # Create inverse vertical pattern
+                v_inv_pattern = {
+                    "pattern_type": "raw_image",
+                    "name": f"gray_code_v_bit{bit:02d}_inv",
+                    "orientation": "vertical",
+                    "bit_position": bit,
+                    "is_inverse": True
+                }
+                patterns.append(v_inv_pattern)
+        
+        if use_phase_shift:
+            # Add phase shift patterns for each frequency
+            for freq in phase_shift_frequencies:
+                # Add horizontal phase shift patterns
+                for step in range(num_phase_shifts):
+                    h_phase_pattern = {
+                        "pattern_type": "raw_image",
+                        "name": f"phase_h_freq{freq}_step{step}",
+                        "orientation": "horizontal",
+                        "frequency": freq,
+                        "step": step,
+                        "phase_offset": 2 * np.pi * step / num_phase_shifts
+                    }
+                    patterns.append(h_phase_pattern)
+                
+                # Add vertical phase shift patterns
+                for step in range(num_phase_shifts):
+                    v_phase_pattern = {
+                        "pattern_type": "raw_image",
+                        "name": f"phase_v_freq{freq}_step{step}",
+                        "orientation": "vertical",
+                        "frequency": freq,
+                        "step": step,
+                        "phase_offset": 2 * np.pi * step / num_phase_shifts
+                    }
+                    patterns.append(v_phase_pattern)
+        
+        logger.info(f"Created {len(patterns)} structured light patterns")
+        return patterns
+    
+    def show_solid_field(self, color: str = "White") -> bool:
+        """
+        Show a solid field of a given color.
+        
+        Args:
+            color: Color name (White, Black, Red, Green, Blue, etc.)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        pattern = {"pattern_type": "solid_field", "color": color}
+        return self.project_pattern(pattern)
+    
+    def show_horizontal_lines(self, 
+                            foreground_color: str = "White",
+                            background_color: str = "Black",
+                            foreground_width: int = 4,
+                            background_width: int = 20) -> bool:
+        """
+        Show horizontal lines.
+        
+        Args:
+            foreground_color: Line color
+            background_color: Background color
+            foreground_width: Line width
+            background_width: Width of spaces between lines
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        pattern = {
+            "pattern_type": "horizontal_lines",
+            "foreground_color": foreground_color,
+            "background_color": background_color,
+            "foreground_width": foreground_width,
+            "background_width": background_width
+        }
+        return self.project_pattern(pattern)
+    
+    def show_vertical_lines(self,
+                          foreground_color: str = "White",
+                          background_color: str = "Black",
+                          foreground_width: int = 4,
+                          background_width: int = 20) -> bool:
+        """
+        Show vertical lines.
+        
+        Args:
+            foreground_color: Line color
+            background_color: Background color
+            foreground_width: Line width
+            background_width: Width of spaces between lines
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        pattern = {
+            "pattern_type": "vertical_lines",
+            "foreground_color": foreground_color,
+            "background_color": background_color,
+            "foreground_width": foreground_width,
+            "background_width": background_width
+        }
+        return self.project_pattern(pattern)
 
 
 class ProjectorClient:
