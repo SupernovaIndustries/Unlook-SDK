@@ -4,7 +4,9 @@ Client for controlling the UnLook scanner projector.
 
 import logging
 import time
+import os
 import numpy as np
+import cv2
 from typing import Dict, Optional, Any, List, Union, Callable, Tuple
 
 try:
@@ -43,9 +45,9 @@ class Projector:
         Initialize the projector.
         """
         self.client = None  # Will be set when connected to a real server
-        
-        # Simulation data for standalone testing
-        self._is_simulation = True
+
+        # Always use real hardware mode by default
+        self._is_simulation = False
         self.current_pattern = None
         self.pattern_sequence = []
         self.current_sequence_index = 0
@@ -55,22 +57,22 @@ class Projector:
     def project_pattern(self, pattern: Dict[str, Any]) -> bool:
         """
         Project a pattern.
-        
+
         Args:
             pattern: Pattern definition dictionary
-            
+
         Returns:
             True if successful, False otherwise
         """
         # If we have a real client, use it to project
-        if self.client and not self._is_simulation:
+        if self.client:
             # Convert the pattern to the right format based on pattern_type
             if isinstance(pattern, dict) and "pattern_type" in pattern:
                 pattern_type = pattern["pattern_type"]
-                
+
                 if pattern_type == "solid_field":
                     return self.client.show_solid_field(pattern.get("color", "White"))
-                    
+
                 elif pattern_type == "horizontal_lines":
                     return self.client.show_horizontal_lines(
                         pattern.get("foreground_color", "White"),
@@ -78,7 +80,7 @@ class Projector:
                         pattern.get("foreground_width", 4),
                         pattern.get("background_width", 20)
                     )
-                    
+
                 elif pattern_type == "vertical_lines":
                     return self.client.show_vertical_lines(
                         pattern.get("foreground_color", "White"),
@@ -86,7 +88,7 @@ class Projector:
                         pattern.get("foreground_width", 4),
                         pattern.get("background_width", 20)
                     )
-                    
+
                 elif pattern_type == "grid":
                     return self.client.show_grid(
                         pattern.get("foreground_color", "White"),
@@ -96,7 +98,7 @@ class Projector:
                         pattern.get("v_foreground_width", 4),
                         pattern.get("v_background_width", 20)
                     )
-                    
+
                 elif pattern_type == "checkerboard":
                     return self.client.show_checkerboard(
                         pattern.get("foreground_color", "White"),
@@ -104,10 +106,10 @@ class Projector:
                         pattern.get("horizontal_count", 8),
                         pattern.get("vertical_count", 6)
                     )
-                    
+
                 elif pattern_type == "colorbars":
                     return self.client.show_colorbars()
-                    
+
                 elif pattern_type == "raw_image":
                     # For raw images, we need to directly pass the binary data
                     if "image" in pattern:
@@ -119,46 +121,37 @@ class Projector:
                     else:
                         logger.warning(f"Raw image pattern missing image data: {pattern.get('name', 'unnamed')}")
                         return False
-                    
+
                 else:
                     logger.warning(f"Unknown pattern type: {pattern_type}")
                     return False
             else:
                 logger.warning("Invalid pattern format")
                 return False
-        
-        # Otherwise, simulate pattern projection
-        logger.info(f"Simulating pattern projection: {pattern.get('pattern_type', 'unknown')}")
-        self.current_pattern = pattern
-        return True
+
+        # If we're in development mode and don't have a client, fall back to logging the pattern
+        # but treat this as an error case since we want to use real hardware
+        logger.error(f"No projector client available. Real hardware required. Pattern: {pattern.get('name', 'unnamed')}")
+        return False
     
     def project_sequence(self, patterns: List[Dict[str, Any]], interval: float = 0.5) -> bool:
         """
         Project a sequence of patterns with timing control.
-        
+
         Args:
             patterns: List of pattern dictionaries
             interval: Time in seconds between patterns
-            
+
         Returns:
             True if successful, False otherwise
         """
         # If we have a real client, use it to project sequence
-        if self.client and not self._is_simulation:
+        if self.client:
             return self.client.start_pattern_sequence(patterns, interval=interval)
-        
-        # Otherwise, simulate sequence projection
-        logger.info(f"Simulating pattern sequence projection: {len(patterns)} patterns")
-        self.pattern_sequence = patterns
-        self.current_sequence_index = 0
-        
-        # Project each pattern in sequence
-        for i, pattern in enumerate(patterns):
-            logger.info(f"Projecting pattern {i+1}/{len(patterns)}")
-            self.project_pattern(pattern)
-            time.sleep(interval)
-        
-        return True
+
+        # If we don't have a client, this is an error - we want to use real hardware only
+        logger.error(f"No projector client available. Real hardware required. Pattern sequence with {len(patterns)} patterns.")
+        return False
     
     def create_structured_light_patterns(self, 
                                       use_gray_code: bool = True, 

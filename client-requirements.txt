@@ -16,3 +16,16 @@ matplotlib>=3.4.0  # For data visualization
 pillow>=8.0.0      # Image processing
 tqdm>=4.60.0       # Progress bars
 scipy>=1.7.0       # Scientific computing
+
+# For neural network enhancement
+torch>=2.0.0       # PyTorch - will work on CPU without CUDA
+torchvision>=0.16.0  # Required for some neural network operations
+
+# Neural Network and Point Cloud Processing
+open3d>=0.17.0     # Required for point cloud processing (includes Open3D ML)
+scipy>=1.10.0      # Required for various scientific computing needs
+
+# Optional GPU acceleration packages are not included here
+# See installation instructions in README.md for GPU support
+
+# Instead of python-pcl, we use Open3D for all point cloud processing

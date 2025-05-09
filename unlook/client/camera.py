@@ -66,9 +66,9 @@ class StereoCamera:
         """
         self.camera_ids = camera_ids if camera_ids else ["left", "right"]
         self.client = None  # Will be set when connected to a real server
-        
-        # Simulation data for standalone testing
-        self._is_simulation = True
+
+        # Use real hardware mode by default
+        self._is_simulation = False
         self.image_size = (1280, 720)
         
         logger.info(f"Initialized stereo camera with IDs: {self.camera_ids}")
@@ -76,16 +76,18 @@ class StereoCamera:
     def capture_stereo_pair(self) -> Tuple[np.ndarray, np.ndarray]:
         """
         Capture a synchronized image from the stereo pair.
-        
+
         Returns:
             Tuple (left_image, right_image)
         """
         # If we have a real client, use it to capture
-        if self.client and not self._is_simulation:
+        if self.client:
             return self.client.capture_stereo_pair()
-        
-        # Otherwise, generate simulated images
-        logger.info("Generating simulated stereo pair")
+
+        # If we don't have a client, this is an error - we want to use real hardware only
+        logger.error("No camera client available. Real hardware is required.")
+        # As a fallback for development, we'll still generate test images
+        # but we should treat this as an error case
         return self._generate_simulated_images()
     
     def _generate_simulated_images(self) -> Tuple[np.ndarray, np.ndarray]:

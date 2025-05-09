@@ -2,7 +2,7 @@
 
 > **Complete SDK for Unlook - the modular open-source 3D scanning system**
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/YourOrganization/unlook)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/SupernovaIndustries/unlook)
 [![Python](https://img.shields.io/badge/python-3.7%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -25,7 +25,6 @@
   - Precise projector-camera synchronization
 - **3D Scanning**:
   - **✨ NEW! Simplified 3D scanning API** - create a 3D scan in just a few lines of code
-  - **✨ NEW! Robust structured light scanning** - combining Gray code and Phase Shift for reliable results
   - **✨ NEW! Real-time scanning mode** - for handheld applications with GPU acceleration
   - Stereo camera calibration and rectification
   - Point cloud generation and filtering
@@ -41,7 +40,6 @@ Unlook is designed as a modular platform with interchangeable scanning modules, 
 
 | Scanning Module | Technology | Status |
 |-----------------|------------|--------|
-| Robust Structured Light | Advanced pattern projection & triangulation | ✅ Available |
 | Real-Time Scanning | GPU-accelerated scanning for handheld operation | ✅ Available |
 | Depth Sensor | Time-of-flight or structured light | 🔜 Coming soon |
 | Point Projector | Laser/IR dot pattern | 🔜 Coming soon |
@@ -51,7 +49,7 @@ Unlook is designed as a modular platform with interchangeable scanning modules, 
 
 ### Prerequisites
 
-- Python 3.7+
+- Python 3.7+ (Python 3.9 or 3.10 recommended)
 - Raspberry Pi (for server) with Raspberry Pi OS
 - Unlook scanner modules (structured light, depth sensor, etc.)
 
@@ -59,72 +57,48 @@ Unlook is designed as a modular platform with interchangeable scanning modules, 
 
 ```bash
 # Clone the repository
-git clone https://github.com/SupernpovaIndustries/unlook.git
+git clone https://github.com/SupernovaIndustries/unlook.git
 cd unlook
 
 # Basic installation with required dependencies
 pip install -r client-requirements.txt
 ```
 
-### Complete Installation Guide
+For detailed installation instructions, see [INSTALLATION.md](INSTALLATION.md).
 
-#### 1. Core Installation
+### GPU Acceleration Setup
 
-First, install the core requirements:
+For optimal performance, we recommend setting up GPU acceleration:
+
+#### NVIDIA GPUs
 
 ```bash
-pip install -r client-requirements.txt
+# Install CUDA Toolkit from NVIDIA's website first
+# https://developer.nvidia.com/cuda-downloads
+
+# Install PyTorch with CUDA support
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu117
+
+# Install CuPy (match with your CUDA version)
+pip install cupy-cuda11x  # For CUDA 11.x
 ```
 
-#### 2. GPU Acceleration (Optional but Recommended)
-
-For NVIDIA GPUs:
-
-1. Install CUDA Toolkit from [NVIDIA's website](https://developer.nvidia.com/cuda-downloads)
-2. Install CuPy matching your CUDA version:
+#### AMD GPUs
 
 ```bash
-# For CUDA 11.x (e.g., 11.7, 11.8)
-pip install cupy-cuda11x
+# Install ROCm first, following AMD's instructions
+# https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html
 
-# For CUDA 12.x (e.g., 12.0, 12.1, 12.2)
-pip install cupy-cuda12x
-```
-
-For AMD GPUs:
-
-1. Install ROCm from [AMD's website](https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html)
-2. Install PyTorch with ROCm support:
-
-```bash
-# For ROCm 5.4 or newer
+# Install PyTorch with ROCm support
 pip install torch torchvision --index-url https://download.pytorch.org/whl/rocm5.4.2
 ```
 
-For CPU-only (works on all systems but slower):
+#### CPU-only Fallback
 
 ```bash
-# CPU-only fallback options
+# CPU-only versions
+pip install torch torchvision
 pip install cupy
-```
-
-#### 3. Point Cloud Library (Optional - Advanced Features)
-
-For Linux:
-```bash
-sudo apt-get install python3-pcl
-```
-
-For Windows:
-Follow the instructions at [python-pcl documentation](https://github.com/strawlab/python-pcl/wiki)
-
-#### 4. Development Installation
-
-For development and contributing:
-
-```bash
-# Install in development mode
-pip install -e .
 ```
 
 ### Testing Your Installation
@@ -139,7 +113,9 @@ python -m unlook.utils.check_gpu
 python -m unlook.examples.test_client
 ```
 
-## Using as a Client
+## 📊 Example Usage
+
+### Basic Client Connection
 
 ```python
 from unlook import UnlookClient, EventType
@@ -165,47 +141,12 @@ if scanners:
     image = client.camera.capture("camera_id")
 ```
 
-### Simplified 3D Scanning
-
-```python
-from unlook import UnlookClient
-from unlook.client.new_scanner3d import create_scanner, ScanConfig
-
-# Create client and connect to scanner
-client = UnlookClient(auto_discover=True)
-client.start_discovery()
-
-# Wait for discovery
-import time
-time.sleep(5)
-
-# Connect to first available scanner
-scanners = client.get_discovered_scanners()
-if scanners:
-    client.connect(scanners[0])
-    
-    # Configure scan quality (presets: "fast", "medium", "high", "ultra")
-    scanner = create_scanner(
-        client=client,
-        quality="high",  # Balance between quality and speed
-        calibration_file="calibration/stereo_calib.json"  # Optional
-    )
-    
-    # Perform a complete 3D scan
-    scan_result = scanner.scan(
-        output_dir="scan_results",
-        generate_mesh=True,
-        visualize=True  # Show results when complete
-    )
-    
-    print(f"Scan completed with {scan_result.num_points} points")
-```
-
 ### Real-Time Scanning
 
 ```python
 from unlook import UnlookClient
 from unlook.client.realtime_scanner import create_realtime_scanner
+import time
 
 # Create client and connect to scanner
 client = UnlookClient(auto_discover=True)
@@ -227,7 +168,7 @@ if scanners:
     scanner.start()
     
     # Show visualization (press ESC to exit)
-    from unlook.examples.realtime_scanning_example import ScanVisualizer
+    from unlook.client.visualization import ScanVisualizer
     visualizer = ScanVisualizer()
     
     try:
@@ -249,6 +190,46 @@ if scanners:
     finally:
         scanner.stop()
         visualizer.close()
+```
+
+### Camera Configuration
+
+```python
+from unlook.client.camera_config import CameraConfig, ColorMode, CompressionFormat
+
+# Create a new camera configuration
+config = CameraConfig()
+
+# Configure basic settings
+config.exposure_time = 20000  # in microseconds (20ms)
+config.gain = 1.5
+config.jpeg_quality = 90
+config.color_mode = ColorMode.COLOR
+
+# Apply configuration to a camera
+client.camera.apply_camera_config("camera_1", config)
+```
+
+### Pattern Sequences for Structured Light Scanning
+
+```python
+# Define a sequence of patterns
+patterns = [
+    {"pattern_type": "solid_field", "color": "White"},
+    {"pattern_type": "horizontal_lines", "foreground_color": "White", 
+     "background_color": "Black", "foreground_width": 4, "background_width": 20},
+    {"pattern_type": "vertical_lines", "foreground_color": "White", 
+     "background_color": "Black", "foreground_width": 4, "background_width": 20},
+    {"pattern_type": "grid", "foreground_color": "White", "background_color": "Black"}
+]
+
+# Start the sequence with 1s interval, looping
+result = client.projector.start_pattern_sequence(
+    patterns=patterns,
+    interval=1.0,      # 1 second between patterns
+    loop=True,         # Loop continuously
+    sync_with_camera=True  # Enable projector-camera synchronization
+)
 ```
 
 ## 🧩 Architecture
@@ -274,16 +255,6 @@ Communication between client and server happens through structured messages over
 
 ## 🔄 Module-Specific Features
 
-### Robust Structured Light Module
-
-- Advanced pattern generation and projection
-- Combined Gray code and Phase Shift for improved accuracy
-- **Automated pattern sequences** with timing control
-- Camera-projector synchronization
-- Enhanced stereo camera calibration
-- Advanced 3D reconstruction with point cloud filtering
-- Mesh generation from point clouds
-
 ### Real-Time Scanning Module
 
 - Continuous scanning mode for handheld applications
@@ -292,13 +263,13 @@ Communication between client and server happens through structured messages over
 - Real-time visualization with Open3D and OpenCV
 - Optimized for low-latency operation
 
-### Depth Sensor Module
+### Depth Sensor Module (Coming Soon)
 
 - Depth stream acquisition
 - Point cloud generation
 - Filtering and processing
 
-### Point Projector Module
+### Point Projector Module (Coming Soon)
 
 - Pattern control and calibration
 - Feature detection and tracking
@@ -311,6 +282,18 @@ The SDK is designed to be easily extended:
 - **New hardware modules**: Add support for your own scanning devices
 - **Reconstruction algorithms**: Implement custom 3D scanning algorithms
 - **Custom protocols**: Extend the protocol for your specific needs
+
+## 📚 Documentation
+
+For more detailed documentation on specific components, see:
+
+- [Installation Guide](INSTALLATION.md) - Comprehensive installation instructions
+- [Camera Configuration](docs/camera_configuration.md) - Camera settings and optimization
+- [Optimal Camera Spacing](docs/optimal_camera_spacing.md) - Guidelines for camera positioning
+- [Pattern Sequences](docs/pattern_sequences.md) - Custom projector pattern sequences
+- [Real-time Scanning](REALTIME_SCANNING.md) - Guide to real-time scanning features
+- [Examples](unlook/examples/) - Example code and usage demonstrations
+- [Project Roadmap](ROADMAP.md) - Future development plans
 
 ## 📄 License
 

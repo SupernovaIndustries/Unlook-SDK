@@ -1,18 +1,18 @@
 """
-High-level API for simplified 3D scanning with UnLook SDK.
+3D Scanning Module for UnLook SDK.
 
-This module provides a simplified API for performing 3D scans with the UnLook SDK.
-It abstracts the complexity of structured light scanning, pattern generation,
-camera control, and point cloud processing into a simple interface.
+This module provides a complete 3D scanning solution using structured light 
+techniques, triangulation, and point cloud processing. It is designed to work 
+with the UnLook hardware system and client architecture.
 """
 
 import os
 import time
 import logging
 import numpy as np
-import json
 import cv2
-from typing import List, Dict, Any, Tuple, Optional, Union
+import json
+from typing import List, Dict, Any, Tuple, Optional, Union, Callable
 from pathlib import Path
 
 # Configure logger
@@ -24,1712 +24,1184 @@ try:
     from open3d import geometry as o3dg
     OPEN3D_AVAILABLE = True
 except ImportError:
-    logger.info("open3d not installed. 3D mesh visualization and advanced filtering will be limited.")
+    logger.warning("open3d not installed. 3D mesh visualization and processing will be limited.")
     OPEN3D_AVAILABLE = False
-    # Create placeholder for o3dg when open3d is not available
-    class PlaceholderO3DG:
-        class PointCloud:
-            pass
-        class TriangleMesh:
-            pass
-    o3dg = PlaceholderO3DG
-
-try:
-    import h5py
-    H5PY_AVAILABLE = True
-except ImportError:
-    logger.info("h5py not installed. HDF5 file format support will be limited.")
-    H5PY_AVAILABLE = False
-
-from .. import UnlookClient
-from ..core.protocol import MessageType
-from .structured_light import (
-    StereoStructuredLightScanner,
-    StereoCalibrator,
-    StereoCameraParameters,
-    create_scanning_demo
-)
-from .advanced_structured_light import (
-    EnhancedGrayCodeGenerator,
-    PhaseShiftGenerator,
-    EnhancedStereoScanner
-)
-from .robust_structured_light import (
-    RobustGrayCodeGenerator,
-    RobustStereoScanner
-)
-from .single_camera_scanner import (
-    SingleCameraCalibrator,
-    SingleCameraStructuredLight
-)
-
-
-class UnlookScanner:
-    """
-    High-level 3D scanning API for the UnLook SDK.
-    
-    This class provides a simplified interface for 3D scanning, abstracting away the
-    complexity of structured light scanning, pattern generation, camera control,
-    and point cloud processing.
-    
-    Example:
-        ```python
-        # Create scanner with auto-detection of hardware
-        scanner = UnlookScanner.auto_connect()
-        
-        # Perform a scan with default parameters
-        point_cloud = scanner.perform_3d_scan()
-        
-        # Save the result
-        scanner.save_scan(point_cloud, "my_scan.ply")
-        
-        # Optionally create and save a mesh
-        mesh = scanner.create_mesh(point_cloud)
-        scanner.save_mesh(mesh, "my_scan_mesh.obj")
-        ```
-    """
-    
-    def __init__(self, client: Optional[UnlookClient] = None, use_default_calibration: bool = True,
-                 scanner_type: str = "robust", single_camera_mode: bool = False):
-        """
-        Initialize the UnlookScanner.
-        
-        Args:
-            client: An existing UnlookClient instance, or None to create a new one
-            use_default_calibration: Whether to use default calibration parameters
-            scanner_type: Type of scanner to use:
-                         - "basic": Original structured light implementation
-                         - "enhanced": Enhanced implementation with Gray code and phase shift
-                         - "robust": Robust implementation for real-world objects (recommended)
-        """
-        self.client = client or UnlookClient()
-        self.is_connected = False
-        self.scanner_info = None
-        self.structured_light_scanner = None  # Basic scanner
-        self.enhanced_scanner = None          # Enhanced scanner
-        self.robust_scanner = None            # Robust scanner
-        self.single_camera_scanner = None     # Single camera scanner
-        self.single_camera_mode = single_camera_mode
-        self.output_dir = os.path.join(os.getcwd(), "scans")
-        self.use_default_calibration = use_default_calibration
-        self.scanner_type = scanner_type
-        self.scan_folders = {}  # Map of scan_id -> folders
-        
-        # Create output directory if it doesn't exist
-        os.makedirs(self.output_dir, exist_ok=True)
-        
-        # Log scanner type
-        logger.info(f"Initializing UnlookScanner with {scanner_type} implementation")
-        
-    @classmethod
-    def auto_connect(cls, timeout: int = 5, use_default_calibration: bool = True,
-                     scanner_type: str = "robust", single_camera_mode: bool = False) -> 'UnlookScanner':
-        """
-        Create a scanner and automatically connect to the first available UnLook scanner.
-        
-        Args:
-            timeout: Timeout in seconds for scanner discovery
-            use_default_calibration: Whether to use default calibration parameters
-            scanner_type: Type of scanner to use:
-                         - "basic": Original structured light implementation
-                         - "enhanced": Enhanced implementation with Gray code and phase shift
-                         - "robust": Robust implementation for real-world objects (recommended)
-            
-        Returns:
-            Connected UnlookScanner instance
-        """
-        # For backward compatibility
-        if isinstance(scanner_type, bool):
-            # If scanner_type is a boolean, it's the old use_enhanced_scanner parameter
-            scanner_type = "enhanced" if scanner_type else "basic"
-            logger.warning("Using deprecated boolean parameter for scanner type. "
-                          "Please use scanner_type='enhanced' or scanner_type='robust' instead")
-        
-        scanner = cls(use_default_calibration=use_default_calibration,
-                      scanner_type=scanner_type,
-                      single_camera_mode=single_camera_mode)
-        scanner.connect(timeout=timeout)
-        return scanner
-    
-    def connect(self, scanner_id: Optional[str] = None, timeout: int = 5) -> bool:
-        """
-        Connect to an UnLook scanner.
-        
-        Args:
-            scanner_id: Optional scanner ID to connect to. If None, connects to the first found scanner
-            timeout: Timeout in seconds for scanner discovery
-            
-        Returns:
-            True if connection was successful, False otherwise
-        """
-        if self.is_connected:
-            logger.info("Already connected to a scanner")
-            return True
-            
-        # Start discovery
-        self.client.start_discovery()
-        logger.info(f"Discovering scanners for {timeout} seconds...")
-        time.sleep(timeout)
-        
-        # Get discovered scanners
-        scanners = self.client.get_discovered_scanners()
-        if not scanners:
-            logger.error("No scanners found")
-            return False
-            
-        # Select scanner
-        if scanner_id:
-            selected_scanner = None
-            for scanner in scanners:
-                if scanner.uuid == scanner_id:
-                    selected_scanner = scanner
-                    break
-                    
-            if not selected_scanner:
-                logger.error(f"Scanner with ID {scanner_id} not found")
-                return False
-        else:
-            selected_scanner = scanners[0]
-            
-        # Connect to scanner
-        logger.info(f"Connecting to scanner: {selected_scanner.name} ({selected_scanner.uuid})")
-        if not self.client.connect(selected_scanner):
-            logger.error("Failed to connect to scanner")
-            return False
-            
-        self.is_connected = True
-        self.scanner_info = selected_scanner
-        
-        # Initialize structured light scanner
-        self._initialize_scanner()
-
-        # If single camera mode, initialize single camera scanner
-        if self.single_camera_mode:
-            self._initialize_single_camera_scanner()
-        
-        return True
-        
-    def _initialize_scanner(self) -> None:
-        """
-        Initialize the structured light scanner with the appropriate calibration.
-        """
-        # Create a calibration directory
-        calib_dir = os.path.join(self.output_dir, "calibration")
-        os.makedirs(calib_dir, exist_ok=True)
-        
-        # Initialize scanners based on config
-        # Always initialize basic scanner first (for fallback)
-        if self.use_default_calibration:
-            logger.info("Using default stereo calibration parameters")
-            calib_file = os.path.join(calib_dir, "default_stereo_calibration.json")
-            
-            try:
-                # Try to load existing calibration
-                if os.path.exists(calib_file):
-                    logger.info(f"Loading existing calibration from {calib_file}")
-                    stereo_params = StereoCameraParameters.load(calib_file)
-                    self.structured_light_scanner = StereoStructuredLightScanner(stereo_params)
-                else:
-                    # Create new calibration
-                    logger.info("Creating new default calibration")
-                    self.structured_light_scanner = create_scanning_demo(calib_dir)
-            except Exception as e:
-                logger.error(f"Error loading/creating basic scanner calibration: {e}")
-                logger.warning("Creating fallback basic scanner with hardcoded parameters")
-                self.structured_light_scanner = create_scanning_demo(calib_dir)
-            
-            # Get image size from basic scanner
-            try:
-                image_size = self.structured_light_scanner.camera_params.image_size
-            except Exception:
-                # Fallback to common HD resolution
-                image_size = (1280, 720)
-                logger.warning(f"Using fallback image size: {image_size}")
-            
-            # Initialize other scanner types based on configuration
-            if self.scanner_type in ["enhanced", "robust"]:
-                # Initialize the enhanced scanner if needed
-                if self.scanner_type == "enhanced" or self.scanner_type == "robust":
-                    try:
-                        logger.info("Initializing enhanced structured light scanner")
-                        self.enhanced_scanner = EnhancedStereoScanner.from_default_calibration(
-                            image_size=image_size,
-                            projector_width=1920,
-                            projector_height=1080
-                        )
-                        logger.info("Enhanced structured light scanner initialized")
-                    except Exception as e:
-                        logger.error(f"Error initializing enhanced scanner, will use basic fallback: {e}")
-                
-                # Initialize the robust scanner if needed
-                if self.scanner_type == "robust":
-                    try:
-                        logger.info("Initializing robust structured light scanner")
-                        self.robust_scanner = RobustStereoScanner.from_default_calibration(
-                            image_size=image_size,
-                            projector_width=1920,
-                            projector_height=1080
-                        )
-                        logger.info("Robust structured light scanner initialized")
-                    except Exception as e:
-                        logger.error(f"Error initializing robust scanner, will try enhanced or basic fallback: {e}")
-        else:
-            # TODO: Add support for custom calibration with actual images
-            logger.warning("Custom calibration not yet implemented, using default")
-            self.structured_light_scanner = create_scanning_demo(calib_dir)
-            
-            # For custom calibration, we still attempt to initialize the advanced scanners
-            try:
-                image_size = self.structured_light_scanner.camera_params.image_size
-                
-                # Initialize enhanced scanner
-                if self.scanner_type == "enhanced" or self.scanner_type == "robust":
-                    logger.info("Initializing enhanced structured light scanner with default params")
-                    self.enhanced_scanner = EnhancedStereoScanner.from_default_calibration(
-                        image_size=image_size
-                    )
-                    logger.info("Enhanced structured light scanner initialized")
-                
-                # Initialize robust scanner
-                if self.scanner_type == "robust":
-                    logger.info("Initializing robust structured light scanner with default params")
-                    self.robust_scanner = RobustStereoScanner.from_default_calibration(
-                        image_size=image_size
-                    )
-                    logger.info("Robust structured light scanner initialized")
-            except Exception as e:
-                logger.error(f"Error initializing advanced scanners: {e}")
-        
-        # Log scanner initialization status
-        logger.info(f"Basic scanner initialized: {self.structured_light_scanner is not None}")
-        logger.info(f"Enhanced scanner initialized: {self.enhanced_scanner is not None}")
-        logger.info(f"Robust scanner initialized: {self.robust_scanner is not None}")
-        logger.info(f"Single camera scanner initialized: {self.single_camera_scanner is not None}")
-        logger.info(f"Single camera mode: {self.single_camera_mode}")
-        
-        # If the selected scanner type failed to initialize, try fallbacks
-        if self.scanner_type == "robust" and self.robust_scanner is None:
-            if self.enhanced_scanner is not None:
-                logger.warning("Robust scanner failed to initialize, falling back to enhanced scanner")
-                self.scanner_type = "enhanced"
-            else:
-                logger.warning("Advanced scanners failed to initialize, falling back to basic scanner")
-                self.scanner_type = "basic"
-        elif self.scanner_type == "enhanced" and self.enhanced_scanner is None:
-            logger.warning("Enhanced scanner failed to initialize, falling back to basic scanner")
-            self.scanner_type = "basic"
-
-        logger.info(f"Using scanner type: {self.scanner_type}")
-
-    def _initialize_single_camera_scanner(self) -> None:
-        """
-        Initialize the single camera structured light scanner.
-        """
-        if not self.single_camera_mode:
-            return
-
-        # Create a calibration directory
-        calib_dir = os.path.join(self.output_dir, "calibration")
-        os.makedirs(calib_dir, exist_ok=True)
-
-        # Check for existing calibration file
-        calib_file = os.path.join(calib_dir, "single_camera_calibration.npz")
-
-        try:
-            # Try to load existing calibration
-            if os.path.exists(calib_file):
-                logger.info(f"Loading single camera calibration from {calib_file}")
-                self.single_camera_scanner = SingleCameraStructuredLight.from_calibration_file(
-                    calib_file,
-                    projector_width=1920,
-                    projector_height=1080
-                )
-                logger.info("Single camera scanner initialized from calibration file")
-            else:
-                # Create with default parameters if no calibration file exists
-                logger.info("No single camera calibration file found. Using default parameters.")
-                # Get camera intrinsics (approximate)
-                camera_matrix = np.array([
-                    [1000.0, 0, 640.0],
-                    [0, 1000.0, 480.0],
-                    [0, 0, 1]
-                ])
-                camera_dist_coeffs = np.zeros(5)
-
-                # Create projector parameters
-                projector_matrix = np.array([
-                    [1000.0, 0, 960.0],
-                    [0, 1000.0, 540.0],
-                    [0, 0, 1]
-                ])
-                projector_dist_coeffs = np.zeros(5)
-
-                # Camera-projector transformation
-                # The camera is usually to the right of the projector
-                R = np.eye(3)  # Identity rotation
-                T = np.array([[150.0], [0.0], [0.0]])  # 150mm baseline
-
-                self.single_camera_scanner = SingleCameraStructuredLight(
-                    camera_matrix, camera_dist_coeffs,
-                    projector_matrix, projector_dist_coeffs,
-                    R, T, 1920, 1080
-                )
-                logger.info("Single camera scanner initialized with default parameters")
-
-                # Save default calibration for future use
-                np.savez(
-                    calib_file,
-                    camera_matrix=camera_matrix,
-                    camera_dist_coeffs=camera_dist_coeffs,
-                    projector_matrix=projector_matrix,
-                    projector_dist_coeffs=projector_dist_coeffs,
-                    R=R,
-                    T=T
-                )
-                logger.info(f"Saved default calibration to {calib_file}")
-
-        except Exception as e:
-            logger.error(f"Error initializing single camera scanner: {e}")
-            self.single_camera_scanner = None
-        
-    def disconnect(self) -> None:
-        """Disconnect from the scanner."""
-        if self.is_connected:
-            self.client.disconnect()
-            self.is_connected = False
-            logger.info("Disconnected from scanner")
-        
-    def perform_3d_scan(
-            self,
-            output_dir: Optional[str] = None,
-            mask_threshold: int = 5,
-            interval: float = 0.5,
-            visualize: bool = False,
-            scanner_type: Optional[str] = None,
-            scan_quality: str = "medium",
-            pattern_type: str = "gray_code",
-            debug_output: bool = True,
-            use_single_camera: Optional[bool] = None
-        ) -> o3dg.PointCloud:
-        """
-        Perform a complete 3D scan using structured light patterns.
-        
-        Args:
-            output_dir: Optional output directory for scan results
-            mask_threshold: Threshold for shadow/valid pixel detection
-            interval: Time interval between pattern projections in seconds
-            visualize: Whether to visualize the results (requires open3d)
-            scanner_type: Override scanner type (otherwise uses instance setting)
-                         - "basic": Original structured light implementation
-                         - "enhanced": Enhanced implementation with Gray code and phase shift
-                         - "robust": Robust implementation for real-world objects (recommended)
-            scan_quality: Quality setting: "low", "medium", "high" or "ultra"
-                         - "low": Faster but lower quality scan with fewer patterns
-                         - "medium": Balanced quality and speed (default)
-                         - "high": Higher quality scan with more patterns
-                         - "ultra": Maximum quality with combined patterns and filtering
-            pattern_type: Type of structured light patterns to use:
-                         - "gray_code": Binary Gray code patterns (default)
-                         - "phase_shift": Phase shift patterns for higher resolution
-                         - "combined": Both Gray code and phase shift for best results
-            debug_output: Whether to save debug information (useful for troubleshooting)
-            
-        Returns:
-            3D point cloud
-        """
-        # For backward compatibility
-        if isinstance(scanner_type, bool):
-            # If scanner_type is a boolean, it's the old use_enhanced_scanner parameter
-            scanner_type = "enhanced" if scanner_type else "basic"
-            logger.warning("Using deprecated 'use_enhanced_scanner' parameter. "
-                          "Please use scanner_type='robust' for best results")
-        
-        # Create debug sub-directory if enabled
-        debug_dir = None
-        if debug_output and output_dir:
-            debug_dir = os.path.join(output_dir, "debug")
-            os.makedirs(debug_dir, exist_ok=True)
-        if not self.is_connected:
-            logger.error("Not connected to a scanner")
-            return o3dg.PointCloud()
-
-        # Determine whether to use single camera mode
-        use_single_camera = use_single_camera if use_single_camera is not None else self.single_camera_mode
-
-        # If using single camera mode, delegate to single camera scanner
-        if use_single_camera:
-            if self.single_camera_scanner is None:
-                logger.error("Single camera scanner not initialized")
-                return o3dg.PointCloud()
-
-            return self._perform_single_camera_scan(
-                output_dir=output_dir,
-                mask_threshold=mask_threshold,
-                interval=interval,
-                visualize=visualize,
-                scan_quality=scan_quality,
-                pattern_type=pattern_type,
-                debug_output=debug_output
-            )
-
-        # Determine scanner type to use
-        use_scanner_type = scanner_type if scanner_type is not None else self.scanner_type
-        
-        # Check if requested scanner is available
-        if use_scanner_type == "robust" and self.robust_scanner is None:
-            if self.enhanced_scanner is not None:
-                logger.warning("Robust scanner requested but not available, falling back to enhanced scanner")
-                use_scanner_type = "enhanced"
-            else:
-                logger.warning("Advanced scanners not available, falling back to basic scanner")
-                use_scanner_type = "basic"
-        elif use_scanner_type == "enhanced" and self.enhanced_scanner is None:
-            logger.warning("Enhanced scanner requested but not available, falling back to basic scanner")
-            use_scanner_type = "basic"
-        
-        if use_scanner_type == "basic" and self.structured_light_scanner is None:
-            logger.error("No structured light scanner available")
-            return o3dg.PointCloud()
-            
-        # Create a timestamped scan folder if output_dir is not specified
-        if output_dir:
-            scan_dir = output_dir
-            os.makedirs(scan_dir, exist_ok=True)
-            captures_dir = os.path.join(scan_dir, "captures")
-            results_dir = os.path.join(scan_dir, "results")
-            os.makedirs(captures_dir, exist_ok=True)
-            os.makedirs(results_dir, exist_ok=True)
-        else:
-            scan_dir, captures_dir, results_dir = self._create_timestamped_folder()
-            
-        # Store the scan folders
-        scan_id = os.path.basename(scan_dir)
-        self.scan_folders[scan_id] = {
-            "scan_dir": scan_dir,
-            "captures_dir": captures_dir,
-            "results_dir": results_dir
-        }
-        
-        logger.info(f"Starting 3D scan with {use_scanner_type} scanner, saving results to {scan_dir}")
-        
-        # Get structured light patterns based on scanner type, pattern type and quality
-        if use_scanner_type == "robust":
-            # Use robust scanner (best for real objects)
-            logger.info(f"Using robust scanner with quality: {scan_quality}")
-            patterns = self.robust_scanner.generate_gray_code_patterns()
-            
-            # Adjust interval based on quality for robust scanner
-            if scan_quality == "low":
-                interval = max(interval, 0.3)
-            elif scan_quality == "medium":
-                interval = max(interval, 0.5)
-            elif scan_quality == "high":
-                interval = max(interval, 0.75)
-            elif scan_quality == "ultra":
-                interval = max(interval, 1.0)
-            
-        elif use_scanner_type == "enhanced":
-            # Use enhanced scanner
-            logger.info(f"Using enhanced scanner with {pattern_type} patterns, quality: {scan_quality}")
-            
-            if pattern_type == "gray_code":
-                patterns = self.enhanced_scanner.generate_gray_code_patterns()
-            elif pattern_type == "phase_shift":
-                patterns = self.enhanced_scanner.generate_phase_shift_patterns()
-            elif pattern_type == "combined":
-                # Combine Gray code and phase shift patterns
-                gray_patterns = self.enhanced_scanner.generate_gray_code_patterns()
-                phase_patterns = self.enhanced_scanner.generate_phase_shift_patterns()
-                patterns = gray_patterns + phase_patterns
-            else:
-                logger.warning(f"Unknown pattern type: {pattern_type}, using Gray code")
-                patterns = self.enhanced_scanner.generate_gray_code_patterns()
-            
-            # Adjust number of patterns based on quality setting
-            if scan_quality == "low":
-                # For low quality, use fewer patterns
-                if pattern_type == "gray_code":
-                    # Keep white/black and a subset of patterns
-                    patterns = patterns[:2] + patterns[2:][::2]  # Take every other pattern
-                elif pattern_type == "phase_shift":
-                    # Use only largest frequency
-                    keep_patterns = [0, 1]  # White and black
-                    # Keep only one frequency
-                    for i in range(2, len(patterns)):
-                        if "phase" in patterns[i]["name"] and any(f in patterns[i]["name"] for f in ["8", "16"]):
-                            keep_patterns.append(i)
-                    patterns = [patterns[i] for i in keep_patterns]
-                elif pattern_type == "combined":
-                    # Only keep essential patterns from both
-                    patterns = patterns[:10]  # Just keep basic patterns
-            
-            elif scan_quality == "medium":
-                # For medium quality, use the default pattern count
-                pass  # No adjustment needed
-            
-            elif scan_quality in ["high", "ultra"]:
-                # For high quality, use all patterns and longer capture interval
-                interval = max(interval, 0.75)  # Ensure longer interval for stability
-        else:
-            # Use basic scanner
-            logger.info("Using basic structured light scanner")
-            patterns = self.structured_light_scanner.generate_scan_patterns()
-        
-        logger.info(f"Generated {len(patterns)} structured light patterns")
-        
-        # Set up projector
-        projector = self.client.projector
-
-        # Configure projector for optimal pattern visibility
-        try:
-            if use_scanner_type == "enhanced":
-                # Prepare the projector using only supported message types
-                try:
-                    # Set the projector to test pattern mode for optimal pattern projection
-                    projector.set_mode("TestPatternGenerator")
-                    logger.info("Set projector to test pattern mode for enhanced scanning")
-
-                    # For maximum brightness, display a pure white pattern first
-                    # This helps "warm up" the projector to full brightness
-                    success = projector.show_solid_field("White")
-                    if success:
-                        logger.info("Displayed reference white field to prepare projector")
-                        # Wait a moment for projector to adjust
-                        time.sleep(0.25)
-
-                    # Then show black as baseline for good contrast
-                    success = projector.show_solid_field("Black")
-                    if success:
-                        logger.info("Displayed reference black field to prepare projector")
-                        # Wait a moment for projector to adjust
-                        time.sleep(0.25)
-
-                    # Display a test pattern with lines to ensure projector is ready
-                    # for detailed structured light patterns
-                    if scan_quality in ["high", "ultra"]:
-                        # For high quality, use finer lines to warm up the projector
-                        success = projector.show_vertical_lines(
-                            foreground_color="White",
-                            background_color="Black",
-                            foreground_width=4,
-                            background_width=4
-                        )
-                        if success:
-                            logger.info("Displayed fine test pattern to prepare projector for high quality scan")
-                            time.sleep(0.2)
-                    else:
-                        # For other quality settings, use standard lines
-                        success = projector.show_horizontal_lines(
-                            foreground_color="White",
-                            background_color="Black",
-                            foreground_width=8,
-                            background_width=8
-                        )
-                        if success:
-                            logger.info("Displayed test pattern to prepare projector")
-                            time.sleep(0.2)
-
-                    logger.info("Successfully prepared projector for enhanced scanning")
-                except Exception as mode_err:
-                    logger.warning(f"Error preparing projector: {mode_err}")
-        except Exception as e:
-            logger.warning(f"Failed to prepare projector for scanning: {e}")
-
-            # Fallback method - simple preparation
-            try:
-                projector.set_mode("TestPatternGenerator")
-                projector.show_solid_field("White")
-                time.sleep(0.2)
-                projector.show_solid_field("Black")
-                logger.info("Applied fallback projector preparation")
-            except Exception:
-                logger.warning("Failed to prepare projector")
-
-        # Set projector to black to start
-        projector.show_solid_field("Black")
-        
-        # Set up cameras
-        camera = self.client.camera
-        cameras = camera.get_cameras()
-        
-        if len(cameras) < 2:
-            logger.error(f"Need at least 2 cameras, found {len(cameras)}")
-            return o3dg.PointCloud()
-        
-        # Select the first two cameras
-        left_camera_id = cameras[0]["id"]
-        right_camera_id = cameras[1]["id"]
-        
-        # Configure cameras for optimal scanning
-        try:
-            # Adjust camera settings based on quality and scanner type
-            exposure = 100
-            contrast = 1.0
-            brightness = 0.0
-
-            # For enhanced scanner, use optimized camera settings
-            if use_scanner_type == "enhanced":
-                # Much higher exposure and gain for better pattern visibility
-                # These values are significantly increased based on observations of underexposed images
-                exposure = 400  # Significantly increased from 150
-                contrast = 2.0  # Higher contrast for better pattern visibility
-                brightness = 0.2  # Increased brightness boost
-                gain = 4.0  # Add analog gain to amplify the signal
-
-                logger.info(f"Using high-visibility camera settings for enhanced scanner: exposure={exposure}, gain={gain}, contrast={contrast}, brightness={brightness}")
-            else:
-                # Default settings for other scanner types
-                if scan_quality == "high":
-                    exposure = 80  # Slightly lower exposure for high quality
-                elif scan_quality == "ultra":
-                    exposure = 60  # Even lower exposure for ultra quality
-
-            # Apply camera settings based on quality level
-            if scan_quality == "high" or scan_quality == "ultra":
-                # Higher quality scans need more aggressive settings
-                exposure *= 1.5
-                gain = gain if 'gain' in locals() else 2.0  # Use existing gain or default to 2.0
-                logger.info(f"Boosting exposure and gain for {scan_quality} quality scan")
-
-            # Create camera configuration with exposure, gain, contrast and brightness settings
-            camera_config = {
-                "exposure": exposure,
-                "auto_exposure": False,
-                "gain": gain if 'gain' in locals() else 2.0,  # Use existing gain or default to 2.0
-                "auto_gain": False,
-                "format": "png",
-                "quality": 100,
-                "contrast": contrast,
-                "brightness": brightness,
-                "color_mode": "grayscale",  # Force grayscale mode for more consistent scanning
-                "force_settings": True  # Force settings to be applied directly to camera hardware
-            }
-
-            # Configure both cameras with the higher exposure/gain settings
-            for cam_id in [left_camera_id, right_camera_id]:
-                success = camera.configure(cam_id, camera_config)
-                if not success:
-                    logger.warning(f"Failed to configure camera {cam_id}, trying direct method")
-                    # Try direct method to set exposure and gain
-                    camera.set_exposure(cam_id, exposure, gain=camera_config["gain"], auto_exposure=False, auto_gain=False)
-
-                # Let's try to make sure settings are applied by configuring camera again
-                try:
-                    # Instead of using the unsupported CAMERA_APPLY_SETTINGS message type,
-                    # we'll use the standard configuration method again to reinforce our settings
-                    success = camera.configure(cam_id, camera_config)
-                    if success:
-                        logger.info(f"Applied additional configuration to camera {cam_id} to ensure settings take effect")
-                    else:
-                        # Let's try one more time with a delay
-                        time.sleep(0.1)
-                        success = camera.configure(cam_id, camera_config)
-                        if success:
-                            logger.info(f"Applied delayed configuration to camera {cam_id}")
-                        else:
-                            logger.warning(f"Failed to apply additional configuration to camera {cam_id}")
-                except Exception as e:
-                    logger.warning(f"Failed to ensure camera settings applied: {e}")
-        except Exception as e:
-            logger.warning(f"Camera configuration failed: {e}")
-            
-        # Prepare arrays for images
-        left_images = []
-        right_images = []
-        
-        # Display and capture for each pattern
-        for i, pattern in enumerate(patterns):
-            logger.info(f"Projecting pattern {i+1}/{len(patterns)}")
-            self._display_pattern(projector, pattern, i)
-            
-            # Wait for projector to update
-            time.sleep(interval)
-            
-            # Capture images
-            try:
-                # Capture from cameras
-                logger.info(f"Capturing image pair {i+1}")
-                left_img = camera.capture(left_camera_id)
-                right_img = camera.capture(right_camera_id)
-                
-                # Save images
-                left_path = os.path.join(captures_dir, f"left_{i:03d}.png")
-                right_path = os.path.join(captures_dir, f"right_{i:03d}.png")
-                
-                cv2.imwrite(left_path, left_img)
-                cv2.imwrite(right_path, right_img)
-                
-                # Add to arrays
-                left_images.append(left_img)
-                right_images.append(right_img)
-                
-            except Exception as e:
-                logger.error(f"Error capturing images: {e}")
-                continue
-                
-        # Reset projector to black
-        projector.show_solid_field("Black")
-        
-        # Process the scan
-        if len(left_images) < 2 or len(right_images) < 2:
-            logger.error("Not enough images captured for scanning")
-            return o3dg.PointCloud()
-            
-        logger.info(f"Processing scan with {len(left_images)} image pairs")
-        
-        # Use the appropriate scanner for processing
-        if use_scanner_type == "robust":
-            # Process with robust scanner (best for real objects)
-            logger.info("Processing with robust scanner")
-            
-            # The robust scanner has built-in debug output
-            pcd, debug_info = self.robust_scanner.process_scan(
-                left_images, 
-                right_images,
-                output_dir=debug_dir
-            )
-            
-            # Log important debug information
-            if debug_info:
-                logger.info(f"Valid pixels: {debug_info.get('combined_valid_pixels', 0)}")
-                logger.info(f"Correspondences found: {debug_info.get('correspondences', 0)}")
-                logger.info(f"Points after filtering: {len(pcd.points)}")
-                
-                # Save debug info to file
-                if debug_dir:
-                    debug_file = os.path.join(debug_dir, "scan_debug_info.json")
-                    try:
-                        with open(debug_file, 'w') as f:
-                            # Convert numpy values to Python native types for JSON serialization
-                            clean_debug = {}
-                            for k, v in debug_info.items():
-                                if isinstance(v, (np.int32, np.int64, np.uint64)):
-                                    clean_debug[k] = int(v)
-                                elif isinstance(v, (np.float32, np.float64)):
-                                    clean_debug[k] = float(v)
-                                elif isinstance(v, np.ndarray):
-                                    # Convert numpy arrays to lists
-                                    clean_debug[k] = v.tolist()
-                                elif isinstance(v, dict):
-                                    # Handle nested dictionaries
-                                    nested_clean = {}
-                                    for kk, vv in v.items():
-                                        if isinstance(vv, (np.int32, np.int64, np.uint64)):
-                                            nested_clean[kk] = int(vv)
-                                        elif isinstance(vv, (np.float32, np.float64)):
-                                            nested_clean[kk] = float(vv)
-                                        elif isinstance(vv, np.ndarray):
-                                            nested_clean[kk] = vv.tolist()
-                                        else:
-                                            try:
-                                                # Try JSON serialization as a test
-                                                json.dumps(vv)
-                                                nested_clean[kk] = vv
-                                            except (TypeError, OverflowError):
-                                                # If it's not serializable, convert to string
-                                                nested_clean[kk] = str(vv)
-                                    clean_debug[k] = nested_clean
-                                else:
-                                    try:
-                                        # Try JSON serialization as a test
-                                        json.dumps(v)
-                                        clean_debug[k] = v
-                                    except (TypeError, OverflowError):
-                                        # If it's not serializable, convert to string
-                                        clean_debug[k] = str(v)
-                            import json
-                            json.dump(clean_debug, f, indent=2)
-                    except Exception as e:
-                        logger.warning(f"Failed to save debug info: {e}")
-            
-        elif use_scanner_type == "enhanced":
-            # Process with enhanced scanner with options based on pattern type and quality
-            use_gray_code = pattern_type in ["gray_code", "combined"]
-            use_phase_shift = pattern_type in ["phase_shift", "combined"]
-            
-            pcd = self.enhanced_scanner.process_scan(
-                left_images,
-                right_images,
-                use_gray_code=use_gray_code,
-                use_phase_shift=use_phase_shift,
-                mask_threshold=mask_threshold,
-                output_dir=debug_dir
-            )
-            
-            # Apply additional filtering for ultra quality
-            if scan_quality == "ultra" and OPEN3D_AVAILABLE and len(pcd.points) > 100:
-                logger.info("Applying additional point cloud filtering for ultra quality")
-                # Statistical outlier removal with stricter parameters
-                pcd, _ = pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=1.0)
-                # Radius outlier removal
-                pcd, _ = pcd.remove_radius_outlier(nb_points=16, radius=1.5)
-        else:
-            # Process with basic scanner
-            pcd = self.structured_light_scanner.process_scan(
-                left_images, 
-                right_images, 
-                mask_threshold=mask_threshold
-            )
-        
-        # If the point cloud has few points, try with more relaxed parameters
-        if len(pcd.points) < 100:
-            logger.warning(f"Initial scan produced only {len(pcd.points)} points. Trying with more relaxed parameters...")
-            
-            if use_scanner_type == "robust":
-                # For robust scanner, we don't retry - it already uses adaptive parameters
+    # Create placeholder for open3d when not available
+    class PlaceholderO3D:
+        class geometry:
+            class PointCloud:
                 pass
-            elif use_scanner_type == "enhanced":
-                pcd = self.enhanced_scanner.process_scan(
-                    left_images,
-                    right_images,
-                    use_gray_code=pattern_type in ["gray_code", "combined"],
-                    use_phase_shift=pattern_type in ["phase_shift", "combined"],
-                    mask_threshold=3,
-                    output_dir=debug_dir
-                )
-            else:
-                pcd = self.structured_light_scanner.process_scan(
-                    left_images, 
-                    right_images, 
-                    mask_threshold=3
-                )
-            
-        # Get the final point count
-        point_count = len(pcd.points) if hasattr(pcd, 'points') else 0
-        logger.info(f"Generated point cloud with {point_count} points")
-        
-        # Save point cloud
-        if point_count > 0:
-            point_cloud_path = os.path.join(results_dir, "scan_point_cloud.ply")
-            
-            if use_scanner_type == "robust":
-                self.robust_scanner.save_point_cloud(pcd, point_cloud_path)
-            elif use_scanner_type == "enhanced":
-                self.enhanced_scanner.save_point_cloud(pcd, point_cloud_path)
-            else:
-                self.structured_light_scanner.save_point_cloud(pcd, point_cloud_path)
-                
-            logger.info(f"Saved point cloud to {point_cloud_path}")
-            
-        # Visualize if requested
-        if visualize and OPEN3D_AVAILABLE and len(pcd.points) > 0:
-            try:
-                logger.info("Visualizing results")
-                o3d.visualization.draw_geometries([pcd], window_name="3D Scan Results")
-            except Exception as e:
-                logger.error(f"Visualization failed: {e}")
-                
-        return pcd
+            class TriangleMesh:
+                pass
+        class utility:
+            class Vector3dVector:
+                pass
+        class visualization:
+            pass
+        class io:
+            pass
+    o3d = PlaceholderO3D()
+    o3dg = PlaceholderO3D.geometry
+
+# We now use Open3D exclusively for point cloud processing
+# No need for python-pcl anymore
+PCL_AVAILABLE = False  # Legacy flag kept for backward compatibility
+
+# Import structured light module
+from .new_structured_light import (
+    PatternGenerator,
+    StructuredLightController,
+    generate_patterns,
+    project_patterns
+)
+
+
+class ScanConfig:
+    """Configuration for 3D scanning."""
     
-    def _perform_single_camera_scan(
-            self,
-            output_dir: Optional[str] = None,
-            mask_threshold: int = 5,
-            interval: float = 0.5,
-            visualize: bool = False,
-            scan_quality: str = "medium",
-            pattern_type: str = "gray_code",
-            debug_output: bool = True
-        ) -> o3dg.PointCloud:
-        """
-        Perform a 3D scan using single camera structured light.
-
-        Args:
-            output_dir: Optional output directory for scan results
-            mask_threshold: Threshold for shadow/valid pixel detection
-            interval: Time interval between pattern projections in seconds
-            visualize: Whether to visualize the results (requires open3d)
-            scan_quality: Quality setting: "low", "medium", "high" or "ultra"
-            pattern_type: Type of structured light patterns to use
-            debug_output: Whether to save debug information
-
-        Returns:
-            3D point cloud
-        """
-        # Create a timestamped scan folder if output_dir is not specified
-        if output_dir:
-            scan_dir = output_dir
-            os.makedirs(scan_dir, exist_ok=True)
-            captures_dir = os.path.join(scan_dir, "captures")
-            results_dir = os.path.join(scan_dir, "results")
-            os.makedirs(captures_dir, exist_ok=True)
-            os.makedirs(results_dir, exist_ok=True)
+    def __init__(self):
+        """Initialize scan configuration with default values."""
+        # Pattern generation parameters
+        self.pattern_resolution = (1024, 768)  # Width x Height
+        self.num_gray_codes = 10
+        self.num_phase_shifts = 8
+        self.phase_shift_frequencies = [1, 8, 16]
+        
+        # Scanning parameters
+        self.pattern_interval = 0.5  # Time between patterns (seconds)
+        self.quality = "medium"  # Quality preset: fast, medium, high, ultra
+        
+        # Processing parameters
+        self.max_distance = 1000.0  # Maximum point distance (mm)
+        self.voxel_size = 0.5       # Voxel size for downsampling (mm)
+        self.outlier_std = 2.0      # Standard deviation for outlier removal
+        self.mesh_depth = 9         # Poisson reconstruction depth
+        self.mesh_smoothing = 5     # Mesh smoothing iterations
+    
+    def set_quality_preset(self, quality: str):
+        """Set parameters based on quality preset."""
+        if quality == "fast":
+            self.num_gray_codes = 8
+            self.num_phase_shifts = 4
+            self.phase_shift_frequencies = [1, 16]
+            self.pattern_interval = 0.3
+            self.voxel_size = 1.0
+            self.mesh_depth = 8
+            self.mesh_smoothing = 2
+        elif quality == "medium":
+            self.num_gray_codes = 10
+            self.num_phase_shifts = 6
+            self.phase_shift_frequencies = [1, 8, 16]
+            self.pattern_interval = 0.5
+            self.voxel_size = 0.5
+            self.mesh_depth = 9
+            self.mesh_smoothing = 3
+        elif quality == "high":
+            self.num_gray_codes = 10
+            self.num_phase_shifts = 8
+            self.phase_shift_frequencies = [1, 8, 16, 32]
+            self.pattern_interval = 0.75
+            self.voxel_size = 0.25
+            self.mesh_depth = 10
+            self.mesh_smoothing = 4
+        elif quality == "ultra":
+            self.num_gray_codes = 12
+            self.num_phase_shifts = 12
+            self.phase_shift_frequencies = [1, 4, 8, 16, 32]
+            self.pattern_interval = 1.0
+            self.voxel_size = 0.1
+            self.mesh_depth = 11
+            self.mesh_smoothing = 5
         else:
-            scan_dir, captures_dir, results_dir = self._create_timestamped_folder("single_camera")
-
-        # Create debug directory if needed
-        debug_dir = os.path.join(scan_dir, "debug") if debug_output else None
-        if debug_dir:
-            os.makedirs(debug_dir, exist_ok=True)
-
-        # Store the scan folders
-        scan_id = os.path.basename(scan_dir)
-        self.scan_folders[scan_id] = {
-            "scan_dir": scan_dir,
-            "captures_dir": captures_dir,
-            "results_dir": results_dir
-        }
-
-        logger.info(f"Starting single camera 3D scan with {pattern_type} patterns, saving results to {scan_dir}")
-
-        # Generate structured light patterns
-        if pattern_type == "phase_shift":
-            patterns = self.single_camera_scanner.generate_phase_shift_patterns()
-        elif pattern_type == "combined":
-            patterns = self.single_camera_scanner.generate_gray_code_patterns() + \
-                       self.single_camera_scanner.generate_phase_shift_patterns()
-        else:  # default to gray_code
-            patterns = self.single_camera_scanner.generate_gray_code_patterns()
-
-        # Adjust patterns based on quality
-        if scan_quality == "low":
-            # Use fewer patterns for faster scanning
-            if pattern_type == "combined":
-                # Just use gray code
-                patterns = self.single_camera_scanner.generate_gray_code_patterns()
-            elif pattern_type == "phase_shift":
-                # Use fewer frequencies
-                patterns = self.single_camera_scanner.generate_phase_shift_patterns(frequencies=[16])
-            else:
-                # Skip alternate patterns
-                patterns = patterns[::2]
-        elif scan_quality == "high" or scan_quality == "ultra":
-            # Use more/all patterns for higher quality
-            if pattern_type == "phase_shift":
-                # Use more frequencies
-                patterns = self.single_camera_scanner.generate_phase_shift_patterns(
-                    frequencies=[8, 16, 32, 64]
-                )
-
-        logger.info(f"Generated {len(patterns)} structured light patterns")
-
-        # Set up projector
-        projector = self.client.projector
-
-        # Configure projector for maximum visibility in single camera mode
-        # Single camera mode requires good pattern contrast
-        try:
-            # Prepare the projector using only supported message types and methods
-            # Set projector to test pattern mode for pattern projection
-            try:
-                # Set the projector to test pattern mode
-                projector.set_mode("TestPatternGenerator")
-                logger.info("Set projector to test pattern mode for single camera scanning")
-
-                # For maximum brightness, we'll first show a pure white pattern
-                # This can help "warm up" the projector to full brightness and prepare the hardware
-                success = projector.show_solid_field("White")
-                if success:
-                    logger.info("Displayed reference white field to prepare projector")
-                    # Wait a moment for projector to adjust
-                    time.sleep(0.3)  # Slightly longer wait for single camera mode
-
-                # Then show a black pattern for contrast optimization
-                success = projector.show_solid_field("Black")
-                if success:
-                    logger.info("Displayed reference black field to prepare projector")
-                    # Wait a moment for projector to adjust
-                    time.sleep(0.3)  # Slightly longer wait for single camera mode
-
-                # For single camera mode, we'll also display a test pattern with lines
-                # to ensure the projector is properly warmed up for fine patterns
-                success = projector.show_horizontal_lines(
-                    foreground_color="White",
-                    background_color="Black",
-                    foreground_width=8,   # Wider white lines for better visibility
-                    background_width=8    # Equal spacing for good contrast
-                )
-                if success:
-                    logger.info("Displayed test line pattern to prepare projector")
-                    time.sleep(0.2)
-
-                logger.info("Successfully prepared projector for single camera scanning")
-            except Exception as mode_err:
-                logger.warning(f"Error preparing projector for single camera scanning: {mode_err}")
-        except Exception as e:
-            logger.warning(f"Failed to prepare projector for single camera scanning: {e}")
-
-            # Fallback method - basic preparation
-            try:
-                projector.set_mode("TestPatternGenerator")
-                projector.show_solid_field("White")
-                time.sleep(0.2)
-                logger.info("Applied fallback projector preparation for single camera scanning")
-            except Exception:
-                logger.warning("Failed to prepare projector for single camera scanning")
-
-        # Set projector to black to start
-        projector.show_solid_field("Black")
-
-        # Set up camera
-        camera = self.client.camera
-        cameras = camera.get_cameras()
-
-        if not cameras:
-            logger.error("No cameras found")
-            return o3dg.PointCloud()
-
-        # Use the first camera
-        camera_id = cameras[0]["id"]
-
-        # Configure camera for optimal scanning
-        try:
-            # Adjust camera settings based on quality
-            exposure = 100
-            contrast = 1.0
-            brightness = 0.0
-
-            # Use very high exposure and gain settings for single camera mode for better pattern visibility
-            # These values are significantly increased based on observations of underexposed images
-            exposure = 500  # Significantly increased from 150 for single camera (needs more light)
-            contrast = 2.0  # Higher contrast for better pattern visibility
-            brightness = 0.2  # Increased brightness boost
-            gain = 8.0  # Even higher gain for single camera mode to capture patterns
-
-            if scan_quality == "high":
-                exposure = 400  # High quality still needs significant exposure
-                gain = 6.0      # High gain for better pattern visibility
-            elif scan_quality == "ultra":
-                exposure = 300  # Ultra quality needs careful exposure
-                gain = 4.0      # More moderate gain for precise patterns
-
-            logger.info(f"Using high-visibility camera settings for single camera: exposure={exposure}, gain={gain}, contrast={contrast}, brightness={brightness}")
-
-            # Create advanced camera configuration with exposure, gain, contrast and brightness settings
-            camera_config = {
-                "exposure": exposure,
-                "auto_exposure": False,
-                "gain": gain,
-                "auto_gain": False,
-                "format": "png",
-                "quality": 100,
-                "contrast": contrast,
-                "brightness": brightness,
-                "color_mode": "grayscale",  # Force grayscale mode for more consistent scanning
-                "force_settings": True,     # Force settings to be applied directly to camera hardware
-                "denoise": False            # Disable denoise to preserve pattern details
-            }
-
-            # Apply configuration and ensure it takes effect at the hardware level
-            success = camera.configure(camera_id, camera_config)
-            if not success:
-                logger.warning(f"Failed to configure camera {camera_id}, trying direct method")
-                # Try direct method to set exposure and gain
-                camera.set_exposure(camera_id, exposure, gain=gain, auto_exposure=False, auto_gain=False)
-
-            # Ensure settings are applied by configuring camera again
-            try:
-                # Instead of using the unsupported CAMERA_APPLY_SETTINGS message type,
-                # we'll apply the configuration again to reinforce settings
-                success = camera.configure(camera_id, camera_config)
-                if success:
-                    logger.info(f"Applied additional configuration to camera {camera_id} to ensure settings take effect")
-                else:
-                    # Try once more with a delay
-                    time.sleep(0.1)
-                    success = camera.configure(camera_id, camera_config)
-                    if success:
-                        logger.info(f"Applied delayed configuration to camera {camera_id}")
-                    else:
-                        logger.warning(f"Failed to apply additional configuration to camera {camera_id}")
-
-                # For single camera mode, we need to ensure good exposure
-                # Try setting exposure directly one more time
-                camera.set_exposure(camera_id, exposure, gain=gain, auto_exposure=False, auto_gain=False)
-                logger.info(f"Reinforced exposure and gain settings for single camera mode")
-            except Exception as e:
-                logger.warning(f"Failed to ensure camera settings applied: {e}")
-        except Exception as e:
-            logger.warning(f"Camera configuration failed: {e}")
-
-        # Prepare array for captured images
-        captured_images = []
-
-        # Display and capture for each pattern
-        for i, pattern in enumerate(patterns):
-            logger.info(f"Projecting pattern {i+1}/{len(patterns)}")
-            self._display_pattern(projector, pattern, i)
-
-            # Wait for projector to update
-            time.sleep(interval)
-
-            # Capture image
-            try:
-                # Capture from camera
-                logger.info(f"Capturing image {i+1}")
-                img = camera.capture(camera_id)
-
-                # Save image
-                img_path = os.path.join(captures_dir, f"capture_{i:03d}.png")
-                cv2.imwrite(img_path, img)
-
-                # Add to array
-                captured_images.append(img)
-
-            except Exception as e:
-                logger.error(f"Error capturing image: {e}")
-                continue
-
-        # Reset projector to black
-        projector.show_solid_field("Black")
-
-        # Process the scan
-        if len(captured_images) < 2:
-            logger.error("Not enough images captured for scanning")
-            return o3dg.PointCloud()
-
-        logger.info(f"Processing scan with {len(captured_images)} images")
-
-        # Process with single camera scanner
-        use_gray_code = pattern_type in ["gray_code", "combined"]
-        use_phase_shift = pattern_type in ["phase_shift", "combined"]
-
-        pcd = self.single_camera_scanner.process_scan(
-            captured_images,
-            use_gray_code=use_gray_code,
-            use_phase_shift=use_phase_shift,
-            mask_threshold=mask_threshold,
-            output_dir=debug_dir
-        )
-
-        # If the point cloud has few points, try with more relaxed parameters
-        if len(pcd.points) < 100:
-            logger.warning(f"Initial scan produced only {len(pcd.points)} points. Trying with more relaxed parameters...")
-
-            pcd = self.single_camera_scanner.process_scan(
-                captured_images,
-                use_gray_code=use_gray_code,
-                use_phase_shift=use_phase_shift,
-                mask_threshold=max(3, mask_threshold // 2),  # More relaxed threshold
-                output_dir=debug_dir
-            )
-
-        # Get the final point count
-        point_count = len(pcd.points) if hasattr(pcd, 'points') else 0
-        logger.info(f"Generated point cloud with {point_count} points")
-
-        # Save point cloud
-        if point_count > 0:
-            point_cloud_path = os.path.join(results_dir, "scan_point_cloud.ply")
-            self.single_camera_scanner.save_point_cloud(pcd, point_cloud_path)
-            logger.info(f"Saved point cloud to {point_cloud_path}")
-
-            # Create mesh if we have enough points
-            if point_count >= 500:
-                logger.info("Creating mesh from point cloud")
-
-                # Adjust mesh parameters based on quality
-                depth = 8
-                smooth_iterations = 2
-
-                if scan_quality == "high":
-                    depth = 9
-                    smooth_iterations = 3
-                elif scan_quality == "ultra":
-                    depth = 10
-                    smooth_iterations = 5
-
-                mesh = self.single_camera_scanner.create_mesh(
-                    pcd,
-                    depth=depth,
-                    smoothing=smooth_iterations
-                )
-
-                # Save mesh
-                if len(mesh.triangles) > 0:
-                    mesh_path = os.path.join(results_dir, "scan_mesh.obj")
-                    self.single_camera_scanner.save_mesh(mesh, mesh_path)
-                    logger.info(f"Saved mesh to {mesh_path}")
-
-                # Visualize if requested
-                if visualize and OPEN3D_AVAILABLE:
-                    logger.info("Visualizing mesh")
-                    o3d.visualization.draw_geometries([mesh], window_name="Single Camera Scan Mesh")
-
-        # Visualize point cloud if requested
-        if visualize and OPEN3D_AVAILABLE and point_count > 0:
-            try:
-                logger.info("Visualizing point cloud")
-                o3d.visualization.draw_geometries([pcd], window_name="Single Camera Scan Point Cloud")
-            except Exception as e:
-                logger.error(f"Visualization failed: {e}")
-
-        return pcd
-
-    def _display_pattern(self, projector, pattern, idx):
-        """Helper method to display a pattern on the projector with enhanced contrast."""
-        try:
-            pattern_name = pattern.get('name', '').lower()
-            pattern_type = pattern.get('pattern_type', '')
-
-            # For all structured light patterns, we want to ensure maximum possible visibility
-            # This helps significantly with pattern detection on the object
-
-            # NOTE: The previous version tried to use PROJECTOR_CONFIG which isn't supported
-            # We'll use the standard projector methods which are supported by the server
-
-            if pattern_type == "raw_image" and 'image' in pattern:
-                # For raw images with binary data, try to use direct image display if available
-                try:
-                    # Check if the projector supports raw image display
-                    if hasattr(projector, 'show_raw_image') and callable(getattr(projector, 'show_raw_image')):
-                        # Use the raw image display method
-                        projector.show_raw_image(pattern['image'])
-                        logger.debug(f"Displayed raw image pattern {pattern_name} using show_raw_image")
-                        return
-                except Exception as img_err:
-                    logger.warning(f"Could not display raw image directly: {img_err}, falling back to approximation")
-
-            # Fall back to approximation methods if raw image display not available
-            if pattern_type == "raw_image":
-                # For raw images, we approximate with built-in patterns
-                if 'white' in pattern_name:
-                    # For white reference pattern, adjust for maximum brightness
-                    # First set operating mode to test pattern
-                    try:
-                        projector.set_mode("TestPatternGenerator")
-                    except Exception:
-                        pass
-                    projector.show_solid_field("White")
-                elif 'black' in pattern_name:
-                    # For black reference pattern
-                    try:
-                        projector.set_mode("TestPatternGenerator")
-                    except Exception:
-                        pass
-                    projector.show_solid_field("Black")
-                elif 'gray_code_x' in pattern_name or 'horizontal' in pattern_name:
-                    # For horizontal Gray code patterns, use fine horizontal lines
-                    # Calculate appropriate width based on bit position
-                    bit_position = -1
-                    if 'gray_code_x_' in pattern_name:
-                        try:
-                            bit_part = pattern_name.split('gray_code_x_')[1].split('_')[0]
-                            if bit_part.isdigit():
-                                bit_position = int(bit_part)
-                        except (IndexError, ValueError):
-                            pass
-
-                    # Use finer lines for higher bits
-                    if bit_position >= 0:
-                        # Calculate stripe width based on bit position
-                        # Higher bits need finer stripes
-                        width = max(1, int(20 / (2 ** bit_position)))
-                    else:
-                        width = max(1, 4 - (idx % 4))
-
-                    # Adjust for inverse patterns
-                    is_inverse = 'inv' in pattern_name
-                    fg_color = "Black" if is_inverse else "White"
-                    bg_color = "White" if is_inverse else "Black"
-
-                    # Use larger foreground width for better visibility
-                    # This compensates for the lack of direct brightness control
-                    if not is_inverse:
-                        # For regular patterns, make white lines wider
-                        fg_width = width + 1
-                        bg_width = max(1, width - 1)
-                    else:
-                        # For inverse patterns, make black lines thinner
-                        fg_width = max(1, width - 1)
-                        bg_width = width + 1
-
-                    projector.show_horizontal_lines(
-                        foreground_color=fg_color,
-                        background_color=bg_color,
-                        foreground_width=fg_width,
-                        background_width=bg_width
-                    )
-                elif 'gray_code_y' in pattern_name or 'vertical' in pattern_name:
-                    # For vertical Gray code patterns, use fine vertical lines
-                    # Calculate appropriate width based on bit position
-                    bit_position = -1
-                    if 'gray_code_y_' in pattern_name:
-                        try:
-                            bit_part = pattern_name.split('gray_code_y_')[1].split('_')[0]
-                            if bit_part.isdigit():
-                                bit_position = int(bit_part)
-                        except (IndexError, ValueError):
-                            pass
-
-                    # Use finer lines for higher bits
-                    if bit_position >= 0:
-                        # Calculate stripe width based on bit position
-                        # Higher bits need finer stripes
-                        width = max(1, int(20 / (2 ** bit_position)))
-                    else:
-                        width = max(1, 4 - (idx % 4))
-
-                    # Adjust for inverse patterns
-                    is_inverse = 'inv' in pattern_name
-                    fg_color = "Black" if is_inverse else "White"
-                    bg_color = "White" if is_inverse else "Black"
-
-                    # Use larger foreground width for better visibility
-                    # This compensates for the lack of direct brightness control
-                    if not is_inverse:
-                        # For regular patterns, make white lines wider
-                        fg_width = width + 1
-                        bg_width = max(1, width - 1)
-                    else:
-                        # For inverse patterns, make black lines thinner
-                        fg_width = max(1, width - 1)
-                        bg_width = width + 1
-
-                    projector.show_vertical_lines(
-                        foreground_color=fg_color,
-                        background_color=bg_color,
-                        foreground_width=fg_width,
-                        background_width=bg_width
-                    )
-                elif 'checkerboard' in pattern_name:
-                    # Use a checkerboard pattern
-                    projector.show_checkerboard(
-                        foreground_color="White",
-                        background_color="Black",
-                        horizontal_count=8,
-                        vertical_count=8
-                    )
-                elif 'phase' in pattern_name:
-                    # Approximate phase pattern with vertical or horizontal sinusoidal
-                    if 'h_phase' in pattern_name or 'horizontal' in pattern_name:
-                        # Horizontal stripes of varying widths
-                        # Get frequency if possible
-                        freq = 16
-                        if 'h_phase_' in pattern_name:
-                            try:
-                                freq_part = pattern_name.split('h_phase_')[1].split('_')[0]
-                                if freq_part.isdigit():
-                                    freq = int(freq_part)
-                            except (IndexError, ValueError):
-                                pass
-                        # Adjust line width based on frequency
-                        # Make white lines thicker for better visibility
-                        width = max(1, int(64 / freq))
-                        fw_width = width + 1  # Slightly wider white lines for better visibility
-                        bg_width = max(1, width - 1)  # Slightly narrower black gaps
-                        projector.show_horizontal_lines(
-                            foreground_color="White",
-                            background_color="Black",
-                            foreground_width=fw_width,
-                            background_width=bg_width
-                        )
-                    else:
-                        # Vertical stripes of varying widths
-                        # Get frequency if possible
-                        freq = 16
-                        if 'v_phase_' in pattern_name:
-                            try:
-                                freq_part = pattern_name.split('v_phase_')[1].split('_')[0]
-                                if freq_part.isdigit():
-                                    freq = int(freq_part)
-                            except (IndexError, ValueError):
-                                pass
-                        # Adjust line width based on frequency
-                        # Make white lines thicker for better visibility
-                        width = max(1, int(64 / freq))
-                        fw_width = width + 1  # Slightly wider white lines for better visibility
-                        bg_width = max(1, width - 1)  # Slightly narrower black gaps
-                        projector.show_vertical_lines(
-                            foreground_color="White",
-                            background_color="Black",
-                            foreground_width=fw_width,
-                            background_width=bg_width
-                        )
-                else:
-                    # Fallback to a checkerboard pattern
-                    projector.show_checkerboard(
-                        foreground_color="White",
-                        background_color="Black",
-                        horizontal_count=6 + (idx % 6),
-                        vertical_count=4 + (idx % 4)
-                    )
-            else:
-                # First make sure we're in test pattern mode
-                try:
-                    projector.set_mode("TestPatternGenerator")
-                except Exception:
-                    pass
-
-                # For predefined patterns, use the appropriate method
-                if pattern_type == "solid_field":
-                    projector.show_solid_field(pattern.get("color", "White"))
-                elif pattern_type == "horizontal_lines":
-                    # Adjust widths for optimal visibility - slightly wider white lines
-                    fg_width = pattern.get("foreground_width", 4)
-                    bg_width = pattern.get("background_width", 20)
-                    fg_color = pattern.get("foreground_color", "White")
-
-                    # If foreground is white, make it slightly wider for better visibility
-                    if fg_color == "White":
-                        fg_width += 1
-                        bg_width = max(1, bg_width - 1)
-
-                    projector.show_horizontal_lines(
-                        foreground_color=fg_color,
-                        background_color=pattern.get("background_color", "Black"),
-                        foreground_width=fg_width,
-                        background_width=bg_width
-                    )
-                elif pattern_type == "vertical_lines":
-                    # Adjust widths for optimal visibility - slightly wider white lines
-                    fg_width = pattern.get("foreground_width", 4)
-                    bg_width = pattern.get("background_width", 20)
-                    fg_color = pattern.get("foreground_color", "White")
-
-                    # If foreground is white, make it slightly wider for better visibility
-                    if fg_color == "White":
-                        fg_width += 1
-                        bg_width = max(1, bg_width - 1)
-
-                    projector.show_vertical_lines(
-                        foreground_color=fg_color,
-                        background_color=pattern.get("background_color", "Black"),
-                        foreground_width=fg_width,
-                        background_width=bg_width
-                    )
-                else:
-                    # Default to a grid for other types
-                    projector.show_grid(
-                        foreground_color="White",
-                        background_color="Black",
-                        h_foreground_width=4,
-                        h_background_width=20,
-                        v_foreground_width=4,
-                        v_background_width=20
-                    )
-            # Log the pattern type being displayed
-            logger.debug(f"Displayed pattern {idx}: {pattern_name} of type {pattern_type}")
-        except Exception as e:
-            logger.error(f"Error displaying pattern {idx} ({pattern.get('name', 'unknown')}): {e}")
+            logger.warning(f"Unknown quality preset: {quality}, using medium")
+            self.set_quality_preset("medium")
+        
+        self.quality = quality
+        logger.info(f"Set quality preset to: {quality}")
+
+
+class ScanResult:
+    """Result of a 3D scan."""
     
-    def _create_timestamped_folder(self, prefix: str = "scan") -> Tuple[str, str, str]:
+    def __init__(
+        self,
+        point_cloud: Optional[Union[o3dg.PointCloud, np.ndarray]] = None,
+        mesh: Optional[o3dg.TriangleMesh] = None,
+        images: Optional[Dict[str, List[np.ndarray]]] = None,
+        debug_info: Optional[Dict[str, Any]] = None
+    ):
         """
-        Create a timestamped folder structure for a scan.
+        Initialize scan result.
         
-        Returns:
-            Tuple of (scan_dir, captures_dir, results_dir)
+        Args:
+            point_cloud: 3D point cloud (Open3D or numpy array)
+            mesh: 3D mesh
+            images: Dictionary of captured images
+            debug_info: Debug information
         """
-        # Create timestamp
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        scan_dir = os.path.join(self.output_dir, f"{prefix}_{timestamp}")
+        self.point_cloud = point_cloud
+        self.mesh = mesh
+        self.images = images or {}
+        self.debug_info = debug_info or {}
         
-        # Create scan directory
-        os.makedirs(scan_dir, exist_ok=True)
+        # Calculate statistics
+        self.num_points = len(point_cloud.points) if hasattr(point_cloud, "points") else 0
+        self.num_triangles = len(mesh.triangles) if mesh and hasattr(mesh, "triangles") else 0
+    
+    def has_point_cloud(self) -> bool:
+        """Check if result contains a point cloud."""
+        if self.point_cloud is None:
+            return False
+        if hasattr(self.point_cloud, "points"):
+            return len(self.point_cloud.points) > 0
+        return len(self.point_cloud) > 0
+    
+    def has_mesh(self) -> bool:
+        """Check if result contains a mesh."""
+        if self.mesh is None:
+            return False
+        if hasattr(self.mesh, "triangles"):
+            return len(self.mesh.triangles) > 0
+        return False
+    
+    def save(self, output_dir: str):
+        """Save scan results to output directory."""
+        os.makedirs(output_dir, exist_ok=True)
         
         # Create subdirectories
-        captures_dir = os.path.join(scan_dir, "captures")
-        results_dir = os.path.join(scan_dir, "results")
+        results_dir = os.path.join(output_dir, "results")
+        debug_dir = os.path.join(output_dir, "debug")
+        captures_dir = os.path.join(output_dir, "captures")
         
-        os.makedirs(captures_dir, exist_ok=True)
         os.makedirs(results_dir, exist_ok=True)
+        os.makedirs(debug_dir, exist_ok=True)
+        os.makedirs(captures_dir, exist_ok=True)
         
-        return scan_dir, captures_dir, results_dir
+        # Save point cloud
+        if self.has_point_cloud():
+            if OPEN3D_AVAILABLE and isinstance(self.point_cloud, o3d.geometry.PointCloud):
+                pc_path = os.path.join(results_dir, "point_cloud.ply")
+                o3d.io.write_point_cloud(pc_path, self.point_cloud)
+            elif isinstance(self.point_cloud, np.ndarray):
+                pc_path = os.path.join(results_dir, "point_cloud.npy")
+                np.save(pc_path, self.point_cloud)
+            logger.info(f"Saved point cloud to: {os.path.basename(pc_path)}")
+        
+        # Save mesh
+        if self.has_mesh() and OPEN3D_AVAILABLE:
+            mesh_path = os.path.join(results_dir, "mesh.ply")
+            o3d.io.write_triangle_mesh(mesh_path, self.mesh)
+            logger.info(f"Saved mesh to: {os.path.basename(mesh_path)}")
+        
+        # Only save images if debug flag is enabled
+        if os.environ.get("UNLOOK_SAVE_DEBUG_IMAGES", "0") == "1":
+            logger.debug("Saving captured images...")
+            for camera_name, image_list in self.images.items():
+                for i, img in enumerate(image_list):
+                    img_path = os.path.join(captures_dir, f"{camera_name}_{i:03d}.png")
+                    cv2.imwrite(img_path, img)
+        
+        # Save debug info
+        if self.debug_info:
+            debug_path = os.path.join(debug_dir, "debug_info.json")
+            with open(debug_path, "w") as f:
+                clean_debug = {}
+                # Convert numpy types to Python native types for JSON serialization
+                for k, v in self.debug_info.items():
+                    if isinstance(v, (np.int32, np.int64, np.uint64)):
+                        clean_debug[k] = int(v)
+                    elif isinstance(v, (np.float32, np.float64)):
+                        clean_debug[k] = float(v)
+                    elif isinstance(v, np.ndarray):
+                        clean_debug[k] = v.tolist()
+                    else:
+                        try:
+                            json.dumps({k: v})  # Test if serializable
+                            clean_debug[k] = v
+                        except TypeError:
+                            clean_debug[k] = str(v)
+                json.dump(clean_debug, f, indent=2)
+            logger.info(f"Saved debug info to: {os.path.basename(debug_path)}")
+
+
+class Scanner3D:
+    """
+    3D Scanner using structured light techniques.
+    
+    This scanner uses a combination of Gray code and Phase shift structured light
+    techniques to robustly reconstruct 3D point clouds from stereo image pairs.
+    """
+    
+    def __init__(
+        self,
+        client,
+        config: Optional[ScanConfig] = None,
+        calibration_file: Optional[str] = None
+    ):
+        """
+        Initialize the 3D scanner.
+        
+        Args:
+            client: UnlookClient instance
+            config: Scanner configuration
+            calibration_file: Path to stereo calibration file
+        """
+        self.client = client
+        self.config = config or ScanConfig()
+        self.calibration_file = calibration_file
+        
+        # Load calibration data if provided
+        self.calibration_data = self._load_calibration(calibration_file)
+        
+        # Create structured light controller
+        self.controller = StructuredLightController(
+            projector_client=client.projector,
+            camera_client=client.camera,
+            width=self.config.pattern_resolution[0],
+            height=self.config.pattern_resolution[1],
+            pattern_interval=self.config.pattern_interval
+        )
+        
+        logger.info(f"Initialized Scanner3D with {self.config.quality} quality preset")
+    
+    def _load_calibration(self, calibration_file: Optional[str]) -> Dict[str, Any]:
+        """
+        Load calibration data from file.
+        
+        Args:
+            calibration_file: Path to calibration file
+            
+        Returns:
+            Dictionary with calibration parameters
+        """
+        if not calibration_file:
+            logger.info("No calibration file provided, using default calibration")
+            return self._create_default_calibration()
+        
+        if not os.path.exists(calibration_file):
+            logger.warning(f"Calibration file not found: {calibration_file}")
+            logger.info("Using default calibration instead")
+            return self._create_default_calibration()
+        
+        try:
+            # Try JSON format first
+            with open(calibration_file, 'r') as f:
+                calib_data = json.load(f)
+                
+                # Check required parameters
+                required_keys = ["camera_matrix_left", "dist_coeffs_left",
+                                "camera_matrix_right", "dist_coeffs_right",
+                                "R", "T"]
+                
+                if all(key in calib_data for key in required_keys):
+                    logger.info(f"Loaded calibration from {calibration_file}")
+                    return calib_data
+                else:
+                    logger.warning("Calibration file is missing required parameters")
+        except json.JSONDecodeError:
+            logger.warning(f"Failed to parse JSON calibration file: {calibration_file}")
+        
+        try:
+            # Try numpy format
+            calib_data = dict(np.load(calibration_file, allow_pickle=True))
+            
+            # Check required parameters (with alternate names)
+            if all(key in calib_data for key in ["M1", "d1", "M2", "d2", "R", "T"]):
+                # Rename keys to standardized format
+                return {
+                    "camera_matrix_left": calib_data["M1"],
+                    "dist_coeffs_left": calib_data["d1"],
+                    "camera_matrix_right": calib_data["M2"],
+                    "dist_coeffs_right": calib_data["d2"],
+                    "R": calib_data["R"],
+                    "T": calib_data["T"]
+                }
+            else:
+                logger.warning("NumPy calibration file is missing required parameters")
+        except Exception as e:
+            logger.warning(f"Failed to load NumPy calibration file: {e}")
+        
+        logger.warning("Using default calibration as fallback")
+        return self._create_default_calibration()
+    
+    def _create_default_calibration(self) -> Dict[str, Any]:
+        """
+        Create default stereo calibration parameters.
+        
+        Returns:
+            Dictionary with calibration parameters
+        """
+        # Use projector resolution for image size
+        width, height = self.config.pattern_resolution
+        
+        # Standard intrinsic camera matrix
+        fx = width * 0.8
+        fy = height * 0.8
+        cx = width / 2
+        cy = height / 2
+        
+        camera_matrix = np.array([
+            [fx, 0, cx],
+            [0, fy, cy],
+            [0, 0, 1]
+        ])
+        
+        # No distortion by default
+        dist_coeffs = np.zeros(5)
+        
+        # Identity rotation between cameras
+        R = np.eye(3)
+        
+        # 100mm baseline along X
+        T = np.array([100.0, 0.0, 0.0]).reshape(3, 1)
+        
+        return {
+            "camera_matrix_left": camera_matrix,
+            "dist_coeffs_left": dist_coeffs,
+            "camera_matrix_right": camera_matrix.copy(),
+            "dist_coeffs_right": dist_coeffs.copy(),
+            "R": R,
+            "T": T,
+            "image_size": (width, height)
+        }
+    
+    def compute_rectification(
+        self,
+        camera_matrix_left: np.ndarray,
+        dist_coeffs_left: np.ndarray,
+        camera_matrix_right: np.ndarray,
+        dist_coeffs_right: np.ndarray,
+        R: np.ndarray,
+        T: np.ndarray,
+        image_size: Tuple[int, int]
+    ) -> Dict[str, np.ndarray]:
+        """
+        Compute stereo rectification parameters.
+        
+        Args:
+            camera_matrix_left: Left camera matrix
+            dist_coeffs_left: Left distortion coefficients
+            camera_matrix_right: Right camera matrix
+            dist_coeffs_right: Right distortion coefficients
+            R: Rotation matrix between cameras
+            T: Translation vector between cameras
+            image_size: Image size (width, height)
+            
+        Returns:
+            Dictionary with rectification parameters
+        """
+        # Compute stereo rectification
+        R1, R2, P1, P2, Q, roi1, roi2 = cv2.stereoRectify(
+            camera_matrix_left, dist_coeffs_left,
+            camera_matrix_right, dist_coeffs_right,
+            image_size, R, T,
+            flags=cv2.CALIB_ZERO_DISPARITY, alpha=0
+        )
+        
+        # Compute undistortion maps
+        map_left_x, map_left_y = cv2.initUndistortRectifyMap(
+            camera_matrix_left, dist_coeffs_left, R1, P1, image_size, cv2.CV_32FC1
+        )
+        
+        map_right_x, map_right_y = cv2.initUndistortRectifyMap(
+            camera_matrix_right, dist_coeffs_right, R2, P2, image_size, cv2.CV_32FC1
+        )
+        
+        return {
+            "R1": R1, "R2": R2, "P1": P1, "P2": P2, "Q": Q,
+            "roi1": roi1, "roi2": roi2,
+            "map_left_x": map_left_x, "map_left_y": map_left_y,
+            "map_right_x": map_right_x, "map_right_y": map_right_y
+        }
+    
+    def rectify_images(
+        self,
+        left_images: List[np.ndarray],
+        right_images: List[np.ndarray],
+        rectification_params: Dict[str, np.ndarray]
+    ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+        """
+        Rectify stereo image pairs.
+        
+        Args:
+            left_images: List of left camera images
+            right_images: List of right camera images
+            rectification_params: Rectification parameters
+            
+        Returns:
+            Tuple of (rectified_left_images, rectified_right_images)
+        """
+        rect_left = []
+        rect_right = []
+        
+        map_left_x = rectification_params["map_left_x"]
+        map_left_y = rectification_params["map_left_y"]
+        map_right_x = rectification_params["map_right_x"]
+        map_right_y = rectification_params["map_right_y"]
+        
+        for left_img, right_img in zip(left_images, right_images):
+            # Rectify left image
+            left_rect = cv2.remap(left_img, map_left_x, map_left_y, cv2.INTER_LINEAR)
+            # Rectify right image
+            right_rect = cv2.remap(right_img, map_right_x, map_right_y, cv2.INTER_LINEAR)
+            
+            rect_left.append(left_rect)
+            rect_right.append(right_rect)
+        
+        return rect_left, rect_right
+    
+    def decode_gray_code(
+        self,
+        images: List[np.ndarray],
+        white_ref: np.ndarray,
+        black_ref: np.ndarray,
+        width: int,
+        height: int
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Decode Gray code patterns from images.
+
+        Args:
+            images: List of captured Gray code images
+            white_ref: White reference image
+            black_ref: Black reference image
+            width: Projector width
+            height: Projector height
+
+        Returns:
+            Tuple of (decoded_coords, mask)
+        """
+        # Create Gray code generator in OpenCV
+        gray_code = cv2.structured_light.GrayCodePattern.create(width=width, height=height)
+
+        # Compute shadow mask
+        diff = cv2.absdiff(white_ref, black_ref)
+        _, mask = cv2.threshold(diff, 30, 1, cv2.THRESH_BINARY)
+
+        # Ensure mask is 2D
+        if len(mask.shape) > 2:
+            mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+
+        # Convert images to grayscale if needed
+        gray_images = []
+        for img in images:
+            if len(img.shape) == 3:
+                gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                gray_images.append(gray_img)
+            else:
+                gray_images.append(img)
+
+        # Prepare arrays for OpenCV decoding
+        pattern_images = np.array(gray_images)
+
+        # Set defaults in case decoding fails
+        ret = False
+        decoded = None
+
+        # Try to decode with proper error handling
+        # Direct approach using low-level OpenCV functions for better compatibility
+        try:
+            # First, determine number of patterns (must be even with half for normal and half for inverted)
+            num_patterns = len(pattern_images)
+            if num_patterns % 2 != 0:
+                logger.warning(f"Odd number of Gray code patterns: {num_patterns}, expected even number")
+                # Truncate to even number if needed
+                pattern_images = pattern_images[:num_patterns-1]
+                num_patterns = len(pattern_images)
+
+            # Number of bits is half the patterns (each bit has normal + inverted pattern)
+            num_bits = num_patterns // 2
+            logger.info(f"Decoding {num_bits} bits from {num_patterns} Gray code patterns")
+
+            # Create binary representations
+            binary_codes = np.zeros((mask.shape[0], mask.shape[1], num_bits), dtype=np.uint8)
+
+            # For each bit, compute difference between normal and inverted pattern
+            for i in range(num_bits):
+                normal_idx = i * 2
+                inverted_idx = i * 2 + 1
+
+                # Normal and inverted patterns
+                normal = pattern_images[normal_idx]
+                inverted = pattern_images[inverted_idx]
+
+                # Threshold based on difference
+                diff = cv2.absdiff(normal, inverted)
+                _, thresh = cv2.threshold(diff, 20, 255, cv2.THRESH_BINARY)
+
+                # Determine bit value
+                # 1 where normal > inverted, 0 otherwise
+                bit_val = (normal > inverted).astype(np.uint8)
+
+                # Apply mask - only set bits where difference is significant
+                bit_val = bit_val & (thresh > 0)
+
+                # Store in binary_codes
+                binary_codes[:, :, i] = bit_val
+
+            # Convert binary codes to pixel coordinates
+            decoded = np.zeros(mask.shape, dtype=np.int32) - 1  # -1 for invalid pixels
+
+            # For each valid pixel
+            for y in range(mask.shape[0]):
+                for x in range(mask.shape[1]):
+                    if mask[y, x] > 0:
+                        # Extract binary code for this pixel
+                        binary_code = binary_codes[y, x, :]
+
+                        # Convert binary to gray code
+                        value = 0
+                        for j in range(num_bits):
+                            bit_val = binary_code[num_bits - j - 1]
+                            value = (value << 1) | bit_val
+
+                        # Set decoded value
+                        if value < width * height:
+                            decoded[y, x] = value
+
+            # Success
+            ret = True
+
+        except Exception as e:
+            logger.warning(f"Custom Gray code decoding failed: {e}, trying OpenCV's decoder...")
+            try:
+                # Fallback to OpenCV's decoder with various argument patterns
+
+                # Method 1: Basic decode (OpenCV 3.x style)
+                try:
+                    result = gray_code.decode(pattern_images)
+                    if isinstance(result, tuple) and len(result) >= 2:
+                        ret, decoded = result[:2]
+                    else:
+                        # Direct result
+                        decoded = result
+                        ret = True
+                except Exception as e1:
+                    logger.warning(f"OpenCV basic decode failed: {e1}")
+
+                    # Method 2: With reference images (OpenCV 4.x style)
+                    try:
+                        result = gray_code.decode(
+                            pattern_images,
+                            np.zeros_like(white_ref),  # Disparity map (not used)
+                            black_ref,
+                            white_ref
+                        )
+
+                        if isinstance(result, tuple) and len(result) >= 2:
+                            ret, decoded = result[:2]
+                        else:
+                            decoded = result
+                            ret = True
+                    except Exception as e2:
+                        logger.error(f"All decode methods failed: {e1}, {e2}")
+                        ret = False
+                        decoded = None
+            except Exception as final_e:
+                logger.error(f"All Gray code decoding approaches failed: {final_e}")
+                ret = False
+                decoded = None
+        
+        # Check decoding success
+        if not ret or decoded is None:
+            logger.error("Gray code decoding failed")
+            # Return empty arrays with correct shape
+            img_height, img_width = images[0].shape[:2]
+            empty_coords = np.zeros((img_height, img_width, 2), dtype=np.float32)
+            empty_mask = np.zeros((img_height, img_width), dtype=np.uint8)
+            return empty_coords, empty_mask
+        
+        # Create coordinate map
+        img_height, img_width = mask.shape
+        coord_map = np.zeros((img_height, img_width, 2), dtype=np.float32)
+        
+        # Extract coordinates
+        for y in range(img_height):
+            for x in range(img_width):
+                if mask[y, x] != 0:
+                    try:
+                        # Try to get decoded value with error handling
+                        if decoded is not None and decoded[y, x] != -1:
+                            # Convert projector coordinate to row, col
+                            proj_y = decoded[y, x] // width
+                            proj_x = decoded[y, x] % width
+                            
+                            if 0 <= proj_x < width and 0 <= proj_y < height:
+                                coord_map[y, x, 0] = proj_y  # Row (V)
+                                coord_map[y, x, 1] = proj_x  # Column (U)
+                    except Exception as e:
+                        # If error for this pixel, just skip it
+                        logger.debug(f"Error processing decoded pixel ({x},{y}): {e}")
+                        continue
+        
+        return coord_map, mask
+    
+    def find_correspondences(
+        self,
+        left_coords: np.ndarray,
+        right_coords: np.ndarray,
+        left_mask: np.ndarray,
+        right_mask: np.ndarray,
+        epipolar_tolerance: float = 2.0
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Find corresponding points between stereo images.
+        
+        Args:
+            left_coords: Left camera-projector correspondences
+            right_coords: Right camera-projector correspondences
+            left_mask: Left camera shadow mask
+            right_mask: Right camera shadow mask
+            epipolar_tolerance: Max distance from epipolar line
+            
+        Returns:
+            Tuple of (left_points, right_points) as Nx2 arrays
+        """
+        height, width = left_mask.shape
+        
+        # Create mapping from projector to right camera
+        proj_to_right = {}
+        
+        # Build projection map
+        for y in range(height):
+            for x in range(width):
+                if right_mask[y, x] == 0:
+                    continue  # Skip shadowed pixels
+                
+                # Get projector coordinates
+                proj_v = int(right_coords[y, x, 0])
+                proj_u = int(right_coords[y, x, 1])
+                
+                if proj_v <= 0 or proj_u <= 0:
+                    continue  # Skip invalid coords
+                
+                # Store coordinates
+                key = (proj_v, proj_u)
+                if key not in proj_to_right:
+                    proj_to_right[key] = []
+                proj_to_right[key].append((x, y))
+        
+        # Find correspondences
+        left_points = []
+        right_points = []
+        
+        for y in range(height):
+            for x in range(width):
+                if left_mask[y, x] == 0:
+                    continue  # Skip shadowed pixels
+                
+                # Get projector coordinates
+                proj_v = int(left_coords[y, x, 0])
+                proj_u = int(left_coords[y, x, 1])
+                
+                if proj_v <= 0 or proj_u <= 0:
+                    continue  # Skip invalid coords
+                
+                # Find matches in right image
+                key = (proj_v, proj_u)
+                if key in proj_to_right:
+                    # Find best match based on epipolar constraint
+                    best_match = None
+                    min_y_diff = float('inf')
+                    
+                    for rx, ry in proj_to_right[key]:
+                        y_diff = abs(y - ry)
+                        if y_diff < min_y_diff:
+                            min_y_diff = y_diff
+                            best_match = (rx, ry)
+                    
+                    # Only use if close to epipolar line
+                    if min_y_diff <= epipolar_tolerance:
+                        right_x, right_y = best_match
+                        left_points.append([x, y])
+                        right_points.append([right_x, right_y])
+        
+        return np.array(left_points), np.array(right_points)
+    
+    def triangulate_points(
+        self,
+        left_points: np.ndarray,
+        right_points: np.ndarray,
+        rectification_params: Dict[str, np.ndarray]
+    ) -> np.ndarray:
+        """
+        Triangulate 3D points from stereo correspondences.
+
+        Args:
+            left_points: Left image points (Nx2)
+            right_points: Right image points (Nx2)
+            rectification_params: Rectification parameters
+
+        Returns:
+            3D points (Nx3)
+        """
+        # Check if we have any points to triangulate
+        if len(left_points) == 0 or len(right_points) == 0:
+            logger.warning("No points to triangulate, returning empty point cloud")
+            return np.array([])
+
+        # Get projection matrices
+        P1 = rectification_params["P1"]
+        P2 = rectification_params["P2"]
+
+        # Reshape points for triangulation
+        left_pts = left_points.reshape(-1, 1, 2).astype(np.float32)
+        right_pts = right_points.reshape(-1, 1, 2).astype(np.float32)
+
+        # OpenCV triangulatePoints expects points to be 2xN, not Nx2
+        left_pts_2xn = np.transpose(left_pts, (2, 1, 0)).reshape(2, -1)
+        right_pts_2xn = np.transpose(right_pts, (2, 1, 0)).reshape(2, -1)
+
+        # Triangulate points
+        points_4d = cv2.triangulatePoints(P1, P2, left_pts_2xn, right_pts_2xn)
+        points_4d = points_4d.T
+
+        # Convert to 3D points
+        points_3d = points_4d[:, :3] / points_4d[:, 3:4]
+
+        return points_3d
+    
+    def filter_point_cloud(
+        self,
+        points_3d: np.ndarray,
+        max_distance: float = 1000.0,
+        voxel_size: float = 0.5
+    ) -> Union[o3dg.PointCloud, np.ndarray]:
+        """
+        Filter and clean 3D point cloud.
+        
+        Args:
+            points_3d: 3D points (Nx3)
+            max_distance: Maximum distance from origin
+            voxel_size: Voxel size for downsampling
+            
+        Returns:
+            Filtered point cloud
+        """
+        # Remove invalid points
+        mask = ~np.isnan(points_3d).any(axis=1) & ~np.isinf(points_3d).any(axis=1)
+        clean_pts = points_3d[mask]
+        
+        if len(clean_pts) == 0:
+            logger.warning("No valid points after removing NaN and infinite values")
+            return np.array([]) if not OPEN3D_AVAILABLE else o3d.geometry.PointCloud()
+        
+        # Filter by distance
+        dist = np.linalg.norm(clean_pts, axis=1)
+        mask = dist < max_distance
+        clean_pts = clean_pts[mask]
+        
+        if len(clean_pts) == 0:
+            logger.warning(f"No valid points after distance filtering (max_dist={max_distance})")
+            return np.array([]) if not OPEN3D_AVAILABLE else o3d.geometry.PointCloud()
+        
+        # Use Open3D for advanced filtering if available
+        if OPEN3D_AVAILABLE and len(clean_pts) > 50:
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(clean_pts)
+            
+            # Remove statistical outliers
+            pcd, _ = pcd.remove_statistical_outlier(
+                nb_neighbors=20,
+                std_ratio=self.config.outlier_std
+            )
+            
+            # Voxel downsample
+            pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
+            
+            return pcd
+        
+        # If Open3D not available, just return filtered points
+        return clean_pts
     
     def create_mesh(
-            self, 
-            point_cloud: o3dg.PointCloud, 
-            depth: int = 9, 
-            smooth_iterations: int = 5
-        ) -> o3dg.TriangleMesh:
+        self,
+        pcd: o3dg.PointCloud,
+        depth: int = 9,
+        smoothing: int = 5
+    ) -> Optional[o3dg.TriangleMesh]:
         """
-        Create a triangle mesh from a point cloud.
+        Create a 3D mesh from point cloud.
         
         Args:
-            point_cloud: Input point cloud
-            depth: Depth parameter for Poisson reconstruction (higher = more detail)
-            smooth_iterations: Number of smoothing iterations
+            pcd: Point cloud
+            depth: Poisson reconstruction depth
+            smoothing: Number of smoothing iterations
             
         Returns:
-            Triangle mesh
+            Triangle mesh or None if failed
         """
         if not OPEN3D_AVAILABLE:
-            logger.warning("open3d not available. Cannot create mesh from point cloud")
-            return o3dg.TriangleMesh()
-            
-        return self.structured_light_scanner.create_mesh_from_point_cloud(
-            point_cloud, 
-            depth=depth, 
-            smooth_iterations=smooth_iterations
-        )
-    
-    def save_scan(self, point_cloud: o3dg.PointCloud, filepath: str) -> None:
-        """
-        Save a point cloud to a file.
-        
-        Args:
-            point_cloud: Point cloud to save
-            filepath: Output file path (supported formats: .ply, .pcd, .obj)
-        """
-        return self.structured_light_scanner.save_point_cloud(point_cloud, filepath)
-    
-    def save_mesh(self, mesh: o3dg.TriangleMesh, filepath: str) -> None:
-        """
-        Save a triangle mesh to a file.
-        
-        Args:
-            mesh: Triangle mesh to save
-            filepath: Output file path (supported formats: .ply, .obj, .off, .gltf)
-        """
-        return self.structured_light_scanner.save_mesh(mesh, filepath)
-    
-    def get_latest_scan_id(self) -> Optional[str]:
-        """
-        Get the ID of the most recent scan.
-        
-        Returns:
-            Scan ID or None if no scans have been performed
-        """
-        if not self.scan_folders:
+            logger.warning("Open3D not available, cannot create mesh")
             return None
+        
+        if not pcd or not hasattr(pcd, 'points') or len(pcd.points) < 10:
+            logger.warning("Not enough points to create mesh")
+            return None
+        
+        try:
+            # Estimate normals
+            pcd.estimate_normals(
+                search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=10, max_nn=30)
+            )
             
-        return list(self.scan_folders.keys())[-1]
+            # Orient normals
+            pcd.orient_normals_towards_camera_location(np.array([0, 0, 0]))
+            
+            # Create mesh with Poisson reconstruction
+            mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
+                pcd, depth=depth
+            )
+            
+            # Remove low density vertices
+            vertices_to_remove = densities < np.quantile(densities, 0.01)
+            mesh.remove_vertices_by_mask(vertices_to_remove)
+            
+            # Apply smoothing
+            if smoothing > 0:
+                logger.info(f"Smoothing mesh with {smoothing} iterations")
+                mesh = mesh.filter_smooth_taubin(number_of_iterations=smoothing)
+            
+            logger.info(f"Created mesh with {len(mesh.triangles)} triangles")
+            return mesh
+        except Exception as e:
+            logger.error(f"Failed to create mesh: {e}")
+            return None
     
-    def get_scan_folders(self, scan_id: Optional[str] = None) -> Dict[str, str]:
+    def scan(
+        self,
+        output_dir: Optional[str] = None,
+        generate_mesh: bool = False,
+        visualize: bool = False
+    ) -> ScanResult:
         """
-        Get the folder paths for a scan.
+        Perform a complete 3D scan using structured light.
         
         Args:
-            scan_id: Scan ID, or None to use the most recent scan
+            output_dir: Directory to save scan results
+            generate_mesh: Whether to generate a 3D mesh
+            visualize: Whether to visualize results
             
         Returns:
-            Dictionary of folder paths (scan_dir, captures_dir, results_dir)
+            ScanResult object with point cloud, mesh, and debug info
         """
-        if not scan_id:
-            scan_id = self.get_latest_scan_id()
+        # Create output directory if specified
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            captures_dir = os.path.join(output_dir, "captures")
+            debug_dir = os.path.join(output_dir, "debug")
+            results_dir = os.path.join(output_dir, "results")
             
-        if not scan_id or scan_id not in self.scan_folders:
-            return {}
+            os.makedirs(captures_dir, exist_ok=True)
+            os.makedirs(debug_dir, exist_ok=True)
+            os.makedirs(results_dir, exist_ok=True)
+        
+        # Generate patterns
+        logger.info("Generating structured light patterns...")
+
+        # For robust scanning, focus more on Gray code patterns and less on phase shift
+        # This makes scanning more reliable when hardware can't display full grayscale
+        if self.config.quality in ['high', 'ultra']:
+            # For high quality, use both Gray code and phase shift
+            patterns = generate_patterns(
+                width=self.config.pattern_resolution[0],
+                height=self.config.pattern_resolution[1],
+                num_gray_codes=self.config.num_gray_codes,
+                num_phase_shifts=self.config.num_phase_shifts,
+                phase_shift_frequencies=self.config.phase_shift_frequencies
+            )
+        else:
+            # For medium and fast quality, focus more on Gray code
+            # We'll use fewer phase shift frequencies and steps for better reliability
+            frequencies = self.config.phase_shift_frequencies[:1]  # Just use the lowest frequency
+            patterns = generate_patterns(
+                width=self.config.pattern_resolution[0],
+                height=self.config.pattern_resolution[1],
+                num_gray_codes=self.config.num_gray_codes,
+                num_phase_shifts=4,  # Reduce phase shift steps
+                phase_shift_frequencies=frequencies
+            )
+        logger.info(f"Generated {len(patterns)} structured light patterns")
+        
+        # Project patterns and capture images
+        logger.info("Projecting patterns and capturing images...")
+        try:
+            left_images, right_images = self.controller.project_and_capture(
+                patterns=patterns,
+                output_dir=output_dir
+            )
+            logger.info(f"Captured {len(left_images)} image pairs")
+        except Exception as e:
+            logger.error(f"Error during pattern projection and capture: {e}")
+            # Create empty result with error info
+            result = ScanResult(
+                debug_info={"error": str(e), "stage": "capture"}
+            )
+            return result
+        
+        # Check if we have enough images
+        if len(left_images) < 2 or len(right_images) < 2:
+            logger.error(f"Not enough images captured: {len(left_images)} left, {len(right_images)} right")
+            # Create empty result with error info
+            result = ScanResult(
+                debug_info={"error": "Not enough images captured", "stage": "capture"}
+            )
+            return result
+        
+        # Get calibration and rectification parameters
+        logger.info("Computing rectification parameters...")
+        try:
+            # Extract calibration parameters
+            camera_matrix_left = np.array(self.calibration_data["camera_matrix_left"])
+            dist_coeffs_left = np.array(self.calibration_data["dist_coeffs_left"])
+            camera_matrix_right = np.array(self.calibration_data["camera_matrix_right"])
+            dist_coeffs_right = np.array(self.calibration_data["dist_coeffs_right"])
+            R = np.array(self.calibration_data["R"])
+            T = np.array(self.calibration_data["T"])
+            image_size = self.calibration_data.get("image_size", (1280, 720))
             
-        return self.scan_folders[scan_id]
-    
-    def set_output_dir(self, output_dir: str) -> None:
-        """
-        Set the base output directory for all scans.
+            # Compute rectification
+            rectification_params = self.compute_rectification(
+                camera_matrix_left, dist_coeffs_left,
+                camera_matrix_right, dist_coeffs_right,
+                R, T, image_size
+            )
+            logger.info("Rectification parameters computed")
+        except Exception as e:
+            logger.error(f"Error computing rectification parameters: {e}")
+            # Create empty result with error info
+            result = ScanResult(
+                debug_info={"error": str(e), "stage": "rectification"}
+            )
+            return result
         
-        Args:
-            output_dir: Path to the base output directory
-        """
-        self.output_dir = output_dir
-        os.makedirs(output_dir, exist_ok=True)
-        logger.info(f"Set output directory to {output_dir}")
+        # Rectify images
+        logger.info("Rectifying stereo images...")
+        try:
+            rect_left, rect_right = self.rectify_images(
+                left_images, right_images, rectification_params
+            )
+            logger.info("Images rectified")
+            
+            # Only save rectified debug images if explicitly enabled
+            if output_dir and os.environ.get("UNLOOK_SAVE_DEBUG_IMAGES", "0") == "1":
+                logger.debug("Saving rectified debug images...")
+                for i, (left, right) in enumerate(zip(rect_left, rect_right)):
+                    left_path = os.path.join(debug_dir, f"rect_left_{i:03d}.png")
+                    right_path = os.path.join(debug_dir, f"rect_right_{i:03d}.png")
+                    cv2.imwrite(left_path, left)
+                    cv2.imwrite(right_path, right)
+        except Exception as e:
+            logger.error(f"Error rectifying images: {e}")
+            # Create empty result with error info
+            result = ScanResult(
+                debug_info={"error": str(e), "stage": "rectification"},
+                images={"left": left_images, "right": right_images}
+            )
+            return result
         
-    def set_calibration_params(self, 
-                             camera_matrix_left: np.ndarray,
-                             dist_coeffs_left: np.ndarray,
-                             camera_matrix_right: np.ndarray,
-                             dist_coeffs_right: np.ndarray,
-                             R: np.ndarray,
-                             T: np.ndarray,
-                             image_size: Tuple[int, int] = None) -> None:
-        """
-        Set custom calibration parameters for the stereo camera system.
+        # Get white and black reference images
+        white_left = rect_left[0]  # First image is white
+        black_left = rect_left[1]  # Second image is black
+        white_right = rect_right[0]
+        black_right = rect_right[1]
         
-        This allows using calibration parameters from the StereoCalibrator
-        or other external calibration tools.
+        # Gray code images start from index 2
+        gray_left = rect_left[2:2+self.config.num_gray_codes*4]  # 4 patterns per bit (H/V, normal/inverse)
+        gray_right = rect_right[2:2+self.config.num_gray_codes*4]
         
-        Args:
-            camera_matrix_left: 3x3 camera matrix for left camera
-            dist_coeffs_left: Distortion coefficients for left camera
-            camera_matrix_right: 3x3 camera matrix for right camera
-            dist_coeffs_right: Distortion coefficients for right camera
-            R: 3x3 rotation matrix between cameras
-            T: 3x1 translation vector between cameras
-            image_size: Optional image size (width, height) - if not specified,
-                       will use the size from existing scanners or a default value
-        """
-        # Use image size from parameters, or try to infer from existing scanners
-        if image_size is None:
-            if self.structured_light_scanner is not None:
-                try:
-                    image_size = self.structured_light_scanner.camera_params.image_size
-                except Exception:
-                    image_size = (1280, 720)  # Default fallback
+        # Decode Gray code patterns
+        logger.info("Decoding Gray code patterns...")
+        try:
+            left_coords, left_mask = self.decode_gray_code(
+                gray_left, white_left, black_left,
+                self.config.pattern_resolution[0], self.config.pattern_resolution[1]
+            )
+            
+            right_coords, right_mask = self.decode_gray_code(
+                gray_right, white_right, black_right,
+                self.config.pattern_resolution[0], self.config.pattern_resolution[1]
+            )
+            
+            # Save masks for debugging
+            if output_dir and os.environ.get("UNLOOK_SAVE_DEBUG_IMAGES", "0") == "1":
+                cv2.imwrite(os.path.join(debug_dir, "left_mask.png"), left_mask * 255)
+                cv2.imwrite(os.path.join(debug_dir, "right_mask.png"), right_mask * 255)
+            
+            # Debug info
+            left_valid = np.sum(left_mask)
+            right_valid = np.sum(right_mask)
+            logger.info(f"Valid pixels: {left_valid} left, {right_valid} right")
+        except Exception as e:
+            logger.error(f"Error decoding Gray code patterns: {e}")
+            # Create empty result with error info
+            result = ScanResult(
+                debug_info={"error": str(e), "stage": "decoding"},
+                images={"left": left_images, "right": right_images}
+            )
+            return result
+        
+        # Find stereo correspondences
+        logger.info("Finding stereo correspondences...")
+        try:
+            left_points, right_points = self.find_correspondences(
+                left_coords, right_coords, left_mask, right_mask,
+                epipolar_tolerance=3.0
+            )
+            
+            if len(left_points) < 10:
+                logger.error(f"Too few correspondences: {len(left_points)}")
+                # Create empty result with error info
+                result = ScanResult(
+                    debug_info={
+                        "error": "Too few correspondences",
+                        "stage": "correspondences",
+                        "num_correspondences": len(left_points),
+                        "left_valid": int(np.sum(left_mask)),
+                        "right_valid": int(np.sum(right_mask))
+                    },
+                    images={"left": left_images, "right": right_images}
+                )
+                return result
+            
+            logger.info(f"Found {len(left_points)} stereo correspondences")
+        except Exception as e:
+            logger.error(f"Error finding stereo correspondences: {e}")
+            # Create empty result with error info
+            result = ScanResult(
+                debug_info={"error": str(e), "stage": "correspondences"},
+                images={"left": left_images, "right": right_images}
+            )
+            return result
+        
+        # Triangulate 3D points
+        logger.info("Triangulating 3D points...")
+        try:
+            points_3d = self.triangulate_points(
+                left_points, right_points, rectification_params
+            )
+            logger.info(f"Triangulated {len(points_3d)} 3D points")
+        except Exception as e:
+            logger.error(f"Error triangulating points: {e}")
+            # Create empty result with error info
+            result = ScanResult(
+                debug_info={
+                    "error": str(e),
+                    "stage": "triangulation",
+                    "num_correspondences": len(left_points)
+                },
+                images={"left": left_images, "right": right_images}
+            )
+            return result
+        
+        # Filter and process point cloud
+        logger.info("Filtering point cloud...")
+        try:
+            point_cloud = self.filter_point_cloud(
+                points_3d,
+                max_distance=self.config.max_distance,
+                voxel_size=self.config.voxel_size
+            )
+            
+            if isinstance(point_cloud, o3dg.PointCloud):
+                num_points = len(point_cloud.points)
             else:
-                image_size = (1280, 720)  # Default fallback
+                num_points = len(point_cloud)
+            
+            logger.info(f"Point cloud filtered: {num_points} points after filtering")
+        except Exception as e:
+            logger.error(f"Error filtering point cloud: {e}")
+            # Create empty result with error info
+            result = ScanResult(
+                debug_info={
+                    "error": str(e),
+                    "stage": "filtering",
+                    "num_points": len(points_3d)
+                },
+                images={"left": left_images, "right": right_images}
+            )
+            return result
         
-        logger.info(f"Setting custom calibration parameters with image size {image_size}")
+        # Generate mesh if requested
+        mesh = None
+        if generate_mesh and OPEN3D_AVAILABLE and isinstance(point_cloud, o3dg.PointCloud) and len(point_cloud.points) > 0:
+            logger.info("Generating 3D mesh...")
+            try:
+                mesh = self.create_mesh(
+                    point_cloud,
+                    depth=self.config.mesh_depth,
+                    smoothing=self.config.mesh_smoothing
+                )
+                if mesh:
+                    logger.info(f"Mesh generated with {len(mesh.triangles)} triangles")
+                else:
+                    logger.warning("Mesh generation failed")
+            except Exception as e:
+                logger.error(f"Error creating mesh: {e}")
         
-        # Create camera parameters from the provided matrices
-        stereo_params = StereoCameraParameters(
-            camera_matrix_left=camera_matrix_left,
-            dist_coeffs_left=dist_coeffs_left,
-            camera_matrix_right=camera_matrix_right,
-            dist_coeffs_right=dist_coeffs_right,
-            R=R,
-            T=T,
-            image_size=image_size
+        # Visualize results if requested
+        if visualize and OPEN3D_AVAILABLE and isinstance(point_cloud, o3dg.PointCloud) and len(point_cloud.points) > 0:
+            logger.info("Visualizing results...")
+            try:
+                if mesh:
+                    o3d.visualization.draw_geometries([point_cloud, mesh])
+                else:
+                    o3d.visualization.draw_geometries([point_cloud])
+            except Exception as e:
+                logger.error(f"Error visualizing results: {e}")
+        
+        # Create and save result
+        debug_info = {
+            "num_patterns": len(patterns),
+            "num_captured_images": len(left_images),
+            "left_valid_pixels": int(np.sum(left_mask)) if 'left_mask' in locals() else 0,
+            "right_valid_pixels": int(np.sum(right_mask)) if 'right_mask' in locals() else 0,
+            "num_correspondences": len(left_points) if 'left_points' in locals() else 0,
+            "num_triangulated_points": len(points_3d) if 'points_3d' in locals() else 0,
+            "num_filtered_points": num_points if 'num_points' in locals() else 0,
+            "calibration_file": self.calibration_file,
+            "quality_preset": self.config.quality,
+            "max_distance": self.config.max_distance,
+            "voxel_size": self.config.voxel_size
+        }
+        
+        result = ScanResult(
+            point_cloud=point_cloud,
+            mesh=mesh,
+            images={"left": left_images, "right": right_images},
+            debug_info=debug_info
         )
         
-        # Apply to basic scanner
-        self.structured_light_scanner = StereoStructuredLightScanner(stereo_params)
-        logger.info("Applied calibration to basic scanner")
+        # Save result if output directory is specified
+        if output_dir:
+            result.save(output_dir)
         
-        # Try to apply to enhanced scanner
-        try:
-            self.enhanced_scanner = EnhancedStereoScanner(
-                stereo_params,
-                projector_width=1920,
-                projector_height=1080
-            )
-            logger.info("Applied calibration to enhanced scanner")
-        except Exception as e:
-            logger.warning(f"Failed to create enhanced scanner with custom calibration: {e}")
-            self.enhanced_scanner = None
-        
-        # Try to apply to robust scanner
-        try:
-            self.robust_scanner = RobustStereoScanner(
-                stereo_params,
-                projector_width=1920,
-                projector_height=1080
-            )
-            logger.info("Applied calibration to robust scanner")
-        except Exception as e:
-            logger.warning(f"Failed to create robust scanner with custom calibration: {e}")
-            self.robust_scanner = None
-        
-        # Update scanner type based on available scanners
-        if self.scanner_type == "robust" and self.robust_scanner is None:
-            if self.enhanced_scanner is not None:
-                logger.warning("Robust scanner not available with custom calibration, falling back to enhanced scanner")
-                self.scanner_type = "enhanced"
-            else:
-                logger.warning("Advanced scanners not available with custom calibration, falling back to basic scanner")
-                self.scanner_type = "basic"
-        elif self.scanner_type == "enhanced" and self.enhanced_scanner is None:
-            logger.warning("Enhanced scanner not available with custom calibration, falling back to basic scanner")
-            self.scanner_type = "basic"
-        
-        # Update use_default_calibration flag
-        self.use_default_calibration = False
-        
-        logger.info(f"Custom calibration applied, using scanner type: {self.scanner_type}")
+        return result
 
-    def visualize_point_cloud(self, point_cloud: o3dg.PointCloud) -> None:
-        """
-        Visualize a point cloud (requires open3d).
-        
-        Args:
-            point_cloud: Point cloud to visualize
-        """
-        if not OPEN3D_AVAILABLE:
-            logger.warning("open3d not available. Cannot visualize point cloud")
-            return
-            
-        if len(point_cloud.points) == 0:
-            logger.warning("Point cloud is empty, nothing to visualize")
-            return
-            
-        try:
-            o3d.visualization.draw_geometries([point_cloud], window_name="UnLook 3D Scan")
-        except Exception as e:
-            logger.error(f"Visualization failed: {e}")
-            
-    def __enter__(self):
-        """Context manager entry."""
-        return self
-        
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit - automatically disconnect from scanner."""
-        self.disconnect()
+
+def create_scanner(
+    client,
+    quality: str = "high",
+    calibration_file: Optional[str] = None
+) -> Scanner3D:
+    """
+    Create a 3D scanner with specified quality preset.
+    
+    Args:
+        client: UnlookClient instance
+        quality: Quality preset (fast, medium, high, ultra)
+        calibration_file: Path to stereo calibration file
+    
+    Returns:
+        Configured Scanner3D instance
+    """
+    config = ScanConfig()
+    config.set_quality_preset(quality)
+    
+    scanner = Scanner3D(
+        client=client,
+        config=config,
+        calibration_file=calibration_file
+    )
+    
+    return scanner
