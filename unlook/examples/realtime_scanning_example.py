@@ -5,7 +5,24 @@
 Real-time 3D Scanning Example
 
 This example demonstrates how to use the real-time 3D scanner for continuous scanning
-at higher frame rates, suitable for handheld scanning.
+at higher frame rates, suitable for handheld 3D scanning with stereo cameras.
+
+The scanner includes several robust features for reliable operation:
+- Optimized Gray code pattern decoding for stereo setups
+- Configurable epipolar constraints for accurate stereo matching
+- Statistical outlier filtering based on disparity consistency
+- Enhanced triangulation with comprehensive validation
+- Real-time point cloud visualization
+
+Usage examples:
+  # Basic scanning with default settings
+  python realtime_scanning_example.py
+
+  # High quality scanning with visualization
+  python realtime_scanning_example.py --quality high --visualize
+
+  # Debug mode with strict epipolar matching
+  python realtime_scanning_example.py --debug --epipolar-tol 3.0
 """
 
 import os
@@ -15,10 +32,33 @@ import argparse
 import logging
 from pathlib import Path
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, 
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Configure logging with more robust error handling
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Create logger with custom error handler
 logger = logging.getLogger("realtime_scanning")
+
+# Make logger more robust to shutdown issues
+class SafeHandler(logging.StreamHandler):
+    """A handler that's safer during shutdown by catching errors."""
+    def handleError(self, record):
+        # Just silently ignore errors during shutdown
+        pass
+
+    def emit(self, record):
+        try:
+            super().emit(record)
+        except Exception:
+            # Ignoring all exceptions during logging
+            pass
+
+# Replace default handlers with safe ones
+for handler in logger.handlers + logging.getLogger().handlers:
+    if isinstance(handler, logging.StreamHandler):
+        handler.__class__ = SafeHandler
 
 # Add parent directory to path to allow importing unlook module
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -74,6 +114,8 @@ def parse_arguments():
                         help='Timeout in seconds for scanner discovery')
     parser.add_argument('--no-gpu', action='store_true',
                         help='Disable GPU acceleration')
+    parser.add_argument('--force-cpu-opencv', action='store_true',
+                        help='Force CPU-only processing for OpenCV operations (use if OpenCV CUDA support is broken)')
     parser.add_argument('--no-neural-network', action='store_true',
                         help='Disable neural network enhancement')
     parser.add_argument('--continuous', action='store_true',
@@ -90,6 +132,8 @@ def parse_arguments():
                         help='Run interactive focus check before scanning')
     parser.add_argument('--focus-roi', type=str, default=None,
                         help='Region of interest for focus check (x,y,width,height)')
+    parser.add_argument('--epipolar-tol', type=float, default=5.0,
+                        help='Epipolar tolerance for stereo matching (pixels, default: 5.0)')
 
     return parser.parse_args()
 
@@ -498,6 +542,13 @@ def main():
         if args.no_gpu:
             config.use_gpu = False
             logger.info("GPU acceleration disabled")
+        elif args.force_cpu_opencv:
+            # Set use_gpu but overwrite specific OpenCV CUDA flags
+            logger.info("Forcing CPU-only processing for OpenCV operations")
+            # Add a custom flag to the config
+            config.use_gpu = True
+            config.opencv_cuda_enabled = False
+            # We'll still use other GPU acceleration like PyTorch
         else:
             logger.info(f"GPU acceleration {'enabled' if config.use_gpu else 'not available'}")
 
@@ -533,12 +584,16 @@ def main():
     # Capture signals for clean shutdown
     import signal
     running = True
-    
+
     def signal_handler(sig, frame):
+        """Handle shutdown signals safely."""
         nonlocal running
-        logger.info("Received signal to stop, shutting down...")
+        # Use print instead of logger to avoid reentrant logging issues
+        # that can occur during shutdown
+        print("\nShutdown signal received, cleaning up...")
         running = False
-    
+
+    # Set up signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
@@ -546,6 +601,25 @@ def main():
     if recorder:
         recorder.start_recording()
     
+    # Configure epipolar tolerance if specified
+    if hasattr(args, 'epipolar_tol'):
+        logger.info(f"Setting epipolar tolerance to {args.epipolar_tol} pixels for better stereo matching")
+        # Override the correspondence finder with custom tolerance
+        scanner._find_stereo_correspondences = lambda left_coords, right_coords, left_mask, right_mask: \
+            scanner.__class__._find_stereo_correspondences(
+                scanner, left_coords, right_coords, left_mask, right_mask,
+                epipolar_tolerance=args.epipolar_tol
+            )
+
+        # Print information about improved stereo scanning
+        print("\n" + "="*80)
+        print("  ROBUST REAL-TIME STEREO SCANNING IMPROVEMENTS")
+        print("  - Improved Gray code decoding with better mask generation")
+        print(f"  - Customized epipolar constraint ({args.epipolar_tol} pixels)")
+        print("  - Robust outlier filtering based on disparity statistics")
+        print("  - Enhanced triangulation with better validation")
+        print("="*80 + "\n")
+
     # Start scanner
     logger.info("Starting real-time scanning...")
     scanner.start(debug_mode=args.debug)
@@ -624,21 +698,44 @@ def main():
         import traceback
         logger.error(traceback.format_exc())
     finally:
+        # Use try/except blocks for each cleanup operation to ensure
+        # one failure doesn't prevent other cleanup steps
+
         # Stop scanning
-        logger.info("Stopping real-time scanner...")
-        scanner.stop()
-        
+        try:
+            print("Stopping real-time scanner...")
+            if scanner:
+                scanner.stop()
+        except Exception as e:
+            print(f"Error stopping scanner: {e}")
+
         # Stop recording
-        if recorder and recorder.recording:
-            recorder.stop_recording()
-        
+        try:
+            if recorder and hasattr(recorder, 'recording') and recorder.recording:
+                recorder.stop_recording()
+        except Exception as e:
+            print(f"Error stopping recording: {e}")
+
         # Close visualization
-        if visualizer:
-            visualizer.close()
-        
+        try:
+            if visualizer:
+                visualizer.close()
+        except Exception as e:
+            print(f"Error closing visualizer: {e}")
+
         # Disconnect from scanner
-        client.disconnect()
-        logger.info("Disconnected from scanner")
+        try:
+            if client:
+                client.disconnect()
+                print("Disconnected from scanner")
+        except Exception as e:
+            print(f"Error disconnecting from scanner: {e}")
+
+        # Close any open CV windows
+        try:
+            cv2.destroyAllWindows()
+        except:
+            pass
     
     logger.info("Real-time scanning completed")
     return 0

@@ -286,12 +286,12 @@ class RealTimeScannerConfig:
         # Scanning mode and quality
         self.mode = ScanningMode.SINGLE
         self.quality = ScanningQuality.MEDIUM
-        
+
         # Pattern projection settings
         self.pattern_type = PatternType.PHASE_SHIFT
         self.pattern_steps = 8  # Number of phase shifts
         self.pattern_interval = 0.1  # Time between patterns in seconds
-        
+
         # Camera settings
         self.exposure_time = 10000  # in microseconds
         self.gain = 1.0
@@ -300,23 +300,31 @@ class RealTimeScannerConfig:
         self.use_hdr = False  # High Dynamic Range mode
         self.image_quality_preset = None  # Quality preset (None = manual settings)
         self.image_format = None  # Defaults to JPEG
-        
+
         # Image processing
         self.use_denoise = False  # Noise reduction
         self.sharpness = 0.0  # Default sharpness
         self.contrast = 1.0  # Default contrast
         self.brightness = 0.0  # Default brightness
-        
+
         # Resolution and cropping
         self.custom_resolution = None  # Custom resolution (width, height)
         self.crop_region = None  # ROI crop (x, y, width, height)
-        
+
         # Scan settings
         self.use_stereo = True  # Use stereo cameras if available
         self.real_time_processing = True  # Process during scanning
         self.save_raw_images = False  # Save raw captured images
         self.output_directory = "scan_output"  # Directory for saving results
-        
+
+        # GPU and acceleration settings
+        self.use_gpu = True  # Main GPU flag (controls all GPU features)
+        self.opencv_cuda_enabled = True  # Specific flag for OpenCV CUDA operations
+        self.use_neural_network = True  # Controls neural network enhancement
+        self.nn_denoise_strength = 0.5  # Neural network denoising strength (0-1)
+        self.nn_upsample = False  # Whether to upsample point clouds with neural network
+        self.nn_target_points = None  # Target number of points for upsampling
+
         # Advanced settings
         self.custom_pattern_sequence = None  # Custom pattern sequence
         self.custom_camera_ids = None  # Specific cameras to use
@@ -610,7 +618,15 @@ class RealTimeScannerConfig:
             "contrast": self.contrast,
             "brightness": self.brightness,
             "custom_resolution": self.custom_resolution,
-            "crop_region": self.crop_region
+            "crop_region": self.crop_region,
+
+            # GPU and acceleration settings
+            "use_gpu": self.use_gpu,
+            "opencv_cuda_enabled": self.opencv_cuda_enabled,
+            "use_neural_network": self.use_neural_network,
+            "nn_denoise_strength": self.nn_denoise_strength,
+            "nn_upsample": self.nn_upsample,
+            "nn_target_points": self.nn_target_points
         }
         
         # Add enum values correctly

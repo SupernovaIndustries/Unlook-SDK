@@ -48,6 +48,14 @@ This document outlines the development roadmap for the Unlook SDK project, servi
   - Language bindings for C++, C#, etc.
   - Example integrations with popular 3D software
 
+- **Deployment and Distribution**
+  - Windows installer package (.exe) for easy setup
+  - Linux and macOS installation scripts
+  - Dedicated "Unlook SDK Console" that launches a preconfigured environment
+  - One-click environment setup with all dependencies (CUDA, Open3D, etc.)
+  - Automatic detection and configuration of CUDA/GPU acceleration every time the console launches
+  - Self-healing environment that resolves dependency issues automatically
+
 ## Considerations and Constraints
 
 - Focus on maintaining compatibility with consumer-grade hardware

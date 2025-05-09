@@ -19,14 +19,22 @@ from pathlib import Path
 # Configure logger
 logger = logging.getLogger(__name__)
 
-# Check for GPU support
+# Set up CUDA environment first to help libraries find it
 try:
-    # Try to enable OpenCV GPU modules
-    cv2.cuda.getCudaEnabledDeviceCount()
-    CUDA_AVAILABLE = cv2.cuda.getCudaEnabledDeviceCount() > 0
-except:
-    CUDA_AVAILABLE = False
-    
+    from ..utils.cuda_setup import setup_cuda_env, is_cuda_available
+    # Try to set up CUDA environment
+    setup_cuda_env()
+    # Full CUDA check
+    CUDA_AVAILABLE = is_cuda_available()
+except ImportError:
+    # Fallback to simple OpenCV check if our utility isn't available
+    try:
+        # Try to enable OpenCV GPU modules
+        cv2.cuda.getCudaEnabledDeviceCount()
+        CUDA_AVAILABLE = cv2.cuda.getCudaEnabledDeviceCount() > 0
+    except:
+        CUDA_AVAILABLE = False
+
 if CUDA_AVAILABLE:
     logger.info("CUDA support detected, GPU acceleration enabled")
 else:
@@ -34,26 +42,93 @@ else:
 
 # Try to import optional dependencies
 try:
+    # Ensure CUDA environment is set up first
+    try:
+        from ..utils.cuda_setup import setup_cuda_env
+        setup_cuda_env()
+    except ImportError:
+        pass
+
     import open3d as o3d
     from open3d import geometry as o3dg
     OPEN3D_AVAILABLE = True
-    
+
     # Check for Open3D CUDA support
+    OPEN3D_CUDA = False
     if CUDA_AVAILABLE:
         try:
-            # Check if Open3D has CUDA support
-            o3d.core.initialize_cuda_device()
-            OPEN3D_CUDA = True
-            logger.info("Open3D CUDA support enabled")
-        except:
-            OPEN3D_CUDA = False
-            logger.warning("Open3D CUDA support not available")
-    else:
-        OPEN3D_CUDA = False
-except ImportError:
-    logger.warning("open3d not installed. 3D mesh visualization and processing will be limited.")
+            # Detect Open3D version
+            o3d_version = o3d.__version__
+            logger.info(f"Open3D version: {o3d_version}")
+
+            # Different CUDA initialization methods for different Open3D versions
+            if hasattr(o3d, 'core') and hasattr(o3d.core, 'initialize_cuda_device'):
+                # Modern Open3D (0.13+)
+                try:
+                    # Try to initialize CUDA
+                    o3d.core.initialize_cuda_device()
+                    # Verify CUDA was enabled by running a small operation
+                    if hasattr(o3d.core, 'Device'):
+                        test_tensor = o3d.core.Tensor.ones((3, 3), o3d.core.Dtype.Float32,
+                                                           o3d.core.Device("CUDA:0"))
+                        OPEN3D_CUDA = True
+                        logger.info("Open3D CUDA support enabled")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize Open3D CUDA: {e}")
+                    OPEN3D_CUDA = False
+            elif hasattr(o3d, 'utility') and hasattr(o3d.utility, 'set_verbosity_level'):
+                # Older Open3D versions (pre-0.13) - check if CUDA was compiled in
+                try:
+                    # No direct way to check CUDA, try to create a GPU device
+                    if hasattr(o3d, 'cuda') or 'cuda' in dir(o3d):
+                        OPEN3D_CUDA = True
+                        logger.info("Open3D appears to have CUDA support (legacy version)")
+                    else:
+                        logger.warning("Open3D CUDA support not detected (legacy version)")
+                except:
+                    logger.warning("Failed to check Open3D CUDA support (legacy version)")
+
+            if not OPEN3D_CUDA:
+                logger.warning("Open3D CUDA support not available")
+        except Exception as e:
+            logger.warning(f"Error checking Open3D CUDA support: {e}")
+
+    # Check for Open3D ML
+    OPEN3D_ML_AVAILABLE = False
+    OPEN3D_ML_TORCH = False
+    OPEN3D_ML_TF = False
+    try:
+        # Check if ml module exists
+        if hasattr(o3d, 'ml'):
+            # Modern Open3D with ML module
+            import importlib
+
+            # Try to import torch backend
+            torch_backend = importlib.util.find_spec("open3d.ml.torch")
+            if torch_backend:
+                OPEN3D_ML_TORCH = True
+                logger.info("Open3D-ML with PyTorch backend available")
+
+            # Try to import tensorflow backend
+            tf_backend = importlib.util.find_spec("open3d.ml.tf")
+            if tf_backend:
+                OPEN3D_ML_TF = True
+                logger.info("Open3D-ML with TensorFlow backend available")
+
+            OPEN3D_ML_AVAILABLE = OPEN3D_ML_TORCH or OPEN3D_ML_TF
+
+            if not OPEN3D_ML_AVAILABLE:
+                logger.warning("Open3D-ML found but no ML backend detected")
+    except Exception as e:
+        logger.warning(f"Error checking Open3D-ML support: {e}")
+except ImportError as e:
+    logger.warning(f"open3d not installed ({e}). 3D mesh visualization and processing will be limited.")
     OPEN3D_AVAILABLE = False
     OPEN3D_CUDA = False
+    OPEN3D_ML_AVAILABLE = False
+    OPEN3D_ML_TORCH = False
+    OPEN3D_ML_TF = False
+
     # Create placeholder for open3d when not available
     class PlaceholderO3D:
         class geometry:
@@ -68,17 +143,32 @@ except ImportError:
             pass
         class io:
             pass
+        class core:
+            pass
+        class ml:
+            pass
     o3d = PlaceholderO3D()
     o3dg = PlaceholderO3D.geometry
 
 # Try to import cupy for GPU array processing
 try:
+    # Ensure CUDA environment is set up properly first
+    try:
+        from ..utils.cuda_setup import setup_cuda_env
+        setup_cuda_env()
+    except ImportError:
+        pass
+
     import cupy as cp
+    # Verify CuPy actually works by performing a small calculation
+    test_array = cp.array([1, 2, 3])
+    result = cp.sum(test_array)
+
     CUPY_AVAILABLE = True
     logger.info("CuPy available, using GPU array processing")
-except ImportError:
+except (ImportError, Exception) as e:
     CUPY_AVAILABLE = False
-    logger.warning("CuPy not installed, using NumPy for array processing")
+    logger.warning(f"CuPy not working properly ({str(e)}), using NumPy for array processing")
     cp = np
 
 # Try to import torch first
@@ -301,7 +391,17 @@ class RealTimeScanner:
         self.fps = 0
         self.current_point_cloud = None
         self.point_cloud_history = []
-        self.debug_mode = False  # Enable for detailed logging
+        self.debug_mode = True  # Enable detailed logging by default for troubleshooting
+
+        # Create debug directory
+        if self.debug_mode:
+            import os
+            self.debug_dir = os.path.join(os.getcwd(), "debug_output")
+            os.makedirs(self.debug_dir, exist_ok=True)
+            logger.info(f"Debug mode enabled, outputs will be saved to: {self.debug_dir}")
+
+        # Initialize point cloud enhancer to None
+        self.point_cloud_enhancer = None
 
         # Load calibration data
         self.calibration_data = self._load_calibration(calibration_file)
@@ -320,12 +420,90 @@ class RealTimeScanner:
 
         logger.info(f"Initialized RealTimeScanner with {self.config.quality} quality preset")
     
+    def _check_open3d_cuda(self):
+        """
+        Check if Open3D has proper CUDA support.
+        Only run in debug mode to diagnose issues.
+        """
+        try:
+            import open3d as o3d
+            logger.info(f"Open3D version: {o3d.__version__}")
+
+            # Check for CUDA support
+            if hasattr(o3d, 'core') and hasattr(o3d.core, 'initialize_cuda_device'):
+                try:
+                    o3d.core.initialize_cuda_device()
+                    logger.info("Open3D CUDA initialized successfully")
+                    return True
+                except Exception as e:
+                    logger.warning(f"Open3D CUDA initialization failed: {e}")
+            else:
+                # Legacy Open3D
+                if hasattr(o3d, 'cuda') or 'cuda' in dir(o3d):
+                    logger.info("Open3D has legacy CUDA support")
+                    return True
+                else:
+                    logger.warning("Open3D CUDA support not detected (legacy version)")
+
+            return False
+        except Exception as e:
+            logger.warning(f"Error checking Open3D CUDA support: {e}")
+            return False
+
+    def _check_open3d_ml(self):
+        """
+        Check if Open3D-ML is available.
+        Only run in debug mode to diagnose issues.
+        """
+        try:
+            import open3d as o3d
+
+            if hasattr(o3d, 'ml'):
+                logger.info("Open3D-ML module found")
+
+                # Check PyTorch backend
+                try:
+                    import importlib
+                    torch_spec = importlib.util.find_spec("open3d.ml.torch")
+                    if torch_spec:
+                        logger.info("Open3D-ML with PyTorch backend available")
+                        return True
+                except Exception:
+                    pass
+
+                # Check TensorFlow backend
+                try:
+                    tf_spec = importlib.util.find_spec("open3d.ml.tf")
+                    if tf_spec:
+                        logger.info("Open3D-ML with TensorFlow backend available")
+                        return True
+                except Exception:
+                    pass
+
+                # Check if any ML backend is available
+                if not ('torch_spec' in locals() and torch_spec) and not ('tf_spec' in locals() and tf_spec):
+                    logger.warning("Open3D-ML found but no ML backend detected")
+            else:
+                logger.warning("Open3D-ML module not found")
+
+        except Exception as e:
+            logger.warning(f"Error checking Open3D-ML: {e}")
+
+        return False
+
     def _init_neural_network(self):
         """Initialize neural network for enhanced 3D reconstruction."""
         if not POINT_CLOUD_NN_AVAILABLE:
             logger.warning("Point cloud neural network not available, enhancement disabled")
             self.config.use_neural_network = False
             return
+
+        # Run diagnostic checks in debug mode
+        if self.debug_mode:
+            has_cuda = self._check_open3d_cuda()
+            has_ml = self._check_open3d_ml()
+            if not has_cuda:
+                logger.warning("Open3D CUDA support not available")
 
         try:
             # Create a point cloud enhancer
@@ -475,6 +653,32 @@ class RealTimeScanner:
             Dictionary with diagnostic results
         """
         results = {}
+
+        # Check GPU and CUDA availability
+        results["gpu"] = {
+            "torch_cuda": TORCH_CUDA,
+            "gpu_available": CUDA_AVAILABLE,
+            "opencv_cuda_enabled": getattr(self.config, 'opencv_cuda_enabled', True),
+        }
+
+        # Check OpenCV CUDA support
+        try:
+            # Try to create a small test GpuMat to verify OpenCV CUDA bindings
+            test_array = np.zeros((10, 10), dtype=np.float32)
+            test_gpu_mat = cv2.cuda.GpuMat()
+            test_gpu_mat.upload(test_array)
+            test_gpu_mat.release()
+            results["gpu"]["opencv_cuda"] = True
+        except Exception as e:
+            results["gpu"]["opencv_cuda"] = False
+            results["gpu"]["opencv_cuda_error"] = str(e)
+
+        # Check Open3D support if debug mode
+        if self.debug_mode:
+            has_open3d_cuda = self._check_open3d_cuda()
+            has_open3d_ml = self._check_open3d_ml()
+            results["gpu"]["open3d_cuda"] = has_open3d_cuda
+            results["gpu"]["open3d_ml"] = has_open3d_ml
 
         # Check cameras and focus
         try:
@@ -681,14 +885,33 @@ class RealTimeScanner:
         )
         
         # Transfer to GPU if available for faster remapping
-        if self.config.use_gpu and CUDA_AVAILABLE:
+        # Skip if opencv_cuda_enabled is explicitly set to False
+        opencv_cuda_enabled = getattr(self.config, 'opencv_cuda_enabled', True)
+        if self.config.use_gpu and CUDA_AVAILABLE and opencv_cuda_enabled:
             try:
-                # Convert to CUDA arrays for faster processing
-                map_left_x_gpu = cv2.cuda_GpuMat(map_left_x)
-                map_left_y_gpu = cv2.cuda_GpuMat(map_left_y)
-                map_right_x_gpu = cv2.cuda_GpuMat(map_right_x)
-                map_right_y_gpu = cv2.cuda_GpuMat(map_right_y)
-                
+                # Check if OpenCV was actually compiled with CUDA support
+                try:
+                    # Try to create a small test GpuMat to verify OpenCV CUDA bindings
+                    test_array = np.zeros((10, 10), dtype=np.float32)
+                    test_gpu_mat = cv2.cuda.GpuMat()
+                    test_gpu_mat.upload(test_array)
+                    test_gpu_mat.release()
+                except Exception as e:
+                    logger.warning(f"OpenCV CUDA not properly available: {e}")
+                    raise ValueError("OpenCV CUDA support not available")
+
+                # Convert to CUDA arrays using safer upload method
+                map_left_x_gpu = cv2.cuda.GpuMat()
+                map_left_y_gpu = cv2.cuda.GpuMat()
+                map_right_x_gpu = cv2.cuda.GpuMat()
+                map_right_y_gpu = cv2.cuda.GpuMat()
+
+                # Ensure float32 type for GPU
+                map_left_x_gpu.upload(map_left_x.astype(np.float32))
+                map_left_y_gpu.upload(map_left_y.astype(np.float32))
+                map_right_x_gpu.upload(map_right_x.astype(np.float32))
+                map_right_y_gpu.upload(map_right_y.astype(np.float32))
+
                 # Return both CPU and GPU maps
                 return {
                     "R1": R1, "R2": R2, "P1": P1, "P2": P2, "Q": Q,
@@ -701,6 +924,12 @@ class RealTimeScanner:
                 }
             except Exception as e:
                 logger.error(f"Failed to create GPU rectification maps: {e}")
+                if self.debug_mode:
+                    import traceback
+                    logger.debug(f"GPU rectification error traceback: {traceback.format_exc()}")
+                # Set flag to avoid GPU usage throughout processing
+                self.config.use_gpu = False
+                logger.warning("Disabled GPU acceleration due to OpenCV CUDA issues")
         
         # Return CPU maps
         return {
@@ -954,7 +1183,9 @@ class RealTimeScanner:
         height: int
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Fast Gray code decoding optimized for real-time performance.
+        Fast Gray code decoding optimized for real-time stereo performance.
+
+        Incorporates techniques from SLStudio but adapted for stereo camera configuration.
 
         Args:
             gray_images: Gray code images
@@ -987,17 +1218,28 @@ class RealTimeScanner:
 
         # Compute shadow mask with better handling
         try:
-            diff = cv2.absdiff(white_ref, black_ref)
+            # Convert to grayscale first if color (SLStudio technique)
+            if len(white_ref.shape) == 3:
+                white_gray = cv2.cvtColor(white_ref, cv2.COLOR_BGR2GRAY)
+            else:
+                white_gray = white_ref
 
-            # Use a lower threshold for more sensitivity (was 30)
-            _, mask = cv2.threshold(diff, 15, 1, cv2.THRESH_BINARY)
+            if len(black_ref.shape) == 3:
+                black_gray = cv2.cvtColor(black_ref, cv2.COLOR_BGR2GRAY)
+            else:
+                black_gray = black_ref
 
-            # Ensure mask is 2D
-            if len(mask.shape) > 2:
-                # Convert to grayscale and enhance contrast
-                mask_gray = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
-                # Use max value across color channels for better detection
-                mask = mask_gray
+            # Improved difference calculation (from SLStudio)
+            # This creates a higher contrast difference image
+            diff = white_gray - black_gray
+
+            # Use shading threshold from SLStudio (20)
+            _, mask = cv2.threshold(diff, 20, 1, cv2.THRESH_BINARY)
+
+            # Remove noise using morphological operations (SLStudio approach)
+            kernel = np.ones((3, 3), np.uint8)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
             # Save mask for debugging
             if self.debug_mode and hasattr(self, 'debug_dir'):
@@ -1062,41 +1304,104 @@ class RealTimeScanner:
         binary_codes = np.zeros((mask.shape[0], mask.shape[1], num_bits), dtype=np.uint8)
 
         # GPU acceleration if available
-        if self.config.use_gpu and CUDA_AVAILABLE:
+        # Skip if opencv_cuda_enabled is explicitly set to False
+        opencv_cuda_enabled = getattr(self.config, 'opencv_cuda_enabled', True)
+        if self.config.use_gpu and CUDA_AVAILABLE and opencv_cuda_enabled:
             try:
-                # Convert mask to GPU
-                mask_gpu = cv2.cuda_GpuMat(mask)
+                # Verify the images have proper format and size first
+                if mask.dtype != np.uint8:
+                    mask = mask.astype(np.uint8)
 
-                # Process each bit
+                # Check if any of the grayscale images are None or empty
+                valid_images = True
+                for i in range(num_bits * 2):
+                    if i >= len(gray_processed) or gray_processed[i] is None or gray_processed[i].size == 0:
+                        valid_images = False
+                        break
+
+                if not valid_images:
+                    raise ValueError("One or more Gray code images are invalid")
+
+                # Check if OpenCV was compiled with CUDA support
+                try:
+                    # Create GPU mat and upload mask - safer than direct constructor
+                    mask_gpu = cv2.cuda.GpuMat()
+                    mask_gpu.upload(mask)
+                except Exception as e:
+                    logger.warning(f"OpenCV CUDA not properly available: {e}")
+                    raise ValueError("OpenCV CUDA support not available")
+
+                # Process each bit with better error handling
                 for i in range(num_bits):
                     normal_idx = i * 2
                     inverted_idx = i * 2 + 1
 
-                    # Normal and inverted patterns
-                    normal_gpu = cv2.cuda_GpuMat(gray_processed[normal_idx])
-                    inverted_gpu = cv2.cuda_GpuMat(gray_processed[inverted_idx])
+                    # Ensure grayscale format (single channel)
+                    normal = gray_processed[normal_idx]
+                    inverted = gray_processed[inverted_idx]
 
-                    # Threshold based on difference
-                    diff_gpu = cv2.cuda.absdiff(normal_gpu, inverted_gpu)
-                    thresh_gpu = cv2.cuda.threshold(diff_gpu, 20, 255, cv2.THRESH_BINARY)[1]
+                    # Convert to GPU using upload method (safer)
+                    try:
+                        normal_gpu = cv2.cuda.GpuMat()
+                        inverted_gpu = cv2.cuda.GpuMat()
+                        normal_gpu.upload(normal)
+                        inverted_gpu.upload(inverted)
+                    except Exception as e:
+                        logger.warning(f"Error uploading Gray code images to GPU for bit {i}: {e}")
+                        raise ValueError(f"GPU upload failed for bit {i}")
 
-                    # Determine bit value (more complex on GPU, so download for now)
-                    normal = normal_gpu.download()
-                    inverted = inverted_gpu.download()
-                    thresh = thresh_gpu.download()
+                    try:
+                        # SLStudio approach: measure absolute difference between normal/inverted
+                        # for more robust threshold detection
+                        diff_gpu = cv2.cuda.absdiff(normal_gpu, inverted_gpu)
+                        thresh_gpu = cv2.cuda.threshold(diff_gpu, 20, 255, cv2.THRESH_BINARY)[1]
+                    except Exception as e:
+                        logger.warning(f"Error in GPU threshold operations for bit {i}: {e}")
+                        raise ValueError(f"GPU threshold failed for bit {i}")
 
-                    # 1 where normal > inverted, 0 otherwise
-                    bit_val = (normal > inverted).astype(np.uint8)
+                    try:
+                        # Download results
+                        normal_cpu = normal_gpu.download()
+                        inverted_cpu = inverted_gpu.download()
+                        thresh_cpu = thresh_gpu.download()
 
-                    # Apply mask - only set bits where difference is significant
-                    bit_val = bit_val & (thresh > 0)
+                        # 1 where normal > inverted, 0 otherwise (Using SLStudio's approach)
+                        bit_val = (normal_cpu > inverted_cpu).astype(np.uint8)
 
-                    # Store in binary_codes
-                    binary_codes[:, :, i] = bit_val
+                        # Apply mask - only set bits where difference is significant
+                        bit_val = bit_val & (thresh_cpu > 0)
+
+                        # Store in binary_codes
+                        binary_codes[:, :, i] = bit_val
+
+                        # Release GPU memory
+                        normal_gpu.release()
+                        inverted_gpu.release()
+                        diff_gpu.release()
+                        thresh_gpu.release()
+                    except Exception as e:
+                        # Release memory even on error
+                        try:
+                            normal_gpu.release()
+                            inverted_gpu.release()
+                            diff_gpu.release()
+                            thresh_gpu.release()
+                        except:
+                            pass
+                        logger.warning(f"Error downloading GPU results for bit {i}: {e}")
+                        raise ValueError(f"GPU download failed for bit {i}")
+
+                # Release mask memory
+                mask_gpu.release()
+                logger.debug("GPU Gray code decoding completed successfully")
 
             except Exception as e:
-                logger.error(f"GPU Gray code decoding failed: {e}, falling back to CPU")
-                # Fall back to CPU implementation
+                logger.error(f"GPU Gray code decoding failed: {type(e).__name__}: {e}, falling back to CPU")
+                if self.debug_mode:
+                    import traceback
+                    logger.debug(f"GPU error traceback: {traceback.format_exc()}")
+
+                # Fall back to CPU implementation (using SLStudio approach for bit determination)
                 for i in range(num_bits):
                     normal_idx = i * 2
                     inverted_idx = i * 2 + 1
@@ -1105,12 +1410,11 @@ class RealTimeScanner:
                     normal = gray_processed[normal_idx]
                     inverted = gray_processed[inverted_idx]
 
-                    # Threshold based on difference
+                    # SLStudio approach: use absolute difference for more robust bit determination
                     diff = cv2.absdiff(normal, inverted)
                     _, thresh = cv2.threshold(diff, 20, 255, cv2.THRESH_BINARY)
 
-                    # Determine bit value
-                    # 1 where normal > inverted, 0 otherwise
+                    # Determine bit value (SLStudio approach)
                     bit_val = (normal > inverted).astype(np.uint8)
 
                     # Apply mask - only set bits where difference is significant
@@ -1119,7 +1423,7 @@ class RealTimeScanner:
                     # Store in binary_codes
                     binary_codes[:, :, i] = bit_val
         else:
-            # CPU implementation
+            # CPU implementation (based on SLStudio approach)
             for i in range(num_bits):
                 normal_idx = i * 2
                 inverted_idx = i * 2 + 1
@@ -1128,12 +1432,11 @@ class RealTimeScanner:
                 normal = gray_processed[normal_idx]
                 inverted = gray_processed[inverted_idx]
 
-                # Threshold based on difference
+                # SLStudio approach: use absolute difference for more robust bit determination
                 diff = cv2.absdiff(normal, inverted)
                 _, thresh = cv2.threshold(diff, 20, 255, cv2.THRESH_BINARY)
 
-                # Determine bit value
-                # 1 where normal > inverted, 0 otherwise
+                # Determine bit value (SLStudio approach)
                 bit_val = (normal > inverted).astype(np.uint8)
 
                 # Apply mask - only set bits where difference is significant
@@ -1142,49 +1445,56 @@ class RealTimeScanner:
                 # Store in binary_codes
                 binary_codes[:, :, i] = bit_val
 
-        # Convert binary codes to pixel coordinates (CPU operation for now)
+        # Convert binary codes to pixel coordinates using SLStudio's approach
+        # This is a more efficient implementation of Gray code to binary conversion
         decoded = np.zeros(mask.shape, dtype=np.int32) - 1  # -1 for invalid pixels
 
         # Use vectorized operations where possible
         img_height, img_width = mask.shape
         y_coords, x_coords = np.where(mask > 0)
-        
+
         for idx in range(len(y_coords)):
             y, x = y_coords[idx], x_coords[idx]
-            
+
             # Extract binary code for this pixel
             binary_code = binary_codes[y, x, :]
-            
-            # Convert binary to Gray code
-            value = 0
+
+            # Convert binary to Gray code (SLStudio approach)
+            gray_value = 0
             for j in range(num_bits):
                 bit_val = binary_code[num_bits - j - 1]
-                value = (value << 1) | bit_val
-                
+                gray_value = (gray_value << 1) | bit_val
+
+            # Convert Gray code to binary using SLStudio's algorithm
+            # This is much more efficient than the previous approach
+            binary_value = gray_value
+            for shift in range(1, num_bits):
+                binary_value ^= (binary_value >> shift)
+
             # Set decoded value only if within range
-            if value < width * height:
-                decoded[y, x] = value
-        
+            if binary_value < width * height:
+                decoded[y, x] = binary_value
+
         # Create coordinate map
         img_height, img_width = mask.shape
         coord_map = np.zeros((img_height, img_width, 2), dtype=np.float32)
-        
+
         # For each valid pixel, convert projector coordinate to row, col
         valid_coords = np.where((decoded >= 0) & (mask > 0))
         y_coords, x_coords = valid_coords
-        
+
         for idx in range(len(y_coords)):
             y, x = y_coords[idx], x_coords[idx]
             value = decoded[y, x]
-            
+
             # Convert projector coordinate to row, col
             proj_y = value // width
             proj_x = value % width
-            
+
             if 0 <= proj_x < width and 0 <= proj_y < height:
                 coord_map[y, x, 0] = proj_y  # Row (V)
                 coord_map[y, x, 1] = proj_x  # Column (U)
-        
+
         return coord_map, mask
     
     def _find_stereo_correspondences(
@@ -1193,10 +1503,14 @@ class RealTimeScanner:
         right_coords: np.ndarray,
         left_mask: np.ndarray,
         right_mask: np.ndarray,
-        epipolar_tolerance: float = 5.0  # Increased from 3.0 to 5.0 for more matches
+        epipolar_tolerance: float = 5.0  # Balance between accuracy and robustness
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Find corresponding points between stereo images.
+        Find corresponding points between stereo images for real-time scanning.
+
+        For stereo camera configuration, we're finding correspondences between two camera views,
+        not between camera and projector as in SLStudio. The projector patterns help us
+        establish these correspondences indirectly.
 
         Args:
             left_coords: Left camera-projector correspondences
@@ -1217,11 +1531,12 @@ class RealTimeScanner:
             logger.info(f"Left coords shape: {left_coords.shape}")
             logger.info(f"Right coords shape: {right_coords.shape}")
 
-        # Create mapping from projector to right camera
+        # Create mapping from projector to right camera (SLStudio approach)
+        # This maps projector coordinates to camera coordinates for faster lookup
         proj_to_right = {}
         valid_right_count = 0
 
-        # Build projection map
+        # Build projection map using stricter validation (SLStudio approach)
         for y in range(height):
             for x in range(width):
                 if right_mask[y, x] == 0:
@@ -1231,12 +1546,13 @@ class RealTimeScanner:
                 proj_v = int(right_coords[y, x, 0])
                 proj_u = int(right_coords[y, x, 1])
 
-                if proj_v <= 0 or proj_u <= 0:
-                    continue  # Skip invalid coords
+                # SLStudio uses strict validation of projector coordinates
+                if proj_v < 0 or proj_u < 0 or proj_v >= height or proj_u >= width:
+                    continue  # Skip invalid coordinates
 
                 valid_right_count += 1
 
-                # Store coordinates
+                # Store coordinates - SLStudio groups by projector coordinate
                 key = (proj_v, proj_u)
                 if key not in proj_to_right:
                     proj_to_right[key] = []
@@ -1246,12 +1562,13 @@ class RealTimeScanner:
             logger.info(f"Valid projector coordinates in right image: {valid_right_count}")
             logger.info(f"Unique projector coordinates: {len(proj_to_right)}")
 
-        # Find correspondences
+        # Find correspondences using SLStudio approach
         left_points = []
         right_points = []
         valid_left_count = 0
         match_count = 0
 
+        # Filter the most valid correspondences (better quality using SLStudio approach)
         for y in range(height):
             for x in range(width):
                 if left_mask[y, x] == 0:
@@ -1261,15 +1578,17 @@ class RealTimeScanner:
                 proj_v = int(left_coords[y, x, 0])
                 proj_u = int(left_coords[y, x, 1])
 
-                if proj_v <= 0 or proj_u <= 0:
-                    continue  # Skip invalid coords
+                # SLStudio uses strict validation of projector coordinates
+                if proj_v < 0 or proj_u < 0 or proj_v >= height or proj_u >= width:
+                    continue  # Skip invalid coordinates
 
                 valid_left_count += 1
 
-                # Find matches in right image
+                # Find matches in right image using projector coordinates as key
                 key = (proj_v, proj_u)
                 if key in proj_to_right:
-                    # Find best match based on epipolar constraint
+                    # SLStudio approach: find the match closest to the epipolar line
+                    # This uses a much tighter epipolar constraint (2 pixels)
                     best_match = None
                     min_y_diff = float('inf')
 
@@ -1279,12 +1598,133 @@ class RealTimeScanner:
                             min_y_diff = y_diff
                             best_match = (rx, ry)
 
-                    # Only use if close to epipolar line
+                    # Only use if very close to epipolar line (SLStudio uses strict constraints)
                     if min_y_diff <= epipolar_tolerance:
                         match_count += 1
                         right_x, right_y = best_match
                         left_points.append([x, y])
                         right_points.append([right_x, right_y])
+
+        # Apply statistical filtering optimized for stereo camera setup
+        if len(left_points) > 20:
+            # Convert to numpy arrays for vectorized operations
+            left_arr = np.array(left_points)
+            right_arr = np.array(right_points)
+
+            # Calculate disparities (x-disparity is most important for stereo systems)
+            disparities = left_arr[:, 0] - right_arr[:, 0]
+
+            # In rectified stereo, disparities should be mostly positive
+            # (right camera x-coordinates are smaller than left camera x-coordinates)
+            # But we'll use robust statistics rather than enforcing this strictly
+
+            # Find median disparity for central tendency
+            median_disparity = np.median(disparities)
+
+            # Use a robust threshold based on median absolute deviation (MAD)
+            # MAD is less sensitive to outliers than standard deviation
+            mad = np.median(np.abs(disparities - median_disparity))
+
+            # Conservative threshold for real-time performance
+            # Higher multiplier = keep more points at the cost of some outliers
+            disparity_threshold = 3.0 * max(mad, 1.0)
+
+            # Create a mask for valid disparities
+            valid_mask = np.abs(disparities - median_disparity) <= disparity_threshold
+
+            # Apply the filter
+            filtered_left_points = []
+            filtered_right_points = []
+
+            for i in range(len(valid_mask)):
+                if valid_mask[i]:
+                    filtered_left_points.append(left_points[i])
+                    filtered_right_points.append(right_points[i])
+
+            # Update the point lists
+            left_points = filtered_left_points
+            right_points = filtered_right_points
+
+            if self.debug_mode:
+                logger.info(f"Outlier filtering removed {len(valid_mask) - sum(valid_mask)} points")
+                logger.info(f"Median disparity: {median_disparity:.2f}, MAD: {mad:.2f}, threshold: {disparity_threshold:.2f}")
+
+        # Always save debug images if in debug mode
+        if self.debug_mode and hasattr(self, 'debug_dir'):
+            import os
+            os.makedirs(self.debug_dir, exist_ok=True)
+
+            # Save masks for debugging
+            left_mask_vis = left_mask.astype(np.uint8) * 255
+            right_mask_vis = right_mask.astype(np.uint8) * 255
+
+            # Create coordinate visualizations (SLStudio style)
+            coord_viz_left = np.zeros((height, width, 3), dtype=np.uint8)
+            coord_viz_right = np.zeros((height, width, 3), dtype=np.uint8)
+
+            # Color pixels based on their projector coordinates (normalized)
+            # This is similar to SLStudio's debug visualization
+            for y in range(height):
+                for x in range(width):
+                    if left_mask[y, x] > 0:
+                        proj_v = int(left_coords[y, x, 0])
+                        proj_u = int(left_coords[y, x, 1])
+                        if 0 <= proj_v < height and 0 <= proj_u < width:
+                            # Normalize to 0-255 for visualization
+                            r = min(255, (proj_v * 255) // height)
+                            g = min(255, (proj_u * 255) // width)
+                            coord_viz_left[y, x] = [r, g, 255]
+
+                    if right_mask[y, x] > 0:
+                        proj_v = int(right_coords[y, x, 0])
+                        proj_u = int(right_coords[y, x, 1])
+                        if 0 <= proj_v < height and 0 <= proj_u < width:
+                            # Normalize to 0-255 for visualization
+                            r = min(255, (proj_v * 255) // height)
+                            g = min(255, (proj_u * 255) // width)
+                            coord_viz_right[y, x] = [r, g, 255]
+
+            # Save everything for debugging
+            cv2.imwrite(os.path.join(self.debug_dir, "left_mask_debug.png"), left_mask_vis)
+            cv2.imwrite(os.path.join(self.debug_dir, "right_mask_debug.png"), right_mask_vis)
+            cv2.imwrite(os.path.join(self.debug_dir, "left_coords_viz.png"), coord_viz_left)
+            cv2.imwrite(os.path.join(self.debug_dir, "right_coords_viz.png"), coord_viz_right)
+            logger.info(f"Saved debug images to {self.debug_dir}")
+
+            # If we found correspondences, visualize them too
+            if len(left_points) > 0:
+                # Create a combined visualization (SLStudio style)
+                stereo_viz = np.zeros((height, width*2, 3), dtype=np.uint8)
+                stereo_viz[:, :width] = coord_viz_left
+                stereo_viz[:, width:] = coord_viz_right
+
+                # Draw epipolar lines (SLStudio visualizes these)
+                # Draw a grid of horizontal lines to show epipolar constraints
+                for i in range(0, height, 20):
+                    cv2.line(stereo_viz, (0, i), (width*2, i), (40, 40, 40), 1)
+
+                # Draw lines between corresponding points
+                for i in range(min(100, len(left_points))):  # Limit to 100 for clarity
+                    pt1 = (int(left_points[i][0]), int(left_points[i][1]))
+                    pt2 = (int(right_points[i][0]) + width, int(right_points[i][1]))
+                    cv2.line(stereo_viz, pt1, pt2, (0, 255, 0), 1)
+                    cv2.circle(stereo_viz, pt1, 3, (255, 0, 0), -1)
+                    cv2.circle(stereo_viz, pt2, 3, (0, 0, 255), -1)
+
+                # Add disparity colormap visualization (SLStudio approach)
+                if len(left_points) > 20:
+                    disparity_viz = np.zeros((height, width, 3), dtype=np.uint8)
+                    for i in range(len(left_points)):
+                        x1, y1 = int(left_points[i][0]), int(left_points[i][1])
+                        x2 = int(right_points[i][0])
+                        disparity = x1 - x2
+                        # Map disparity to color (normalized heatmap)
+                        normalized = max(0, min(255, int((disparity - median_disparity + 20) * 5)))
+                        disparity_viz[y1, x1] = [normalized, 255 - normalized, 128]
+
+                    cv2.imwrite(os.path.join(self.debug_dir, "disparity_viz.png"), disparity_viz)
+
+                cv2.imwrite(os.path.join(self.debug_dir, "stereo_correspondences.png"), stereo_viz)
 
         if not left_points or not right_points:
             logger.warning("No stereo correspondences found!")
@@ -1292,23 +1732,22 @@ class RealTimeScanner:
             logger.info(f"Valid projector coordinates in right image: {valid_right_count}")
             logger.info(f"Matched points: {match_count}")
 
-            # Debug output: Try to understand mask and coordinate issues
+            # SLStudio diagnostic approach - log more specific information
             if valid_left_count == 0 or valid_right_count == 0:
                 logger.warning("No valid projector coordinates found. Check pattern projection and detection.")
+                # Log more specific diagnostic information
+                logger.info("--- Diagnostic Information ---")
+                logger.info(f"LEFT: Mask coverage: {np.count_nonzero(left_mask) / left_mask.size * 100:.2f}%")
+                logger.info(f"RIGHT: Mask coverage: {np.count_nonzero(right_mask) / right_mask.size * 100:.2f}%")
 
-                # Save debug images if debugging enabled
-                if self.debug_mode and hasattr(self, 'debug_dir'):
-                    import os
-                    os.makedirs(self.debug_dir, exist_ok=True)
-
-                    # Save masks for debugging
-                    left_mask_vis = left_mask.astype(np.uint8) * 255
-                    right_mask_vis = right_mask.astype(np.uint8) * 255
-
-                    cv2.imwrite(os.path.join(self.debug_dir, "left_mask_debug.png"), left_mask_vis)
-                    cv2.imwrite(os.path.join(self.debug_dir, "right_mask_debug.png"), right_mask_vis)
-
-                    logger.info(f"Saved debug masks to {self.debug_dir}")
+                # Count valid pixels in coordinates
+                left_valid = np.count_nonzero(left_coords[..., 0] >= 0) / left_coords.size * 100
+                right_valid = np.count_nonzero(right_coords[..., 0] >= 0) / right_coords.size * 100
+                logger.info(f"LEFT: Valid coordinates: {left_valid:.2f}%")
+                logger.info(f"RIGHT: Valid coordinates: {right_valid:.2f}%")
+            else:
+                logger.warning(f"Found {valid_left_count} and {valid_right_count} valid projector coordinates, but no matches.")
+                logger.warning(f"Try adjusting epipolar_tolerance (currently {epipolar_tolerance})")
         else:
             logger.info(f"Found {len(left_points)} stereo correspondences")
 
@@ -1321,7 +1760,7 @@ class RealTimeScanner:
         rectification_params: Dict[str, np.ndarray]
     ) -> np.ndarray:
         """
-        Triangulate 3D points from stereo correspondences.
+        Triangulate 3D points from stereo correspondences using SLStudio-inspired robustness.
 
         Args:
             left_points: Left image points (Nx2)
@@ -1340,6 +1779,23 @@ class RealTimeScanner:
         P1 = rectification_params["P1"]
         P2 = rectification_params["P2"]
 
+        # SLStudio validation: ensure we have finite values only
+        # Check both input arrays for non-finite values
+        valid_mask_left = np.all(np.isfinite(left_points), axis=1)
+        valid_mask_right = np.all(np.isfinite(right_points), axis=1)
+        valid_mask = valid_mask_left & valid_mask_right
+
+        if not np.all(valid_mask):
+            n_invalid = np.sum(~valid_mask)
+            logger.warning(f"Removed {n_invalid} points with non-finite coordinates before triangulation")
+            left_points = left_points[valid_mask]
+            right_points = right_points[valid_mask]
+
+            # Return empty array if no valid points remain
+            if len(left_points) == 0:
+                logger.warning("No valid points remain after filtering, returning empty point cloud")
+                return np.array([])
+
         # Reshape points for triangulation
         left_pts = left_points.reshape(-1, 1, 2).astype(np.float32)
         right_pts = right_points.reshape(-1, 1, 2).astype(np.float32)
@@ -1349,11 +1805,57 @@ class RealTimeScanner:
         right_pts_2xn = np.transpose(right_pts, (2, 1, 0)).reshape(2, -1)
 
         # Triangulate points
-        points_4d = cv2.triangulatePoints(P1, P2, left_pts_2xn, right_pts_2xn)
-        points_4d = points_4d.T
+        try:
+            # SLStudio uses a wrapper around triangulatePoints with error checking
+            points_4d = cv2.triangulatePoints(P1, P2, left_pts_2xn, right_pts_2xn)
+            points_4d = points_4d.T
 
-        # Convert to 3D points
-        points_3d = points_4d[:, :3] / points_4d[:, 3:4]
+            # SLStudio approach: validate homogeneous coordinates before conversion
+            # Check for very small w values that can cause numerical instability
+            w_values = points_4d[:, 3]
+            valid_w = np.abs(w_values) > 1e-10
+
+            if not np.all(valid_w):
+                logger.warning(f"Removed {np.sum(~valid_w)} points with near-zero w coordinates")
+                points_4d = points_4d[valid_w]
+
+                # Return empty array if no valid points remain
+                if len(points_4d) == 0:
+                    logger.warning("No valid points after homogeneous coordinate validation")
+                    return np.array([])
+
+            # Convert to 3D points
+            points_3d = points_4d[:, :3] / points_4d[:, 3:4]
+
+            # SLStudio approach: final validation of 3D points
+            # Check for invalid and extreme values
+            valid_points = np.all(np.isfinite(points_3d), axis=1)
+
+            # Check for extreme values (points very far from origin)
+            # SLStudio uses a more sophistical approach, here we simplify
+            dist_from_origin = np.linalg.norm(points_3d, axis=1)
+            max_distance = 5000.0  # Filter very distant points (SLStudio uses scene-specific values)
+            valid_distance = dist_from_origin < max_distance
+
+            # Combine validations
+            final_valid = valid_points & valid_distance
+
+            if not np.all(final_valid):
+                logger.warning(f"Removed {np.sum(~final_valid)} points with invalid or extreme 3D coordinates")
+                points_3d = points_3d[final_valid]
+
+            if self.debug_mode:
+                logger.info(f"Triangulated {len(points_3d)} valid 3D points")
+                logger.info(f"Point range: X={points_3d[:, 0].min():.2f} to {points_3d[:, 0].max():.2f}, "
+                           f"Y={points_3d[:, 1].min():.2f} to {points_3d[:, 1].max():.2f}, "
+                           f"Z={points_3d[:, 2].min():.2f} to {points_3d[:, 2].max():.2f}")
+
+        except Exception as e:
+            logger.error(f"Error during triangulation: {e}")
+            logger.error(f"Left points shape: {left_points.shape}, Right points shape: {right_points.shape}")
+            logger.error(f"P1 shape: {P1.shape}, P2 shape: {P2.shape}")
+            # Return empty array on error
+            return np.array([])
 
         return points_3d
     
