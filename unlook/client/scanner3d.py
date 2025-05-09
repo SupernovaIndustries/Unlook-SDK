@@ -42,6 +42,7 @@ except ImportError:
     H5PY_AVAILABLE = False
 
 from .. import UnlookClient
+from ..core.protocol import MessageType
 from .structured_light import (
     StereoStructuredLightScanner,
     StereoCalibrator,
@@ -56,6 +57,10 @@ from .advanced_structured_light import (
 from .robust_structured_light import (
     RobustGrayCodeGenerator,
     RobustStereoScanner
+)
+from .single_camera_scanner import (
+    SingleCameraCalibrator,
+    SingleCameraStructuredLight
 )
 
 
@@ -85,7 +90,7 @@ class UnlookScanner:
     """
     
     def __init__(self, client: Optional[UnlookClient] = None, use_default_calibration: bool = True,
-                 scanner_type: str = "robust"):
+                 scanner_type: str = "robust", single_camera_mode: bool = False):
         """
         Initialize the UnlookScanner.
         
@@ -103,6 +108,8 @@ class UnlookScanner:
         self.structured_light_scanner = None  # Basic scanner
         self.enhanced_scanner = None          # Enhanced scanner
         self.robust_scanner = None            # Robust scanner
+        self.single_camera_scanner = None     # Single camera scanner
+        self.single_camera_mode = single_camera_mode
         self.output_dir = os.path.join(os.getcwd(), "scans")
         self.use_default_calibration = use_default_calibration
         self.scanner_type = scanner_type
@@ -116,7 +123,7 @@ class UnlookScanner:
         
     @classmethod
     def auto_connect(cls, timeout: int = 5, use_default_calibration: bool = True,
-                     scanner_type: str = "robust") -> 'UnlookScanner':
+                     scanner_type: str = "robust", single_camera_mode: bool = False) -> 'UnlookScanner':
         """
         Create a scanner and automatically connect to the first available UnLook scanner.
         
@@ -138,8 +145,9 @@ class UnlookScanner:
             logger.warning("Using deprecated boolean parameter for scanner type. "
                           "Please use scanner_type='enhanced' or scanner_type='robust' instead")
         
-        scanner = cls(use_default_calibration=use_default_calibration, 
-                      scanner_type=scanner_type)
+        scanner = cls(use_default_calibration=use_default_calibration,
+                      scanner_type=scanner_type,
+                      single_camera_mode=single_camera_mode)
         scanner.connect(timeout=timeout)
         return scanner
     
@@ -194,6 +202,10 @@ class UnlookScanner:
         
         # Initialize structured light scanner
         self._initialize_scanner()
+
+        # If single camera mode, initialize single camera scanner
+        if self.single_camera_mode:
+            self._initialize_single_camera_scanner()
         
         return True
         
@@ -292,6 +304,8 @@ class UnlookScanner:
         logger.info(f"Basic scanner initialized: {self.structured_light_scanner is not None}")
         logger.info(f"Enhanced scanner initialized: {self.enhanced_scanner is not None}")
         logger.info(f"Robust scanner initialized: {self.robust_scanner is not None}")
+        logger.info(f"Single camera scanner initialized: {self.single_camera_scanner is not None}")
+        logger.info(f"Single camera mode: {self.single_camera_mode}")
         
         # If the selected scanner type failed to initialize, try fallbacks
         if self.scanner_type == "robust" and self.robust_scanner is None:
@@ -304,8 +318,79 @@ class UnlookScanner:
         elif self.scanner_type == "enhanced" and self.enhanced_scanner is None:
             logger.warning("Enhanced scanner failed to initialize, falling back to basic scanner")
             self.scanner_type = "basic"
-            
+
         logger.info(f"Using scanner type: {self.scanner_type}")
+
+    def _initialize_single_camera_scanner(self) -> None:
+        """
+        Initialize the single camera structured light scanner.
+        """
+        if not self.single_camera_mode:
+            return
+
+        # Create a calibration directory
+        calib_dir = os.path.join(self.output_dir, "calibration")
+        os.makedirs(calib_dir, exist_ok=True)
+
+        # Check for existing calibration file
+        calib_file = os.path.join(calib_dir, "single_camera_calibration.npz")
+
+        try:
+            # Try to load existing calibration
+            if os.path.exists(calib_file):
+                logger.info(f"Loading single camera calibration from {calib_file}")
+                self.single_camera_scanner = SingleCameraStructuredLight.from_calibration_file(
+                    calib_file,
+                    projector_width=1920,
+                    projector_height=1080
+                )
+                logger.info("Single camera scanner initialized from calibration file")
+            else:
+                # Create with default parameters if no calibration file exists
+                logger.info("No single camera calibration file found. Using default parameters.")
+                # Get camera intrinsics (approximate)
+                camera_matrix = np.array([
+                    [1000.0, 0, 640.0],
+                    [0, 1000.0, 480.0],
+                    [0, 0, 1]
+                ])
+                camera_dist_coeffs = np.zeros(5)
+
+                # Create projector parameters
+                projector_matrix = np.array([
+                    [1000.0, 0, 960.0],
+                    [0, 1000.0, 540.0],
+                    [0, 0, 1]
+                ])
+                projector_dist_coeffs = np.zeros(5)
+
+                # Camera-projector transformation
+                # The camera is usually to the right of the projector
+                R = np.eye(3)  # Identity rotation
+                T = np.array([[150.0], [0.0], [0.0]])  # 150mm baseline
+
+                self.single_camera_scanner = SingleCameraStructuredLight(
+                    camera_matrix, camera_dist_coeffs,
+                    projector_matrix, projector_dist_coeffs,
+                    R, T, 1920, 1080
+                )
+                logger.info("Single camera scanner initialized with default parameters")
+
+                # Save default calibration for future use
+                np.savez(
+                    calib_file,
+                    camera_matrix=camera_matrix,
+                    camera_dist_coeffs=camera_dist_coeffs,
+                    projector_matrix=projector_matrix,
+                    projector_dist_coeffs=projector_dist_coeffs,
+                    R=R,
+                    T=T
+                )
+                logger.info(f"Saved default calibration to {calib_file}")
+
+        except Exception as e:
+            logger.error(f"Error initializing single camera scanner: {e}")
+            self.single_camera_scanner = None
         
     def disconnect(self) -> None:
         """Disconnect from the scanner."""
@@ -315,7 +400,7 @@ class UnlookScanner:
             logger.info("Disconnected from scanner")
         
     def perform_3d_scan(
-            self, 
+            self,
             output_dir: Optional[str] = None,
             mask_threshold: int = 5,
             interval: float = 0.5,
@@ -323,7 +408,8 @@ class UnlookScanner:
             scanner_type: Optional[str] = None,
             scan_quality: str = "medium",
             pattern_type: str = "gray_code",
-            debug_output: bool = True
+            debug_output: bool = True,
+            use_single_camera: Optional[bool] = None
         ) -> o3dg.PointCloud:
         """
         Perform a complete 3D scan using structured light patterns.
@@ -366,7 +452,26 @@ class UnlookScanner:
         if not self.is_connected:
             logger.error("Not connected to a scanner")
             return o3dg.PointCloud()
-            
+
+        # Determine whether to use single camera mode
+        use_single_camera = use_single_camera if use_single_camera is not None else self.single_camera_mode
+
+        # If using single camera mode, delegate to single camera scanner
+        if use_single_camera:
+            if self.single_camera_scanner is None:
+                logger.error("Single camera scanner not initialized")
+                return o3dg.PointCloud()
+
+            return self._perform_single_camera_scan(
+                output_dir=output_dir,
+                mask_threshold=mask_threshold,
+                interval=interval,
+                visualize=visualize,
+                scan_quality=scan_quality,
+                pattern_type=pattern_type,
+                debug_output=debug_output
+            )
+
         # Determine scanner type to use
         use_scanner_type = scanner_type if scanner_type is not None else self.scanner_type
         
@@ -474,7 +579,67 @@ class UnlookScanner:
         
         # Set up projector
         projector = self.client.projector
-        
+
+        # Configure projector with maximum intensity mode for enhanced scanner
+        try:
+            if use_scanner_type == "enhanced":
+                # Set projector to maximum intensity mode with enhanced settings
+                # Based on observation of underexposed patterns, we need maximum possible brightness
+
+                # Apply multiple brightness-enhancing settings that might be supported by the hardware
+                enhanced_config = {
+                    # Standard settings
+                    "brightness": 100,            # Maximum brightness (0-100)
+                    "high_intensity_mode": True,  # Enable high intensity mode
+
+                    # Additional settings that might be available on some projectors
+                    "led_current": 255,           # Maximum LED current if available
+                    "laser_power": 100,           # Maximum laser power for laser projectors
+                    "contrast": 100,              # Maximum contrast
+                    "power_mode": "high",         # High power mode
+                    "eco_mode": False,            # Disable eco mode
+
+                    # Pattern enhancement settings
+                    "pattern_brightness_boost": True,  # Enable pattern brightness boost if available
+                    "white_level": 255,               # Maximum white level
+                    "black_level": 0                  # Minimum black level for maximum contrast
+                }
+
+                # Send direct configuration message
+                projector.client.send_message(
+                    MessageType.PROJECTOR_CONFIG,
+                    enhanced_config
+                )
+
+                # Try additional method specific to DLP
+                try:
+                    projector.client.send_message(
+                        MessageType.PROJECTOR_DLP_CONFIG,
+                        {
+                            "led_current_red": 255,    # Maximum red LED current
+                            "led_current_green": 255,  # Maximum green LED current
+                            "led_current_blue": 255,   # Maximum blue LED current
+                            "sequence_mode": "high_brightness"  # Use high brightness sequence
+                        }
+                    )
+                except Exception:
+                    # This is expected to fail on non-DLP projectors
+                    pass
+
+                logger.info("Configured projector for maximum intensity mode with enhanced settings")
+        except Exception as e:
+            logger.warning(f"Failed to set projector maximum intensity mode: {e}")
+
+            # Fallback method - try basic brightness setting
+            try:
+                projector.client.send_message(
+                    MessageType.PROJECTOR_BRIGHTNESS,
+                    {"brightness": 100}
+                )
+                logger.info("Applied fallback brightness setting to projector")
+            except Exception:
+                logger.warning("Failed to apply even basic brightness settings to projector")
+
         # Set projector to black to start
         projector.show_solid_field("Black")
         
@@ -492,22 +657,70 @@ class UnlookScanner:
         
         # Configure cameras for optimal scanning
         try:
-            # Adjust camera settings based on quality
+            # Adjust camera settings based on quality and scanner type
             exposure = 100
-            if scan_quality == "high":
-                exposure = 80  # Slightly lower exposure for high quality
-            elif scan_quality == "ultra":
-                exposure = 60  # Even lower exposure for ultra quality
-                
+            contrast = 1.0
+            brightness = 0.0
+
+            # For enhanced scanner, use optimized camera settings
+            if use_scanner_type == "enhanced":
+                # Much higher exposure and gain for better pattern visibility
+                # These values are significantly increased based on observations of underexposed images
+                exposure = 400  # Significantly increased from 150
+                contrast = 2.0  # Higher contrast for better pattern visibility
+                brightness = 0.2  # Increased brightness boost
+                gain = 4.0  # Add analog gain to amplify the signal
+
+                logger.info(f"Using high-visibility camera settings for enhanced scanner: exposure={exposure}, gain={gain}, contrast={contrast}, brightness={brightness}")
+            else:
+                # Default settings for other scanner types
+                if scan_quality == "high":
+                    exposure = 80  # Slightly lower exposure for high quality
+                elif scan_quality == "ultra":
+                    exposure = 60  # Even lower exposure for ultra quality
+
+            # Apply camera settings based on quality level
+            if scan_quality == "high" or scan_quality == "ultra":
+                # Higher quality scans need more aggressive settings
+                exposure *= 1.5
+                gain = gain if 'gain' in locals() else 2.0  # Use existing gain or default to 2.0
+                logger.info(f"Boosting exposure and gain for {scan_quality} quality scan")
+
+            # Create camera configuration with exposure, gain, contrast and brightness settings
             camera_config = {
                 "exposure": exposure,
                 "auto_exposure": False,
+                "gain": gain if 'gain' in locals() else 2.0,  # Use existing gain or default to 2.0
+                "auto_gain": False,
                 "format": "png",
-                "quality": 100
+                "quality": 100,
+                "contrast": contrast,
+                "brightness": brightness,
+                "color_mode": "grayscale",  # Force grayscale mode for more consistent scanning
+                "force_settings": True  # Force settings to be applied directly to camera hardware
             }
-            
+
+            # Configure both cameras with the higher exposure/gain settings
             for cam_id in [left_camera_id, right_camera_id]:
-                camera.configure(cam_id, camera_config)
+                success = camera.configure(cam_id, camera_config)
+                if not success:
+                    logger.warning(f"Failed to configure camera {cam_id}, trying direct method")
+                    # Try direct method to set exposure and gain
+                    camera.set_exposure(cam_id, exposure, gain=camera_config["gain"], auto_exposure=False, auto_gain=False)
+
+                # Force a direct apply command to ensure settings take effect on hardware
+                try:
+                    # Send direct apply command to server
+                    camera.client.send_message(
+                        MessageType.CAMERA_APPLY_SETTINGS,
+                        {
+                            "camera_id": cam_id,
+                            "force_hardware_update": True
+                        }
+                    )
+                    logger.info(f"Sent direct hardware settings update to camera {cam_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to send direct settings update: {e}")
         except Exception as e:
             logger.warning(f"Camera configuration failed: {e}")
             
@@ -626,11 +839,12 @@ class UnlookScanner:
             use_phase_shift = pattern_type in ["phase_shift", "combined"]
             
             pcd = self.enhanced_scanner.process_scan(
-                left_images, 
-                right_images, 
+                left_images,
+                right_images,
                 use_gray_code=use_gray_code,
                 use_phase_shift=use_phase_shift,
-                mask_threshold=mask_threshold
+                mask_threshold=mask_threshold,
+                output_dir=debug_dir
             )
             
             # Apply additional filtering for ultra quality
@@ -657,11 +871,12 @@ class UnlookScanner:
                 pass
             elif use_scanner_type == "enhanced":
                 pcd = self.enhanced_scanner.process_scan(
-                    left_images, 
-                    right_images, 
+                    left_images,
+                    right_images,
                     use_gray_code=pattern_type in ["gray_code", "combined"],
                     use_phase_shift=pattern_type in ["phase_shift", "combined"],
-                    mask_threshold=3
+                    mask_threshold=3,
+                    output_dir=debug_dir
                 )
             else:
                 pcd = self.structured_light_scanner.process_scan(
@@ -697,36 +912,517 @@ class UnlookScanner:
                 
         return pcd
     
+    def _perform_single_camera_scan(
+            self,
+            output_dir: Optional[str] = None,
+            mask_threshold: int = 5,
+            interval: float = 0.5,
+            visualize: bool = False,
+            scan_quality: str = "medium",
+            pattern_type: str = "gray_code",
+            debug_output: bool = True
+        ) -> o3dg.PointCloud:
+        """
+        Perform a 3D scan using single camera structured light.
+
+        Args:
+            output_dir: Optional output directory for scan results
+            mask_threshold: Threshold for shadow/valid pixel detection
+            interval: Time interval between pattern projections in seconds
+            visualize: Whether to visualize the results (requires open3d)
+            scan_quality: Quality setting: "low", "medium", "high" or "ultra"
+            pattern_type: Type of structured light patterns to use
+            debug_output: Whether to save debug information
+
+        Returns:
+            3D point cloud
+        """
+        # Create a timestamped scan folder if output_dir is not specified
+        if output_dir:
+            scan_dir = output_dir
+            os.makedirs(scan_dir, exist_ok=True)
+            captures_dir = os.path.join(scan_dir, "captures")
+            results_dir = os.path.join(scan_dir, "results")
+            os.makedirs(captures_dir, exist_ok=True)
+            os.makedirs(results_dir, exist_ok=True)
+        else:
+            scan_dir, captures_dir, results_dir = self._create_timestamped_folder("single_camera")
+
+        # Create debug directory if needed
+        debug_dir = os.path.join(scan_dir, "debug") if debug_output else None
+        if debug_dir:
+            os.makedirs(debug_dir, exist_ok=True)
+
+        # Store the scan folders
+        scan_id = os.path.basename(scan_dir)
+        self.scan_folders[scan_id] = {
+            "scan_dir": scan_dir,
+            "captures_dir": captures_dir,
+            "results_dir": results_dir
+        }
+
+        logger.info(f"Starting single camera 3D scan with {pattern_type} patterns, saving results to {scan_dir}")
+
+        # Generate structured light patterns
+        if pattern_type == "phase_shift":
+            patterns = self.single_camera_scanner.generate_phase_shift_patterns()
+        elif pattern_type == "combined":
+            patterns = self.single_camera_scanner.generate_gray_code_patterns() + \
+                       self.single_camera_scanner.generate_phase_shift_patterns()
+        else:  # default to gray_code
+            patterns = self.single_camera_scanner.generate_gray_code_patterns()
+
+        # Adjust patterns based on quality
+        if scan_quality == "low":
+            # Use fewer patterns for faster scanning
+            if pattern_type == "combined":
+                # Just use gray code
+                patterns = self.single_camera_scanner.generate_gray_code_patterns()
+            elif pattern_type == "phase_shift":
+                # Use fewer frequencies
+                patterns = self.single_camera_scanner.generate_phase_shift_patterns(frequencies=[16])
+            else:
+                # Skip alternate patterns
+                patterns = patterns[::2]
+        elif scan_quality == "high" or scan_quality == "ultra":
+            # Use more/all patterns for higher quality
+            if pattern_type == "phase_shift":
+                # Use more frequencies
+                patterns = self.single_camera_scanner.generate_phase_shift_patterns(
+                    frequencies=[8, 16, 32, 64]
+                )
+
+        logger.info(f"Generated {len(patterns)} structured light patterns")
+
+        # Set up projector
+        projector = self.client.projector
+
+        # Configure projector with maximum possible intensity for single camera mode
+        # Single camera mode requires even more brightness than stereo mode
+        try:
+            # Set projector to maximum intensity mode with enhanced settings
+            # Based on observation of underexposed patterns, we need maximum possible brightness
+
+            # Apply multiple brightness-enhancing settings that might be supported by the hardware
+            enhanced_config = {
+                # Standard settings - maximum values for all
+                "brightness": 100,            # Maximum brightness (0-100)
+                "high_intensity_mode": True,  # Enable high intensity mode
+
+                # Additional settings that might be available on some projectors
+                "led_current": 255,           # Maximum LED current if available
+                "laser_power": 100,           # Maximum laser power for laser projectors
+                "contrast": 100,              # Maximum contrast
+                "power_mode": "high",         # High power mode
+                "eco_mode": False,            # Disable eco mode
+
+                # Pattern enhancement settings - critical for single camera structured light
+                "pattern_brightness_boost": True,  # Enable pattern brightness boost if available
+                "white_level": 255,               # Maximum white level
+                "black_level": 0,                 # Minimum black level for maximum contrast
+                "special_mode": "structured_light" # Enable any special structured light mode if available
+            }
+
+            # Send direct configuration message
+            projector.client.send_message(
+                MessageType.PROJECTOR_CONFIG,
+                enhanced_config
+            )
+
+            # Try additional method specific to DLP
+            try:
+                projector.client.send_message(
+                    MessageType.PROJECTOR_DLP_CONFIG,
+                    {
+                        "led_current_red": 255,    # Maximum red LED current
+                        "led_current_green": 255,  # Maximum green LED current
+                        "led_current_blue": 255,   # Maximum blue LED current
+                        "sequence_mode": "high_brightness"  # Use high brightness sequence
+                    }
+                )
+            except Exception:
+                # This is expected to fail on non-DLP projectors
+                pass
+
+            logger.info("Configured projector for maximum intensity mode for single camera scanning")
+        except Exception as e:
+            logger.warning(f"Failed to set projector maximum intensity mode: {e}")
+
+            # Fallback method - try basic brightness setting
+            try:
+                projector.client.send_message(
+                    MessageType.PROJECTOR_BRIGHTNESS,
+                    {"brightness": 100}
+                )
+                logger.info("Applied fallback brightness setting to projector")
+            except Exception:
+                logger.warning("Failed to apply even basic brightness settings to projector")
+
+        # Set projector to black to start
+        projector.show_solid_field("Black")
+
+        # Set up camera
+        camera = self.client.camera
+        cameras = camera.get_cameras()
+
+        if not cameras:
+            logger.error("No cameras found")
+            return o3dg.PointCloud()
+
+        # Use the first camera
+        camera_id = cameras[0]["id"]
+
+        # Configure camera for optimal scanning
+        try:
+            # Adjust camera settings based on quality
+            exposure = 100
+            contrast = 1.0
+            brightness = 0.0
+
+            # Use very high exposure and gain settings for single camera mode for better pattern visibility
+            # These values are significantly increased based on observations of underexposed images
+            exposure = 500  # Significantly increased from 150 for single camera (needs more light)
+            contrast = 2.0  # Higher contrast for better pattern visibility
+            brightness = 0.2  # Increased brightness boost
+            gain = 8.0  # Even higher gain for single camera mode to capture patterns
+
+            if scan_quality == "high":
+                exposure = 400  # High quality still needs significant exposure
+                gain = 6.0      # High gain for better pattern visibility
+            elif scan_quality == "ultra":
+                exposure = 300  # Ultra quality needs careful exposure
+                gain = 4.0      # More moderate gain for precise patterns
+
+            logger.info(f"Using high-visibility camera settings for single camera: exposure={exposure}, gain={gain}, contrast={contrast}, brightness={brightness}")
+
+            # Create advanced camera configuration with exposure, gain, contrast and brightness settings
+            camera_config = {
+                "exposure": exposure,
+                "auto_exposure": False,
+                "gain": gain,
+                "auto_gain": False,
+                "format": "png",
+                "quality": 100,
+                "contrast": contrast,
+                "brightness": brightness,
+                "color_mode": "grayscale",  # Force grayscale mode for more consistent scanning
+                "force_settings": True,     # Force settings to be applied directly to camera hardware
+                "denoise": False            # Disable denoise to preserve pattern details
+            }
+
+            # Apply configuration and ensure it takes effect at the hardware level
+            success = camera.configure(camera_id, camera_config)
+            if not success:
+                logger.warning(f"Failed to configure camera {camera_id}, trying direct method")
+                # Try direct method to set exposure and gain
+                camera.set_exposure(camera_id, exposure, gain=gain, auto_exposure=False, auto_gain=False)
+
+            # Force a direct apply command to ensure settings take effect on hardware
+            try:
+                # Send direct apply command to server
+                camera.client.send_message(
+                    MessageType.CAMERA_APPLY_SETTINGS,
+                    {
+                        "camera_id": camera_id,
+                        "force_hardware_update": True
+                    }
+                )
+                logger.info(f"Sent direct hardware settings update to camera {camera_id}")
+            except Exception as e:
+                logger.warning(f"Failed to send direct settings update: {e}")
+        except Exception as e:
+            logger.warning(f"Camera configuration failed: {e}")
+
+        # Prepare array for captured images
+        captured_images = []
+
+        # Display and capture for each pattern
+        for i, pattern in enumerate(patterns):
+            logger.info(f"Projecting pattern {i+1}/{len(patterns)}")
+            self._display_pattern(projector, pattern, i)
+
+            # Wait for projector to update
+            time.sleep(interval)
+
+            # Capture image
+            try:
+                # Capture from camera
+                logger.info(f"Capturing image {i+1}")
+                img = camera.capture(camera_id)
+
+                # Save image
+                img_path = os.path.join(captures_dir, f"capture_{i:03d}.png")
+                cv2.imwrite(img_path, img)
+
+                # Add to array
+                captured_images.append(img)
+
+            except Exception as e:
+                logger.error(f"Error capturing image: {e}")
+                continue
+
+        # Reset projector to black
+        projector.show_solid_field("Black")
+
+        # Process the scan
+        if len(captured_images) < 2:
+            logger.error("Not enough images captured for scanning")
+            return o3dg.PointCloud()
+
+        logger.info(f"Processing scan with {len(captured_images)} images")
+
+        # Process with single camera scanner
+        use_gray_code = pattern_type in ["gray_code", "combined"]
+        use_phase_shift = pattern_type in ["phase_shift", "combined"]
+
+        pcd = self.single_camera_scanner.process_scan(
+            captured_images,
+            use_gray_code=use_gray_code,
+            use_phase_shift=use_phase_shift,
+            mask_threshold=mask_threshold,
+            output_dir=debug_dir
+        )
+
+        # If the point cloud has few points, try with more relaxed parameters
+        if len(pcd.points) < 100:
+            logger.warning(f"Initial scan produced only {len(pcd.points)} points. Trying with more relaxed parameters...")
+
+            pcd = self.single_camera_scanner.process_scan(
+                captured_images,
+                use_gray_code=use_gray_code,
+                use_phase_shift=use_phase_shift,
+                mask_threshold=max(3, mask_threshold // 2),  # More relaxed threshold
+                output_dir=debug_dir
+            )
+
+        # Get the final point count
+        point_count = len(pcd.points) if hasattr(pcd, 'points') else 0
+        logger.info(f"Generated point cloud with {point_count} points")
+
+        # Save point cloud
+        if point_count > 0:
+            point_cloud_path = os.path.join(results_dir, "scan_point_cloud.ply")
+            self.single_camera_scanner.save_point_cloud(pcd, point_cloud_path)
+            logger.info(f"Saved point cloud to {point_cloud_path}")
+
+            # Create mesh if we have enough points
+            if point_count >= 500:
+                logger.info("Creating mesh from point cloud")
+
+                # Adjust mesh parameters based on quality
+                depth = 8
+                smooth_iterations = 2
+
+                if scan_quality == "high":
+                    depth = 9
+                    smooth_iterations = 3
+                elif scan_quality == "ultra":
+                    depth = 10
+                    smooth_iterations = 5
+
+                mesh = self.single_camera_scanner.create_mesh(
+                    pcd,
+                    depth=depth,
+                    smoothing=smooth_iterations
+                )
+
+                # Save mesh
+                if len(mesh.triangles) > 0:
+                    mesh_path = os.path.join(results_dir, "scan_mesh.obj")
+                    self.single_camera_scanner.save_mesh(mesh, mesh_path)
+                    logger.info(f"Saved mesh to {mesh_path}")
+
+                # Visualize if requested
+                if visualize and OPEN3D_AVAILABLE:
+                    logger.info("Visualizing mesh")
+                    o3d.visualization.draw_geometries([mesh], window_name="Single Camera Scan Mesh")
+
+        # Visualize point cloud if requested
+        if visualize and OPEN3D_AVAILABLE and point_count > 0:
+            try:
+                logger.info("Visualizing point cloud")
+                o3d.visualization.draw_geometries([pcd], window_name="Single Camera Scan Point Cloud")
+            except Exception as e:
+                logger.error(f"Visualization failed: {e}")
+
+        return pcd
+
     def _display_pattern(self, projector, pattern, idx):
-        """Helper method to display a pattern on the projector."""
+        """Helper method to display a pattern on the projector with enhanced contrast."""
         try:
             pattern_name = pattern.get('name', '').lower()
             pattern_type = pattern.get('pattern_type', '')
-            
+
+            # For all structured light patterns, we want to ensure maximum possible visibility
+            # This helps significantly with pattern detection on the object
+
+            # Before each pattern, boost projector settings to maximum to ensure pattern visibility
+            try:
+                # Adjust projector settings based on pattern type for optimal visibility
+                if 'white' in pattern_name or 'black' in pattern_name:
+                    # For reference patterns, ensure maximum contrast and brightness
+                    projector.client.send_message(
+                        MessageType.PROJECTOR_CONFIG,
+                        {
+                            "contrast": 100,       # Maximum contrast
+                            "brightness": 100,     # Maximum brightness
+                            "led_current": 255,    # Maximum LED current
+                            "white_level": 255,    # Maximum white level for white pattern
+                            "black_level": 0       # Minimum black level for black pattern
+                        }
+                    )
+                elif 'gray_code' in pattern_name or 'phase' in pattern_name:
+                    # For actual scanning patterns, optimize specifically for pattern visibility
+                    # Higher brightness makes pattern visible on darker objects
+                    pattern_settings = {
+                        "contrast": 100,            # Maximum contrast for strong black/white differentiation
+                        "brightness": 100,          # Maximum brightness for visibility on dark objects
+                        "pattern_enhancement": True,  # Enable any special pattern enhancement modes
+                        "led_current": 255          # Maximum LED current for brightest possible patterns
+                    }
+
+                    # For phase patterns, even higher brightness if possible
+                    if 'phase' in pattern_name:
+                        pattern_settings["brightness_boost"] = True
+
+                    projector.client.send_message(
+                        MessageType.PROJECTOR_CONFIG,
+                        pattern_settings
+                    )
+
+                logger.debug(f"Optimized projector settings for pattern {idx}: {pattern_name}")
+            except Exception as e:
+                logger.warning(f"Failed to optimize projector settings for pattern: {e}")
+
+            if pattern_type == "raw_image" and 'image' in pattern:
+                # For raw images with binary data, try to use direct image display if available
+                try:
+                    # Check if the projector supports raw image display
+                    if hasattr(projector, 'show_raw_image') and callable(getattr(projector, 'show_raw_image')):
+                        # Use the raw image display method
+                        projector.show_raw_image(pattern['image'])
+                        logger.debug(f"Displayed raw image pattern {pattern_name} using show_raw_image")
+                        return
+                except Exception as img_err:
+                    logger.warning(f"Could not display raw image directly: {img_err}, falling back to approximation")
+
+            # Fall back to approximation methods if raw image display not available
             if pattern_type == "raw_image":
-                # For raw images, we can't directly set them, so we approximate
+                # For raw images, we approximate with built-in patterns
                 if 'white' in pattern_name:
                     projector.show_solid_field("White")
                 elif 'black' in pattern_name:
                     projector.show_solid_field("Black")
                 elif 'gray_code_x' in pattern_name or 'horizontal' in pattern_name:
-                    # Use horizontal lines
-                    width = max(1, 4 - (idx % 4))
+                    # For horizontal Gray code patterns, use fine horizontal lines
+                    # Calculate appropriate width based on bit position
+                    bit_position = -1
+                    if 'gray_code_x_' in pattern_name:
+                        try:
+                            bit_part = pattern_name.split('gray_code_x_')[1].split('_')[0]
+                            if bit_part.isdigit():
+                                bit_position = int(bit_part)
+                        except (IndexError, ValueError):
+                            pass
+
+                    # Use finer lines for higher bits
+                    if bit_position >= 0:
+                        # Calculate stripe width based on bit position
+                        # Higher bits need finer stripes
+                        width = max(1, int(20 / (2 ** bit_position)))
+                    else:
+                        width = max(1, 4 - (idx % 4))
+
+                    # Adjust for inverse patterns
+                    is_inverse = 'inv' in pattern_name
+                    fg_color = "Black" if is_inverse else "White"
+                    bg_color = "White" if is_inverse else "Black"
+
                     projector.show_horizontal_lines(
-                        foreground_color="White",
-                        background_color="Black",
+                        foreground_color=fg_color,
+                        background_color=bg_color,
                         foreground_width=width,
                         background_width=width
                     )
                 elif 'gray_code_y' in pattern_name or 'vertical' in pattern_name:
-                    # Use vertical lines
-                    width = max(1, 4 - (idx % 4))
+                    # For vertical Gray code patterns, use fine vertical lines
+                    # Calculate appropriate width based on bit position
+                    bit_position = -1
+                    if 'gray_code_y_' in pattern_name:
+                        try:
+                            bit_part = pattern_name.split('gray_code_y_')[1].split('_')[0]
+                            if bit_part.isdigit():
+                                bit_position = int(bit_part)
+                        except (IndexError, ValueError):
+                            pass
+
+                    # Use finer lines for higher bits
+                    if bit_position >= 0:
+                        # Calculate stripe width based on bit position
+                        # Higher bits need finer stripes
+                        width = max(1, int(20 / (2 ** bit_position)))
+                    else:
+                        width = max(1, 4 - (idx % 4))
+
+                    # Adjust for inverse patterns
+                    is_inverse = 'inv' in pattern_name
+                    fg_color = "Black" if is_inverse else "White"
+                    bg_color = "White" if is_inverse else "Black"
+
                     projector.show_vertical_lines(
-                        foreground_color="White",
-                        background_color="Black",
+                        foreground_color=fg_color,
+                        background_color=bg_color,
                         foreground_width=width,
                         background_width=width
                     )
+                elif 'checkerboard' in pattern_name:
+                    # Use a checkerboard pattern
+                    projector.show_checkerboard(
+                        foreground_color="White",
+                        background_color="Black",
+                        horizontal_count=8,
+                        vertical_count=8
+                    )
+                elif 'phase' in pattern_name:
+                    # Approximate phase pattern with vertical or horizontal sinusoidal
+                    if 'h_phase' in pattern_name or 'horizontal' in pattern_name:
+                        # Horizontal stripes of varying widths
+                        # Get frequency if possible
+                        freq = 16
+                        if 'h_phase_' in pattern_name:
+                            try:
+                                freq_part = pattern_name.split('h_phase_')[1].split('_')[0]
+                                if freq_part.isdigit():
+                                    freq = int(freq_part)
+                            except (IndexError, ValueError):
+                                pass
+                        # Adjust line width based on frequency
+                        width = max(1, int(64 / freq))
+                        projector.show_horizontal_lines(
+                            foreground_color="White",
+                            background_color="Black",
+                            foreground_width=width,
+                            background_width=width
+                        )
+                    else:
+                        # Vertical stripes of varying widths
+                        # Get frequency if possible
+                        freq = 16
+                        if 'v_phase_' in pattern_name:
+                            try:
+                                freq_part = pattern_name.split('v_phase_')[1].split('_')[0]
+                                if freq_part.isdigit():
+                                    freq = int(freq_part)
+                            except (IndexError, ValueError):
+                                pass
+                        # Adjust line width based on frequency
+                        width = max(1, int(64 / freq))
+                        projector.show_vertical_lines(
+                            foreground_color="White",
+                            background_color="Black",
+                            foreground_width=width,
+                            background_width=width
+                        )
                 else:
                     # Fallback to a checkerboard pattern
                     projector.show_checkerboard(
@@ -763,10 +1459,12 @@ class UnlookScanner:
                         v_foreground_width=4,
                         v_background_width=20
                     )
+            # Log the pattern type being displayed
+            logger.debug(f"Displayed pattern {idx}: {pattern_name} of type {pattern_type}")
         except Exception as e:
-            logger.error(f"Error displaying pattern: {e}")
+            logger.error(f"Error displaying pattern {idx} ({pattern.get('name', 'unknown')}): {e}")
     
-    def _create_timestamped_folder(self) -> Tuple[str, str, str]:
+    def _create_timestamped_folder(self, prefix: str = "scan") -> Tuple[str, str, str]:
         """
         Create a timestamped folder structure for a scan.
         
@@ -775,7 +1473,7 @@ class UnlookScanner:
         """
         # Create timestamp
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        scan_dir = os.path.join(self.output_dir, f"Scan_{timestamp}")
+        scan_dir = os.path.join(self.output_dir, f"{prefix}_{timestamp}")
         
         # Create scan directory
         os.makedirs(scan_dir, exist_ok=True)

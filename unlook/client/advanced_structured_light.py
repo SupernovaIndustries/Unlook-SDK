@@ -191,38 +191,50 @@ class EnhancedGrayCodeGenerator:
     def decode_patterns(self, captured_images: List[np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
         """
         Decode Gray code patterns to obtain projector-camera correspondence.
-        
+
         Args:
             captured_images: List of captured images (white, black, patterns)
-            
+
         Returns:
             Tuple of (cam_proj_correspondence, mask)
         """
-        if len(captured_images) < 2 + 2 * (self.bits_x + self.bits_y):
-            logger.error(f"Not enough patterns: {len(captured_images)} provided, " 
-                        f"{2 + 2 * (self.bits_x + self.bits_y)} required")
+        expected_patterns = 2 + 2 * (self.bits_x + self.bits_y)
+        if len(captured_images) < expected_patterns:
+            logger.error(f"Not enough patterns: {len(captured_images)} provided, "
+                        f"{expected_patterns} required")
             return None, None
-        
-        # Extract white and black images
-        white_img = captured_images[0]
-        black_img = captured_images[1]
-        
-        # Convert to grayscale if needed
-        if len(white_img.shape) == 3:
-            white_img = cv2.cvtColor(white_img, cv2.COLOR_BGR2GRAY)
-        if len(black_img.shape) == 3:
-            black_img = cv2.cvtColor(black_img, cv2.COLOR_BGR2GRAY)
-        
+
+        # IMPORTANT: Force all images to grayscale for consistent processing
+        # Create a copy of the original images list to avoid modifying the input
+        grayscale_images = []
+        for img in captured_images:
+            # Convert to grayscale if the image has 3 channels
+            if len(img.shape) == 3:
+                gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                grayscale_images.append(gray_img)
+            else:
+                # Already grayscale, just add a copy
+                grayscale_images.append(img.copy())
+
+        # Extract white and black images from grayscale images
+        white_img = grayscale_images[0]
+        black_img = grayscale_images[1]
+
+        # Store grayscale versions for debugging
+        white_img_gray = white_img
+        black_img_gray = black_img
+
         # Compute shadow mask
         mask = self._compute_shadow_mask(black_img, white_img)
-        
-        # Extract pattern images (starting from index 2)
-        pattern_images = captured_images[2:2 + 2 * (self.bits_x + self.bits_y)]
-        
-        # Convert pattern images to grayscale if needed
-        for i in range(len(pattern_images)):
-            if len(pattern_images[i].shape) == 3:
-                pattern_images[i] = cv2.cvtColor(pattern_images[i], cv2.COLOR_BGR2GRAY)
+
+        # Extract pattern images (already in grayscale) (starting from index 2)
+        # Handle case where we have fewer patterns than expected
+        num_patterns = min(2 * (self.bits_x + self.bits_y), len(grayscale_images) - 2)
+        pattern_images = grayscale_images[2:2 + num_patterns]
+        logger.info(f"Using {len(pattern_images)} pattern images for decoding")
+
+        # No need to convert again since all images are already grayscale
+        gray_pattern_images = pattern_images
         
         # Get image dimensions
         height, width = mask.shape
@@ -240,29 +252,37 @@ class EnhancedGrayCodeGenerator:
                 x_code = 0
                 for bit in range(self.bits_x):
                     # Get normal pattern and its inverse for this bit
-                    idx = 2 + 2 * bit
-                    normal = pattern_images[idx][y, x]
-                    inverse = pattern_images[idx + 1][y, x]
-                    
-                    # Check if difference is significant enough
-                    if abs(int(normal) - int(inverse)) > self.min_brightness:
-                        # Set bit if normal is brighter than inverse
-                        if normal > inverse:
-                            x_code |= (1 << bit)
-                
+                    idx = bit * 2
+                    if idx < len(gray_pattern_images) and idx + 1 < len(gray_pattern_images):
+                        normal = gray_pattern_images[idx][y, x]
+                        inverse = gray_pattern_images[idx + 1][y, x]
+
+                        # Check if difference is significant enough
+                        if abs(int(normal) - int(inverse)) > self.min_brightness:
+                            # Set bit if normal is brighter than inverse
+                            if normal > inverse:
+                                x_code |= (1 << bit)
+                    else:
+                        # Not enough patterns, skip this bit
+                        logger.debug(f"Skipping X bit {bit} due to missing patterns")
+
                 # Decode Y coordinate (vertical patterns)
                 y_code = 0
                 for bit in range(self.bits_y):
                     # Get normal pattern and its inverse for this bit
-                    idx = 2 + 2 * self.bits_x + 2 * bit
-                    normal = pattern_images[idx][y, x]
-                    inverse = pattern_images[idx + 1][y, x]
-                    
-                    # Check if difference is significant enough
-                    if abs(int(normal) - int(inverse)) > self.min_brightness:
-                        # Set bit if normal is brighter than inverse
-                        if normal > inverse:
-                            y_code |= (1 << bit)
+                    idx = 2 * self.bits_x + bit * 2
+                    if idx < len(gray_pattern_images) and idx + 1 < len(gray_pattern_images):
+                        normal = gray_pattern_images[idx][y, x]
+                        inverse = gray_pattern_images[idx + 1][y, x]
+
+                        # Check if difference is significant enough
+                        if abs(int(normal) - int(inverse)) > self.min_brightness:
+                            # Set bit if normal is brighter than inverse
+                            if normal > inverse:
+                                y_code |= (1 << bit)
+                    else:
+                        # Not enough patterns, skip this bit
+                        logger.debug(f"Skipping Y bit {bit} due to missing patterns")
                 
                 # Convert from Gray code to binary
                 x_proj = self._gray_to_binary(x_code)
@@ -419,39 +439,44 @@ class PhaseShiftGenerator:
     def decode_patterns(self, captured_images: List[np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
         """
         Decode phase shift patterns using multi-frequency phase unwrapping.
-        
+
         Args:
             captured_images: List of captured images (white, black, patterns)
-            
+
         Returns:
             Tuple of (cam_proj_correspondence, mask)
         """
-        # Extract white and black images
-        white_img = captured_images[0]
-        black_img = captured_images[1]
-        
-        # Convert to grayscale if needed
-        if len(white_img.shape) == 3:
-            white_img = cv2.cvtColor(white_img, cv2.COLOR_BGR2GRAY)
-        if len(black_img.shape) == 3:
-            black_img = cv2.cvtColor(black_img, cv2.COLOR_BGR2GRAY)
-        
+        # IMPORTANT: Force all images to grayscale for consistent processing
+        # Create a copy of the original images list to avoid modifying the input
+        grayscale_images = []
+        for img in captured_images:
+            # Convert to grayscale if the image has 3 channels
+            if len(img.shape) == 3:
+                gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                grayscale_images.append(gray_img)
+            else:
+                # Already grayscale, just add a copy
+                grayscale_images.append(img.copy())
+
+        # Extract white and black images from grayscale images
+        white_img = grayscale_images[0]
+        black_img = grayscale_images[1]
+
+        # Store grayscale versions for debugging
+        white_img_gray = white_img
+        black_img_gray = black_img
+
         # Compute shadow mask
         mask = self._compute_shadow_mask(black_img, white_img)
-        
+
         # Get image dimensions
         height, width = mask.shape
-        
+
         # Initialize projector correspondence map
         cam_proj = np.zeros((height, width, 2), dtype=np.float32)
-        
-        # Extract pattern images (starting from index 2)
-        pattern_images = []
-        for i in range(2, len(captured_images)):
-            if len(captured_images[i].shape) == 3:
-                pattern_images.append(cv2.cvtColor(captured_images[i], cv2.COLOR_BGR2GRAY))
-            else:
-                pattern_images.append(captured_images[i])
+
+        # Extract pattern images (already in grayscale) (starting from index 2)
+        pattern_images = grayscale_images[2:]
         
         # Process horizontal patterns (for x-coordinate)
         x_phases = self._decode_phase_shifts(pattern_images[:len(self.frequencies) * self.num_phases], mask)
@@ -476,36 +501,60 @@ class PhaseShiftGenerator:
     def _decode_phase_shifts(self, patterns: List[np.ndarray], mask: np.ndarray) -> np.ndarray:
         """
         Decode phase shift patterns using multi-frequency phase unwrapping.
-        
+
         Args:
             patterns: List of phase shift patterns
             mask: Shadow mask
-            
+
         Returns:
             Unwrapped phase map scaled to projector coordinates
         """
         height, width = mask.shape
-        
+
+        # Handle case when there are not enough patterns
+        if not patterns:
+            logger.warning("No phase shift patterns provided, returning zero phase map")
+            return np.zeros((height, width), dtype=np.float32)
+
         # Initialize arrays for each frequency
         wrapped_phases = []
-        
+
+        # Check how many frequencies we can decode based on available patterns
+        available_freqs = len(patterns) // self.num_phases
+        if available_freqs == 0 and len(patterns) > 0:
+            # If we have some patterns but not a complete set for one frequency,
+            # try to decode at least one frequency with the available patterns
+            available_freqs = 1
+            logger.warning(f"Incomplete phase shift patterns ({len(patterns)}), trying to decode at least one frequency")
+
+        num_freqs = min(len(self.frequencies), available_freqs)
+        if num_freqs < len(self.frequencies):
+            logger.warning(f"Only {num_freqs}/{len(self.frequencies)} frequencies can be decoded with {len(patterns)} patterns")
+
         # Calculate wrapped phase for each frequency
-        for f in range(len(self.frequencies)):
+        for f in range(num_freqs):
+            # Calculate how many patterns we have for this frequency
+            start_idx = f * self.num_phases
+            end_idx = min((f + 1) * self.num_phases, len(patterns))
+            if end_idx - start_idx < 2:
+                logger.warning(f"Not enough patterns for frequency {f}, skipping")
+                continue
+
             # Get patterns for this frequency
-            freq_patterns = patterns[f * self.num_phases:(f + 1) * self.num_phases]
-            
+            freq_patterns = patterns[start_idx:end_idx]
+
             # Initialize arrays for sine and cosine accumulation
             numerator = np.zeros((height, width), dtype=np.float32)
             denominator = np.zeros((height, width), dtype=np.float32)
-            
+
             # Accumulate sine and cosine components
-            for p in range(self.num_phases):
+            for p, pattern in enumerate(freq_patterns):
                 phase = 2 * np.pi * p / self.num_phases
-                pattern = freq_patterns[p].astype(np.float32)
-                
+                pattern = pattern.astype(np.float32)
+
                 numerator += pattern * np.sin(phase)
                 denominator += pattern * np.cos(phase)
-            
+
             # Calculate wrapped phase
             wrapped_phase = np.arctan2(numerator, denominator)
             wrapped_phases.append(wrapped_phase)
@@ -519,41 +568,60 @@ class PhaseShiftGenerator:
         
         return scaled_coords
     
-    def _unwrap_phase_multi_freq(self, wrapped_phases: List[np.ndarray], 
+    def _unwrap_phase_multi_freq(self, wrapped_phases: List[np.ndarray],
                                frequencies: List[int], mask: np.ndarray) -> np.ndarray:
         """
         Unwrap phase using multi-frequency approach.
-        
+
         Args:
             wrapped_phases: List of wrapped phase maps
             frequencies: List of frequencies
             mask: Shadow mask
-            
+
         Returns:
             Unwrapped phase map
         """
-        # Start with highest frequency
-        freq_idx = len(frequencies) - 1
-        high_freq = frequencies[freq_idx]
+        # Handle case with no phase maps
+        if not wrapped_phases:
+            logger.warning("No wrapped phase maps available, returning zeros")
+            return np.zeros_like(mask, dtype=np.float32)
+
+        # If we only have one frequency, just return it (no unwrapping needed)
+        if len(wrapped_phases) == 1:
+            logger.warning("Only one frequency available, skipping unwrapping")
+            return wrapped_phases[0] * mask
+
+        # Start with highest frequency for which we have data
+        freq_idx = min(len(wrapped_phases), len(frequencies)) - 1
+        if freq_idx < 0:
+            logger.error("No valid frequency data")
+            return np.zeros_like(mask, dtype=np.float32)
+
+        # Get corresponding frequency value
+        high_freq = frequencies[freq_idx] if freq_idx < len(frequencies) else frequencies[-1]
         unwrapped = wrapped_phases[freq_idx].copy()
-        
+
         # Unwrap using hierarchical approach
         for i in range(freq_idx - 1, -1, -1):
+            if i >= len(frequencies):
+                logger.warning(f"Skipping frequency index {i}, not enough frequency values defined")
+                continue
+
             low_freq = frequencies[i]
             ratio = high_freq / low_freq
-            
+
             # Calculate phase difference
             diff = unwrapped - wrapped_phases[i] * ratio
-            
+
             # Adjust difference to be in [-π, π]
             diff = np.mod(diff + np.pi, 2 * np.pi) - np.pi
-            
+
             # Update unwrapped phase
             unwrapped = wrapped_phases[i] * ratio + diff
-        
+
         # Apply mask
         unwrapped = unwrapped * mask
-        
+
         return unwrapped
     
     def _compute_shadow_mask(self, black_img: np.ndarray, white_img: np.ndarray) -> np.ndarray:
@@ -789,7 +857,7 @@ class EnhancedStereoScanner:
     
     def process_scan(self, left_images: List[np.ndarray], right_images: List[np.ndarray],
                    use_gray_code: bool = True, use_phase_shift: bool = False,
-                   mask_threshold: int = 5) -> o3dg.PointCloud:
+                   mask_threshold: int = 5, output_dir: Optional[str] = None) -> o3dg.PointCloud:
         """
         Process scan data to generate point cloud.
         
@@ -817,16 +885,49 @@ class EnhancedStereoScanner:
         rectified_right = []
         
         logger.info("Rectifying stereo images...")
-        for left_img, right_img in zip(left_images, right_images):
-            left_rect, right_rect = self.rectify_images(left_img, right_img)
+        for i, (left_img, right_img) in enumerate(zip(left_images, right_images)):
+            # IMPORTANT: First convert to grayscale for consistent processing
+            if len(left_img.shape) == 3:
+                left_img_gray = cv2.cvtColor(left_img, cv2.COLOR_BGR2GRAY)
+            else:
+                left_img_gray = left_img.copy()
+
+            if len(right_img.shape) == 3:
+                right_img_gray = cv2.cvtColor(right_img, cv2.COLOR_BGR2GRAY)
+            else:
+                right_img_gray = right_img.copy()
+
+            # Convert back to color for rectification (rectification needs color images)
+            left_img_color = cv2.cvtColor(left_img_gray, cv2.COLOR_GRAY2BGR)
+            right_img_color = cv2.cvtColor(right_img_gray, cv2.COLOR_GRAY2BGR)
+
+            # Rectify images
+            left_rect, right_rect = self.rectify_images(left_img_color, right_img_color)
             rectified_left.append(left_rect)
             rectified_right.append(right_rect)
+
+            # Save rectified images for debugging if output_dir provided
+            if output_dir:
+                os.makedirs(output_dir, exist_ok=True)
+                try:
+                    cv2.imwrite(os.path.join(output_dir, f"left_rectified_{i:02d}.png"), left_rect)
+                    cv2.imwrite(os.path.join(output_dir, f"right_rectified_{i:02d}.png"), right_rect)
+                except Exception as e:
+                    logger.warning(f"Failed to save rectified images: {e}")
         
         # Decode patterns
         logger.info("Decoding structured light patterns...")
         
         if use_gray_code:
-            # Use Gray code decoding
+            # Use Gray code decoding with debug output directories
+            left_debug_dir = os.path.join(output_dir, "left_debug") if output_dir else None
+            right_debug_dir = os.path.join(output_dir, "right_debug") if output_dir else None
+
+            if left_debug_dir:
+                os.makedirs(left_debug_dir, exist_ok=True)
+            if right_debug_dir:
+                os.makedirs(right_debug_dir, exist_ok=True)
+
             left_cam_proj, left_mask = self.gray_code.decode_patterns(rectified_left)
             right_cam_proj, right_mask = self.gray_code.decode_patterns(rectified_right)
             
@@ -857,10 +958,17 @@ class EnhancedStereoScanner:
             # Normal - use intersection
             combined_mask = np.logical_and(left_mask, right_mask).astype(np.uint8)
             logger.info("Using intersection of masks")
+
+        # Save combined mask for debugging
+        if output_dir:
+            try:
+                cv2.imwrite(os.path.join(output_dir, "combined_mask.png"), combined_mask * 255)
+            except Exception as e:
+                logger.warning(f"Failed to save combined mask: {e}")
         
         # Find stereo correspondences
         logger.info("Finding stereo correspondences...")
-        points_3d = self._find_correspondences(left_cam_proj, right_cam_proj, combined_mask)
+        points_3d = self._find_correspondences(left_cam_proj, right_cam_proj, combined_mask, output_dir)
         
         # Create point cloud
         if not OPEN3D_AVAILABLE:
@@ -908,9 +1016,10 @@ class EnhancedStereoScanner:
         
         return refined
     
-    def _find_correspondences(self, left_cam_proj: np.ndarray, 
+    def _find_correspondences(self, left_cam_proj: np.ndarray,
                              right_cam_proj: np.ndarray,
-                             mask: np.ndarray) -> np.ndarray:
+                             mask: np.ndarray,
+                             output_dir: Optional[str] = None) -> np.ndarray:
         """
         Find correspondences between left and right cameras using projector as intermediary.
         
@@ -993,6 +1102,37 @@ class EnhancedStereoScanner:
             return np.array([])
         
         logger.info(f"Found {len(points_left)} corresponding points")
+
+        # Save correspondence visualization if output directory provided
+        if output_dir and len(points_left) > 0:
+            try:
+                # Create a visualization of correspondences
+                height, width = mask.shape
+                vis_img = np.zeros((height, width * 2, 3), dtype=np.uint8)
+
+                # Draw points
+                for i, ((x1, y1), (x2, y2)) in enumerate(zip(points_left.reshape(-1, 2), points_right.reshape(-1, 2))):
+                    # Left image points (green)
+                    cv2.circle(vis_img, (int(x1), int(y1)), 2, (0, 255, 0), -1)
+                    # Right image points (blue) - shifted by width
+                    cv2.circle(vis_img, (int(x2) + width, int(y2)), 2, (255, 0, 0), -1)
+
+                    # Every 20th point, draw a line connecting the correspondences
+                    if i % 20 == 0:
+                        cv2.line(vis_img, (int(x1), int(y1)), (int(x2) + width, int(y2)), (0, 255, 255), 1)
+
+                # Draw a separator line
+                cv2.line(vis_img, (width, 0), (width, height), (255, 255, 255), 1)
+
+                # Add labels
+                cv2.putText(vis_img, "Left Camera", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                cv2.putText(vis_img, "Right Camera", (width + 10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+                # Save visualization
+                cv2.imwrite(os.path.join(output_dir, "correspondence_vis.png"), vis_img)
+                logger.info(f"Saved correspondence visualization with {len(points_left)} points")
+            except Exception as e:
+                logger.warning(f"Failed to create correspondence visualization: {e}")
         
         # Triangulate points
         points_4d = cv2.triangulatePoints(self.P1, self.P2, points_left, points_right)

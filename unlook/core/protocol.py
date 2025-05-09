@@ -19,6 +19,9 @@ class MessageType(enum.Enum):
     # Projector control
     PROJECTOR_MODE = "projector_mode"  # Set projector mode
     PROJECTOR_PATTERN = "projector_pattern"  # Set projector pattern
+    PROJECTOR_CONFIG = "projector_config"  # Configure projector settings
+    PROJECTOR_BRIGHTNESS = "projector_brightness"  # Set projector brightness
+    PROJECTOR_DLP_CONFIG = "projector_dlp_config"  # DLP-specific configuration
     PROJECTOR_PATTERN_SEQUENCE = "projector_pattern_sequence"  # Define and run a sequence of patterns
     PROJECTOR_PATTERN_SEQUENCE_STEP = "projector_pattern_sequence_step"  # Move to next pattern in sequence
     PROJECTOR_PATTERN_SEQUENCE_STOP = "projector_pattern_sequence_stop"  # Stop a running pattern sequence
@@ -26,6 +29,7 @@ class MessageType(enum.Enum):
     # Camera control
     CAMERA_LIST = "camera_list"  # List of available cameras
     CAMERA_CONFIG = "camera_config"  # Camera configuration
+    CAMERA_APPLY_SETTINGS = "camera_apply_settings"  # Force apply settings to hardware
     CAMERA_CAPTURE = "camera_capture"  # Capture image
     CAMERA_CAPTURE_MULTI = "camera_capture_multi"  # Capture image from multiple cameras
     CAMERA_STREAM_START = "camera_stream_start"  # Start streaming
