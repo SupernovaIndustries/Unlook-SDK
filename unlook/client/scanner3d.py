@@ -48,12 +48,32 @@ except ImportError:
 PCL_AVAILABLE = False  # Legacy flag kept for backward compatibility
 
 # Import structured light module
-from .new_structured_light import (
-    PatternGenerator,
-    StructuredLightController,
-    generate_patterns,
-    project_patterns
-)
+try:
+    from .structured_light import (
+        PatternGenerator,
+        StructuredLightController,
+        generate_patterns,
+        project_patterns
+    )
+except ImportError as e:
+    # Log error for debugging
+    import logging
+    logging.getLogger(__name__).error(f"Error importing structured_light: {e}")
+
+    # Define placeholder classes/functions to prevent immediate crashes
+    class PatternGenerator:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class StructuredLightController:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    def generate_patterns(*args, **kwargs):
+        return []
+
+    def project_patterns(*args, **kwargs):
+        return False
 
 
 class ScanConfig:

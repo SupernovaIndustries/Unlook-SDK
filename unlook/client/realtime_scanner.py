@@ -99,8 +99,8 @@ except ImportError:
     TORCH_CUDA = False
 
 # Import structured light modules
-from .new_structured_light import Pattern, generate_patterns
-from .new_scanner3d import ScanConfig
+from .structured_light import Pattern, generate_patterns
+from .scanner3d import ScanConfig
 
 
 class RealTimeScanConfig(ScanConfig):
