@@ -722,7 +722,7 @@ class RealTimeScanner:
         point_cloud = self._filter_point_cloud(points_3d)
         
         # Apply neural network enhancement if enabled
-        if self.config.use_neural_network and self.nn_model and TORCH_AVAILABLE and TORCH_CUDA:
+        if self.config.use_neural_network and hasattr(self, 'point_cloud_enhancer') and TORCH_AVAILABLE and TORCH_CUDA:
             point_cloud = self._enhance_point_cloud(point_cloud)
         
         # Combine with previous frames if using moving average
@@ -1110,19 +1110,30 @@ class RealTimeScanner:
     ) -> Union[o3dg.PointCloud, np.ndarray]:
         """
         Filter and clean 3D point cloud.
-        
+
         Args:
             points_3d: 3D points (Nx3)
             max_distance: Maximum distance from origin
-            
+
         Returns:
             Filtered point cloud
         """
         if max_distance is None:
             max_distance = self.config.max_distance
-        
-        # Remove invalid points
-        mask = ~np.isnan(points_3d).any(axis=1) & ~np.isinf(points_3d).any(axis=1)
+
+        # Check if points_3d is empty
+        if points_3d.size == 0:
+            logger.warning("Empty point cloud, nothing to filter")
+            return np.array([]) if not OPEN3D_AVAILABLE else o3d.geometry.PointCloud()
+
+        # Check dimensions before applying axis operations
+        if points_3d.ndim > 1:
+            # For multi-dimensional arrays (normal case)
+            mask = ~np.isnan(points_3d).any(axis=1) & ~np.isinf(points_3d).any(axis=1)
+        else:
+            # For 1D arrays
+            mask = ~np.isnan(points_3d) & ~np.isinf(points_3d)
+
         clean_pts = points_3d[mask]
         
         if len(clean_pts) == 0:
@@ -1130,7 +1141,12 @@ class RealTimeScanner:
             return np.array([]) if not OPEN3D_AVAILABLE else o3d.geometry.PointCloud()
         
         # Filter by distance
-        dist = np.linalg.norm(clean_pts, axis=1)
+        if clean_pts.ndim > 1:
+            dist = np.linalg.norm(clean_pts, axis=1)
+        else:
+            # For 1D array, just use its absolute value as distance
+            dist = np.abs(clean_pts)
+
         mask = dist < max_distance
         clean_pts = clean_pts[mask]
         
@@ -1176,7 +1192,17 @@ class RealTimeScanner:
             # Skip if empty
             if isinstance(point_cloud, o3dg.PointCloud) and len(point_cloud.points) == 0:
                 return point_cloud
-            elif isinstance(point_cloud, np.ndarray) and len(point_cloud) == 0:
+            elif isinstance(point_cloud, np.ndarray) and point_cloud.size == 0:
+                return point_cloud
+
+            # Check for 1D array and reshape if needed
+            if isinstance(point_cloud, np.ndarray) and point_cloud.ndim == 1:
+                # If it's a 1D array, it can't be properly processed
+                logger.warning("Cannot enhance 1D point cloud, returning as is")
+                return point_cloud
+
+            # Check if we have self.nn_model defined (referenced in _process_frame)
+            if not hasattr(self, 'nn_model') and not hasattr(self, 'point_cloud_enhancer'):
                 return point_cloud
 
             # Use our advanced point cloud enhancer
@@ -1198,30 +1224,39 @@ class RealTimeScanner:
     def _combine_point_clouds(self, point_clouds):
         """
         Combine multiple point clouds for temporal averaging.
-        
+
         Args:
             point_clouds: List of point clouds
-            
+
         Returns:
             Combined point cloud
         """
         if not point_clouds:
             return None
-        
+
         # Convert all to Open3D if they're not already
         o3d_clouds = []
         for pc in point_clouds:
             if pc is None:
                 continue
-                
+
             if isinstance(pc, o3dg.PointCloud):
-                o3d_clouds.append(pc)
-            elif isinstance(pc, np.ndarray) and len(pc) > 0:
-                pcd = o3d.geometry.PointCloud()
-                pcd.points = o3d.utility.Vector3dVector(pc)
-                o3d_clouds.append(pcd)
-        
+                if len(pc.points) > 0:  # Only add non-empty point clouds
+                    o3d_clouds.append(pc)
+            elif isinstance(pc, np.ndarray):
+                if pc.size > 0:  # Check if array is non-empty
+                    # Handle 1D arrays
+                    if pc.ndim == 1:
+                        logger.warning("Skipping 1D point cloud in combine operation")
+                        continue
+
+                    # Convert to point cloud
+                    pcd = o3d.geometry.PointCloud()
+                    pcd.points = o3d.utility.Vector3dVector(pc)
+                    o3d_clouds.append(pcd)
+
         if not o3d_clouds:
+            logger.warning("No valid point clouds to combine")
             return None
         
         # Combine point clouds
