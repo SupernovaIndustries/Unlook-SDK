@@ -1,0 +1,111 @@
+/* Custom CSS for Unlook SDK documentation */
+
+/* Improve code block visibility */
+div.highlight {
+    background-color: #f8f8f8;
+    border-radius: 3px;
+    border: 1px solid #e1e4e5;
+}
+
+/* Improve table styles */
+table.docutils {
+    border: 1px solid #e1e4e5;
+    border-collapse: collapse;
+    margin-bottom: 24px;
+    width: 100%;
+}
+
+table.docutils td, table.docutils th {
+    border: 1px solid #e1e4e5;
+    padding: 8px 16px;
+}
+
+table.docutils th {
+    background-color: #f3f6f6;
+    font-weight: bold;
+}
+
+/* Custom admonition for tips */
+div.admonition.tip {
+    background-color: #e7f2fa;
+}
+
+div.admonition.tip .admonition-title {
+    background-color: #6ab0de;
+}
+
+/* Custom admonition for notes */
+div.admonition.note {
+    background-color: #e7f2fa;
+}
+
+/* Custom admonition for warnings */
+div.admonition.warning {
+    background-color: #ffedcc;
+}
+
+/* Improve heading styles */
+h1, h2, h3, h4, h5, h6 {
+    margin-top: 24px;
+    margin-bottom: 16px;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+h1 {
+    font-size: 2em;
+    border-bottom: 1px solid #e1e4e5;
+    padding-bottom: 0.3em;
+}
+
+h2 {
+    font-size: 1.5em;
+    border-bottom: 1px solid #e1e4e5;
+    padding-bottom: 0.3em;
+}
+
+/* Improve spacing for sidebar items */
+.wy-menu-vertical li.toctree-l2 a, .wy-menu-vertical li.toctree-l3 a, 
+.wy-menu-vertical li.toctree-l4 a {
+    padding-top: 0.5em;
+    padding-bottom: 0.5em;
+}
+
+/* Make links more visible */
+a {
+    color: #2980B9;
+    text-decoration: none;
+}
+
+a:hover {
+    color: #3091d1;
+    text-decoration: underline;
+}
+
+/* Improve code in text */
+code.literal {
+    color: #e74c3c;
+    background-color: #f8f8f8;
+    border: 1px solid #e1e4e5;
+    border-radius: 3px;
+    padding: 2px 5px;
+}
+
+/* Add some special styling for API methods */
+dl.method, dl.function {
+    padding: 10px;
+    border-left: 3px solid #6ab0de;
+    background-color: #f8f8f8;
+    margin-bottom: 20px;
+}
+
+/* Add an icon before TOC */
+.toctree-wrapper::before {
+    content: "📚";
+    margin-right: 5px;
+}
+
+/* Custom footer */
+.rst-footer-buttons {
+    margin-top: 20px;
+}

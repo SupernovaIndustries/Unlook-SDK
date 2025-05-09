@@ -86,7 +86,11 @@ def parse_arguments():
                         help='Record scan data to files')
     parser.add_argument('--debug', action='store_true',
                         help='Enable debug logging')
-    
+    parser.add_argument('--check-focus', action='store_true',
+                        help='Run interactive focus check before scanning')
+    parser.add_argument('--focus-roi', type=str, default=None,
+                        help='Region of interest for focus check (x,y,width,height)')
+
     return parser.parse_args()
 
 
@@ -341,7 +345,7 @@ class ScanRecorder:
 def on_new_frame_callback(point_cloud, scan_count, fps):
     """
     Callback function for new frames.
-    
+
     Args:
         point_cloud: New point cloud data
         scan_count: Current scan count
@@ -349,6 +353,32 @@ def on_new_frame_callback(point_cloud, scan_count, fps):
     """
     # This is just a placeholder - update the global states in main
     pass
+
+
+def parse_roi(roi_str):
+    """
+    Parse region of interest string to tuple.
+
+    Args:
+        roi_str: Region of interest as string "x,y,width,height"
+
+    Returns:
+        Tuple (x, y, width, height) or None if invalid
+    """
+    if not roi_str:
+        return None
+
+    try:
+        parts = roi_str.split(',')
+        if len(parts) != 4:
+            logger.error(f"Invalid ROI format: {roi_str}. Expected 'x,y,width,height'")
+            return None
+
+        roi = tuple(int(part) for part in parts)
+        return roi
+    except ValueError:
+        logger.error(f"Invalid ROI values: {roi_str}. Expected integers")
+        return None
 
 
 def main():
@@ -414,7 +444,37 @@ def main():
             return 1
             
         logger.info(f"Successfully connected to scanner: {scanner_info.name}")
-        
+
+        # Run focus check if requested
+        if args.check_focus:
+            logger.info("Running camera focus check before scanning...")
+            roi = parse_roi(args.focus_roi)
+            if roi:
+                logger.info(f"Using ROI for focus check: {roi}")
+
+            try:
+                # Get stereo camera pair for focus check
+                focus_results, focus_images = client.camera.check_stereo_focus(
+                    num_samples=3, roi=roi)
+
+                # Display initial focus results
+                for camera_id, (score, quality) in focus_results.items():
+                    logger.info(f"Camera {camera_id} initial focus: {score:.2f} ({quality})")
+
+                # Run interactive focus check
+                logger.info("Starting interactive focus check. Adjust camera focus until both cameras show GOOD or EXCELLENT.")
+                logger.info("Press Ctrl+C to continue when focus is good.")
+
+                client.camera.interactive_stereo_focus_check(
+                    interval=0.5,
+                    roi=roi
+                )
+
+                logger.info("Focus check completed. Continuing with scanning.")
+            except Exception as e:
+                logger.error(f"Error during focus check: {e}")
+                logger.warning("Continuing without focus check.")
+
     except Exception as e:
         logger.error(f"Failed to initialize client and connect to scanner: {e}")
         import traceback

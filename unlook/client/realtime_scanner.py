@@ -81,12 +81,19 @@ except ImportError:
     logger.warning("CuPy not installed, using NumPy for array processing")
     cp = np
 
+# Try to import torch first
+try:
+    import torch
+    TORCH_INSTALLED = True
+except ImportError:
+    TORCH_INSTALLED = False
+
 # Try to import our point cloud neural network module
 try:
     from .point_cloud_nn import get_point_cloud_enhancer, TORCH_AVAILABLE, TORCH_CUDA
     POINT_CLOUD_NN_AVAILABLE = True
     if TORCH_AVAILABLE:
-        if TORCH_CUDA:
+        if TORCH_CUDA and TORCH_INSTALLED:
             logger.info(f"PyTorch CUDA support enabled (device: {torch.cuda.get_device_name(0)})")
         else:
             logger.warning("PyTorch CUDA support not available, using CPU processing")

@@ -1,44 +1,76 @@
 # Unlook SDK Documentation
 
-This directory contains comprehensive documentation for the Unlook SDK.
+This directory contains the documentation for the Unlook SDK, set up to be built with Sphinx and hosted on Read the Docs.
 
-## Core Documentation
+## Building the Documentation
 
-- **[camera_configuration.md](camera_configuration.md)** - Detailed guide on camera configuration options
-- **[optimal_camera_spacing.md](optimal_camera_spacing.md)** - Guidelines for optimal camera positioning in different scanning scenarios
-- **[pattern_sequences.md](pattern_sequences.md)** - Documentation for the pattern sequence API used in structured light scanning
+To build the documentation locally:
 
-## Additional Resources
+1. Install the required dependencies:
 
-For more information, see these documents in the root directory:
+   ```bash
+   pip install -r docs/requirements.txt
+   ```
 
-- **[INSTALLATION.md](../INSTALLATION.md)** - Complete installation guide for different platforms
-- **[REALTIME_SCANNING.md](../REALTIME_SCANNING.md)** - Guide to real-time scanning features
-- **[ROADMAP.md](../ROADMAP.md)** - Development roadmap and future plans
+2. Build the documentation:
 
-## Using the Documentation
+   ```bash
+   cd docs
+   make html
+   ```
 
-The documentation is organized to help you find information based on your needs:
+3. View the documentation:
 
-1. **Getting Started**: Refer to the README.md and INSTALLATION.md in the root directory
-2. **Hardware Setup**: Check the optimal_camera_spacing.md for guidance
-3. **Software Configuration**: See camera_configuration.md for details
-4. **Advanced Features**: Review pattern_sequences.md for structured light capabilities
+   Open `docs/build/html/index.html` in your web browser.
 
-## Documentation Format
+## Documentation Structure
 
-All documentation uses Markdown format and follows these conventions:
+- `source/`: Source files for the documentation
+  - `api_reference/`: API reference documentation
+  - `examples/`: Code examples
+  - `user_guide/`: User guides and tutorials
+  - `_static/`: Static files (images, CSS, etc.)
+  - `_templates/`: Custom templates
+  - `conf.py`: Sphinx configuration
+  - Various `.rst` files for main pages
 
-- Code examples are in code blocks with language specifiers
-- Configuration parameters are clearly labeled
-- Example commands include expected output where relevant
-- Images and diagrams are included where they improve understanding
+## Updating the Documentation
 
-## Contributing to Documentation
+When making changes to the codebase, please update the relevant documentation:
 
-When contributing to the documentation:
+1. **API Changes**: Update the appropriate files in `api_reference/`
+2. **New Features**: Add documentation to the `user_guide/` and update examples if needed
+3. **Bug Fixes**: Update any incorrect documentation
 
-1. Follow the existing style and formatting
-2. Include practical examples where appropriate
-3. Update relevant sections when adding or changing features
-4. Submit documentation changes along with code changes
+## Read the Docs Configuration
+
+This documentation is set up to be built and hosted on Read the Docs. The configuration is in `.readthedocs.yaml` in the project root.
+
+## Regenerating API Reference
+
+To automatically generate API reference documentation:
+
+```bash
+sphinx-apidoc -o docs/source/api_reference/ unlook/ -f
+```
+
+## Adding Images
+
+Place image files in `source/_static/` and reference them in your RST files:
+
+```rst
+.. image:: _static/image_name.png
+   :width: 400
+   :alt: Description of image
+```
+
+## Generating PDF Documentation
+
+To generate PDF documentation:
+
+```bash
+cd docs
+make latexpdf
+```
+
+The PDF will be available in `docs/build/latex/`.

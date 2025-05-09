@@ -5,7 +5,8 @@ Client for managing UnLook scanner cameras.
 import logging
 import time
 import numpy as np
-from typing import Dict, List, Tuple, Optional, Any, Union
+import cv2
+from typing import Dict, List, Tuple, Optional, Any, Union, Callable
 
 try:
     from ..core.protocol import MessageType
@@ -176,6 +177,14 @@ class CameraClient:
         """
         self.client = parent_client
         self.cameras = {}  # Cache of available cameras
+
+        # Define focus quality thresholds
+        self.focus_thresholds = {
+            'poor': 50,
+            'moderate': 150,
+            'good': 300,
+            'excellent': 500
+        }
 
     def get_cameras(self) -> List[Dict[str, Any]]:
         """
@@ -862,3 +871,350 @@ class CameraClient:
 
         logger.info("Stereo capture completed successfully")
         return left_image, right_image
+
+    def _calculate_focus_score(self, image: np.ndarray, roi: Optional[Tuple[int, int, int, int]] = None) -> float:
+        """
+        Calculate the focus score of an image using the Laplacian variance method.
+
+        Args:
+            image: Input image (grayscale or color)
+            roi: Optional region of interest (x, y, width, height) to analyze
+
+        Returns:
+            Focus score (higher is better focused)
+        """
+        # Convert to grayscale if needed
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image
+
+        # Apply ROI if specified
+        if roi:
+            x, y, w, h = roi
+            gray = gray[y:y+h, x:x+w]
+
+        # Use Laplacian for focus measure - higher variance means sharper image
+        laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+        focus_score = laplacian.var()
+
+        return focus_score
+
+    def check_focus(self, camera_id: str, num_samples: int = 3,
+                   roi: Optional[Tuple[int, int, int, int]] = None,
+                   threshold_for_good: float = None) -> Tuple[float, str, np.ndarray]:
+        """
+        Check the focus quality of a camera.
+
+        Args:
+            camera_id: Camera ID
+            num_samples: Number of images to capture and average
+            roi: Optional region of interest (x, y, width, height) to analyze
+            threshold_for_good: Optional custom threshold to determine good focus
+
+        Returns:
+            Tuple of (focus_score, quality_level, latest_image)
+        """
+        focus_scores = []
+        latest_image = None
+
+        # Capture multiple samples for better accuracy
+        for _ in range(num_samples):
+            image = self.capture(camera_id)
+            if image is None:
+                logger.error(f"Failed to capture image from camera {camera_id}")
+                continue
+
+            latest_image = image
+            score = self._calculate_focus_score(image, roi)
+            focus_scores.append(score)
+            time.sleep(0.1)  # Brief pause between captures
+
+        # Calculate average score
+        if not focus_scores:
+            logger.error(f"No valid focus measurements for camera {camera_id}")
+            return 0, "unknown", latest_image
+
+        avg_score = sum(focus_scores) / len(focus_scores)
+
+        # Determine quality level
+        if threshold_for_good is None:
+            if avg_score < self.focus_thresholds['poor']:
+                quality = "poor"
+            elif avg_score < self.focus_thresholds['moderate']:
+                quality = "moderate"
+            elif avg_score < self.focus_thresholds['good']:
+                quality = "good"
+            else:
+                quality = "excellent"
+        else:
+            quality = "good" if avg_score >= threshold_for_good else "poor"
+
+        logger.info(f"Camera {camera_id} focus score: {avg_score:.2f} - Quality: {quality}")
+        return avg_score, quality, latest_image
+
+    def check_stereo_focus(self, left_camera_id: str = None, right_camera_id: str = None,
+                         num_samples: int = 3, roi: Optional[Tuple[int, int, int, int]] = None,
+                         threshold_for_good: float = None) -> Tuple[Dict[str, Tuple[float, str]], Dict[str, np.ndarray]]:
+        """
+        Check the focus quality of a stereo camera pair.
+
+        Args:
+            left_camera_id: ID of the left camera, if None uses first found
+            right_camera_id: ID of the right camera, if None uses second found
+            num_samples: Number of images to capture and average
+            roi: Optional region of interest (x, y, width, height) to analyze
+            threshold_for_good: Optional custom threshold to determine good focus
+
+        Returns:
+            Tuple of (
+                {camera_id: (focus_score, quality_level)},
+                {camera_id: latest_image}
+            )
+        """
+        left_camera, right_camera = self.get_stereo_pair()
+
+        if left_camera is None or right_camera is None:
+            logger.error("Need at least 2 cameras for stereo focus check")
+            return ({}, {})
+
+        # Override camera IDs if specified
+        if left_camera_id is not None:
+            left_camera = left_camera_id
+        if right_camera_id is not None:
+            right_camera = right_camera_id
+
+        # Check focus for each camera
+        left_score, left_quality, left_image = self.check_focus(
+            left_camera, num_samples, roi, threshold_for_good)
+        right_score, right_quality, right_image = self.check_focus(
+            right_camera, num_samples, roi, threshold_for_good)
+
+        results = {
+            left_camera: (left_score, left_quality),
+            right_camera: (right_score, right_quality)
+        }
+
+        images = {
+            left_camera: left_image,
+            right_camera: right_image
+        }
+
+        return results, images
+
+    def interactive_focus_check(self, camera_id: str = None,
+                               interval: float = 0.5,
+                               roi: Optional[Tuple[int, int, int, int]] = None,
+                               callback: Optional[Callable] = None,
+                               threshold_for_good: float = None) -> Tuple[float, str, np.ndarray]:
+        """
+        Run an interactive focus check with continuous feedback.
+
+        Args:
+            camera_id: Camera ID, if None uses first found
+            interval: Seconds between focus checks
+            roi: Optional region of interest (x, y, width, height) to analyze
+            callback: Optional callback function(score, quality, image) to process results
+            threshold_for_good: Optional custom threshold to determine good focus
+
+        Returns:
+            Final (focus_score, quality_level, latest_image)
+        """
+        cameras = self.get_cameras()
+        if not cameras:
+            logger.error("No cameras available for focus check")
+            return (0, "unknown", None)
+
+        # If camera ID is not specified, use first one
+        if camera_id is None:
+            camera_id = cameras[0]["id"]
+
+        logger.info(f"Starting interactive focus check for camera {camera_id}")
+        logger.info("Press Ctrl+C to stop when focus is good")
+
+        try:
+            while True:
+                score, quality, image = self.check_focus(
+                    camera_id, num_samples=1, roi=roi, threshold_for_good=threshold_for_good)
+
+                if callback:
+                    callback(score, quality, image)
+                else:
+                    # Default feedback
+                    if quality == "poor":
+                        direction = "ADJUST FOCUS - Image is very blurry"
+                    elif quality == "moderate":
+                        direction = "KEEP ADJUSTING - Focus is improving"
+                    elif quality == "good":
+                        direction = "ALMOST THERE - Focus is good"
+                    else:  # excellent
+                        direction = "PERFECT - Focus is excellent"
+
+                    logger.info(f"Focus score: {score:.2f} - {direction}")
+
+                    # Visual feedback by showing the image - only if OpenCV display is available
+                    try:
+                        if image is not None:
+                            # Draw focus information on image
+                            feedback_img = image.copy()
+                            feedback_text = f"Focus: {score:.1f} - {quality.upper()}"
+                            cv2.putText(feedback_img, feedback_text, (30, 30),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+                            # Show ROI if specified
+                            if roi:
+                                x, y, w, h = roi
+                                cv2.rectangle(feedback_img, (x, y), (x+w, y+h), (0, 255, 0), 2)
+
+                            cv2.imshow("Focus Check", feedback_img)
+                            key = cv2.waitKey(1)
+                            if key == 27:  # ESC key
+                                break
+                    except Exception as e:
+                        # Skip visual feedback if there are display issues
+                        logger.debug(f"Could not show visual feedback: {e}")
+
+                time.sleep(interval)
+
+        except KeyboardInterrupt:
+            logger.info("Focus check interrupted by user")
+        finally:
+            try:
+                cv2.destroyWindow("Focus Check")
+            except:
+                pass
+
+        # Final check with more samples for accurate result
+        final_score, final_quality, final_image = self.check_focus(
+            camera_id, num_samples=3, roi=roi, threshold_for_good=threshold_for_good)
+
+        logger.info(f"Final focus score: {final_score:.2f} - Quality: {final_quality}")
+        return final_score, final_quality, final_image
+
+    def interactive_stereo_focus_check(self, left_camera_id: str = None, right_camera_id: str = None,
+                                    interval: float = 0.5,
+                                    roi: Optional[Tuple[int, int, int, int]] = None,
+                                    threshold_for_good: float = None) -> Tuple[Dict[str, Tuple[float, str]], Dict[str, np.ndarray]]:
+        """
+        Run an interactive focus check for stereo cameras with continuous feedback.
+
+        Args:
+            left_camera_id: ID of the left camera, if None uses first found
+            right_camera_id: ID of the right camera, if None uses second found
+            interval: Seconds between focus checks
+            roi: Optional region of interest (x, y, width, height) to analyze
+            threshold_for_good: Optional custom threshold to determine good focus
+
+        Returns:
+            Final (
+                {camera_id: (focus_score, quality_level)},
+                {camera_id: latest_image}
+            )
+        """
+        left_camera, right_camera = self.get_stereo_pair()
+
+        if left_camera is None or right_camera is None:
+            logger.error("Need at least 2 cameras for stereo focus check")
+            return ({}, {})
+
+        # Override camera IDs if specified
+        if left_camera_id is not None:
+            left_camera = left_camera_id
+        if right_camera_id is not None:
+            right_camera = right_camera_id
+
+        logger.info(f"Starting interactive stereo focus check for cameras {left_camera} and {right_camera}")
+        logger.info("Press Ctrl+C to stop when both cameras are in focus")
+
+        try:
+            while True:
+                results, images = self.check_stereo_focus(
+                    left_camera, right_camera, num_samples=1, roi=roi, threshold_for_good=threshold_for_good)
+
+                if not results:
+                    logger.error("Failed to check stereo focus")
+                    time.sleep(interval)
+                    continue
+
+                # Visual feedback
+                try:
+                    left_score, left_quality = results[left_camera]
+                    right_score, right_quality = results[right_camera]
+                    left_image = images[left_camera]
+                    right_image = images[right_camera]
+
+                    # Create combined feedback image
+                    if left_image is not None and right_image is not None:
+                        # Ensure images are the same size
+                        if left_image.shape != right_image.shape:
+                            # Resize smaller image to match larger one
+                            if left_image.shape[0] * left_image.shape[1] < right_image.shape[0] * right_image.shape[1]:
+                                left_image = cv2.resize(left_image, (right_image.shape[1], right_image.shape[0]))
+                            else:
+                                right_image = cv2.resize(right_image, (left_image.shape[1], left_image.shape[0]))
+
+                        # Draw focus information on images
+                        left_feedback = left_image.copy()
+                        right_feedback = right_image.copy()
+
+                        left_text = f"Left: {left_score:.1f} - {left_quality.upper()}"
+                        right_text = f"Right: {right_score:.1f} - {right_quality.upper()}"
+
+                        cv2.putText(left_feedback, left_text, (30, 30),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                        cv2.putText(right_feedback, right_text, (30, 30),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+                        # Show ROI if specified
+                        if roi:
+                            x, y, w, h = roi
+                            cv2.rectangle(left_feedback, (x, y), (x+w, y+h), (0, 255, 0), 2)
+                            cv2.rectangle(right_feedback, (x, y), (x+w, y+h), (0, 255, 0), 2)
+
+                        # Combine images horizontally
+                        combined = np.hstack((left_feedback, right_feedback))
+
+                        # Add combined status text
+                        if left_quality == "excellent" and right_quality == "excellent":
+                            status = "BOTH CAMERAS IN PERFECT FOCUS"
+                        elif left_quality in ["good", "excellent"] and right_quality in ["good", "excellent"]:
+                            status = "GOOD FOCUS - Press Ctrl+C to continue"
+                        else:
+                            status = "ADJUSTING FOCUS NEEDED"
+
+                        cv2.putText(combined, status, (combined.shape[1]//2 - 200, combined.shape[0] - 30),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+
+                        # Show combined image
+                        cv2.imshow("Stereo Focus Check", combined)
+                        key = cv2.waitKey(1)
+                        if key == 27:  # ESC key
+                            break
+                except Exception as e:
+                    # Skip visual feedback if there are display issues
+                    logger.debug(f"Could not show visual feedback: {e}")
+
+                # Print feedback
+                left_score, left_quality = results[left_camera]
+                right_score, right_quality = results[right_camera]
+
+                logger.info(f"Left camera: {left_score:.2f} ({left_quality}) | Right camera: {right_score:.2f} ({right_quality})")
+
+                time.sleep(interval)
+
+        except KeyboardInterrupt:
+            logger.info("Stereo focus check interrupted by user")
+        finally:
+            try:
+                cv2.destroyWindow("Stereo Focus Check")
+            except:
+                pass
+
+        # Final check with more samples for accurate result
+        final_results, final_images = self.check_stereo_focus(
+            left_camera, right_camera, num_samples=3, roi=roi, threshold_for_good=threshold_for_good)
+
+        logger.info(f"Final focus results: Left: {final_results[left_camera][0]:.2f} ({final_results[left_camera][1]}), "
+                  f"Right: {final_results[right_camera][0]:.2f} ({final_results[right_camera][1]})")
+
+        return final_results, final_images
