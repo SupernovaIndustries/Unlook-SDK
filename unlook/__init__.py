@@ -19,15 +19,34 @@ __author__ = "UnLook Team"
 from .core.events import EventType
 from .core.discovery import ScannerInfo, DiscoveryService
 
+# For server-only mode detection
+import builtins
+
 # Client API - For applications that need to connect to a scanner
-from .client import UnlookClient
+# Import client modules conditionally to prevent circular imports in server-only mode
+_client_imported = False
+try:
+    # Check if we're in server-only mode (set in server_bootstrap.py)
+    _SERVER_ONLY_MODE = getattr(builtins, '_SERVER_ONLY_MODE', False)
+    if not _SERVER_ONLY_MODE:
+        from .client import UnlookClient
+        _client_imported = True
+except (ImportError, NameError):
+    # If builtins isn't found or client can't be imported
+    try:
+        from .client import UnlookClient
+        _client_imported = True
+    except ImportError:
+        pass
 
 # High-level 3D scanning API
-try:
-    from .client.scanner3d import UnlookScanner
-except ImportError:
-    # Optional dependencies might not be available
-    UnlookScanner = None
+UnlookScanner = None
+if _client_imported:
+    try:
+        from .client.scanner3d import UnlookScanner
+    except ImportError:
+        # Optional dependencies might not be available
+        UnlookScanner = None
     
 # Conditional import for server components - Only import on Raspberry Pi
 import platform

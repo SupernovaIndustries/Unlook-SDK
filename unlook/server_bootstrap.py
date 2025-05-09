@@ -27,6 +27,11 @@ sys.path.insert(0, root_dir)
 print(f"Adding to path: {root_dir}")
 print(f"Full sys.path: {sys.path}")
 
+# Set a flag in the global namespace to inform the unlook module
+# that we're running in server-only mode and should not import client modules
+import builtins
+builtins._SERVER_ONLY_MODE = True
+
 
 def main():
     """Funzione principale per l'avvio del server."""
@@ -35,8 +40,8 @@ def main():
     args = parser.parse_args()
 
     try:
-        # Fix: Import the server using absolute path
-        # This ensures proper resolution of relative imports within the server module
+        # Using server-only mode (set earlier), we can directly import just the server module
+        # without the risk of circular imports with client modules
         from unlook.server.scanner import UnlookServer
 
         # Carica la configurazione

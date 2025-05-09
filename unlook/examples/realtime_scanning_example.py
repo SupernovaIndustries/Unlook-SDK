@@ -388,6 +388,9 @@ def main():
     # Set debug logging if requested
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
+        # Set higher logging level for more details on specific modules
+        for module in ['unlook.client.realtime_scanner', 'unlook.client.camera', 'unlook.client.projector']:
+            logging.getLogger(module).setLevel(logging.DEBUG)
         logger.debug("Debug logging enabled")
     
     # Create output directory if recording is enabled
@@ -545,7 +548,15 @@ def main():
     
     # Start scanner
     logger.info("Starting real-time scanning...")
-    scanner.start()
+    scanner.start(debug_mode=args.debug)
+
+    # Run diagnostics if in debug mode
+    if args.debug:
+        logger.info("Running scanner diagnostics...")
+        diagnostics = scanner.run_diagnostics()
+        logger.info("Diagnostic results:")
+        import json
+        logger.info(json.dumps(diagnostics, indent=2))
     
     try:
         # Main application loop

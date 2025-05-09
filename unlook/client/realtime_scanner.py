@@ -281,7 +281,7 @@ class RealTimeScanner:
     ):
         """
         Initialize real-time scanner.
-        
+
         Args:
             client: UnlookClient instance
             config: Scanner configuration
@@ -292,7 +292,7 @@ class RealTimeScanner:
         self.config = config or RealTimeScanConfig()
         self.calibration_file = calibration_file
         self.on_new_frame = on_new_frame
-        
+
         # State variables
         self.running = False
         self.scanning_thread = None
@@ -301,10 +301,11 @@ class RealTimeScanner:
         self.fps = 0
         self.current_point_cloud = None
         self.point_cloud_history = []
-        
+        self.debug_mode = False  # Enable for detailed logging
+
         # Load calibration data
         self.calibration_data = self._load_calibration(calibration_file)
-        
+
         # Initialize pattern set
         self.pattern_set = OptimizedPatternSet(
             width=self.config.pattern_resolution[0],
@@ -312,11 +313,11 @@ class RealTimeScanner:
             num_gray_codes=self.config.num_gray_codes,
             use_gpu=self.config.use_gpu
         )
-        
+
         # Initialize neural network if available
         if self.config.use_neural_network and TORCH_AVAILABLE and TORCH_CUDA:
             self._init_neural_network()
-        
+
         logger.info(f"Initialized RealTimeScanner with {self.config.quality} quality preset")
     
     def _init_neural_network(self):
@@ -434,20 +435,137 @@ class RealTimeScanner:
             "image_size": (width, height)
         }
     
-    def start(self):
-        """Start real-time scanning."""
+    def start(self, debug_mode: bool = False):
+        """
+        Start real-time scanning.
+
+        Args:
+            debug_mode: Whether to enable additional debugging information
+
+        Returns:
+            True if scanning was started, False otherwise
+        """
         if self.running:
             logger.warning("Real-time scanner already running")
             return False
-        
+
+        # Set debug mode
+        self.debug_mode = debug_mode
+        if debug_mode:
+            logger.info("Debug mode enabled - additional logging will be shown")
+            # Create debug directory if it doesn't exist
+            import os
+            self.debug_dir = os.path.join(os.getcwd(), "debug_output")
+            os.makedirs(self.debug_dir, exist_ok=True)
+
         self.running = True
-        
+
         # Start scanning thread
         self.scanning_thread = threading.Thread(target=self._scanning_loop, daemon=True)
         self.scanning_thread.start()
-        
+
         logger.info("Real-time scanning started")
         return True
+
+    def run_diagnostics(self) -> Dict[str, Any]:
+        """
+        Run diagnostics to troubleshoot scanner issues.
+
+        Returns:
+            Dictionary with diagnostic results
+        """
+        results = {}
+
+        # Check cameras and focus
+        try:
+            logger.info("Checking cameras...")
+            cameras = self.client.camera.get_cameras()
+            results["cameras"] = {
+                "count": len(cameras),
+                "ids": [cam["id"] for cam in cameras]
+            }
+
+            if len(cameras) < 2:
+                results["camera_status"] = "FAILED - Need at least 2 cameras"
+            else:
+                # Check stereo focus
+                logger.info("Checking camera focus...")
+                focus_results, _ = self.check_stereo_focus()
+                results["focus"] = focus_results
+
+                # Determine overall focus status
+                if all(quality == "excellent" for _, (_, quality) in focus_results.items()):
+                    results["focus_status"] = "EXCELLENT"
+                elif all(quality in ["good", "excellent"] for _, (_, quality) in focus_results.items()):
+                    results["focus_status"] = "GOOD"
+                elif any(quality == "poor" for _, (_, quality) in focus_results.items()):
+                    results["focus_status"] = "POOR - Cameras need focus adjustment"
+                else:
+                    results["focus_status"] = "MODERATE - Focus could be improved"
+
+        except Exception as e:
+            logger.error(f"Error checking cameras: {e}")
+            results["camera_status"] = f"ERROR - {str(e)}"
+
+        # Check projector
+        try:
+            logger.info("Testing projector...")
+            projector_test = self.client.projector.show_solid_field("White")
+            time.sleep(0.5)
+            self.client.projector.show_solid_field("Black")
+
+            results["projector"] = {
+                "test_result": "OK" if projector_test else "FAILED"
+            }
+        except Exception as e:
+            logger.error(f"Error testing projector: {e}")
+            results["projector"] = {
+                "test_result": f"ERROR - {str(e)}"
+            }
+
+        # Check calibration
+        results["calibration"] = {
+            "file": self.calibration_file,
+            "loaded": self.calibration_data is not None
+        }
+
+        if self.calibration_data:
+            # Check basic calibration parameters
+            try:
+                camera_matrix_left = np.array(self.calibration_data["camera_matrix_left"])
+                camera_matrix_right = np.array(self.calibration_data["camera_matrix_right"])
+                R = np.array(self.calibration_data["R"])
+                T = np.array(self.calibration_data["T"])
+
+                # Basic sanity checks
+                results["calibration"]["valid_camera_matrices"] = (
+                    camera_matrix_left.shape == (3, 3) and
+                    camera_matrix_right.shape == (3, 3))
+
+                results["calibration"]["valid_rotation"] = (R.shape == (3, 3))
+                results["calibration"]["valid_translation"] = (T.size == 3)
+
+                # Check focal lengths
+                results["calibration"]["focal_length_left"] = camera_matrix_left[0, 0]
+                results["calibration"]["focal_length_right"] = camera_matrix_right[0, 0]
+
+                # Check baseline (distance between cameras)
+                baseline = np.linalg.norm(T)
+                results["calibration"]["baseline"] = baseline
+
+                if baseline < 10:
+                    results["calibration"]["baseline_status"] = "WARNING - Baseline is very small"
+                elif baseline > 500:
+                    results["calibration"]["baseline_status"] = "WARNING - Baseline is very large"
+                else:
+                    results["calibration"]["baseline_status"] = "OK"
+
+            except Exception as e:
+                logger.error(f"Error checking calibration data: {e}")
+                results["calibration"]["valid"] = False
+
+        logger.info("Diagnostics completed")
+        return results
     
     def stop(self):
         """Stop real-time scanning."""
@@ -596,10 +714,10 @@ class RealTimeScanner:
     def _project_and_capture(self, patterns: List[Dict[str, Any]]) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
         Project patterns and capture images.
-        
+
         Args:
             patterns: List of pattern dictionaries
-        
+
         Returns:
             Tuple of (left_images, right_images)
         """
@@ -608,21 +726,26 @@ class RealTimeScanner:
         if not cameras or len(cameras) < 2:
             logger.error("Need at least 2 cameras for stereo scanning")
             return [], []
-        
+
         left_camera_id = cameras[0]["id"]
         right_camera_id = cameras[1]["id"]
-        
+
+        # Log camera info if in debug mode
+        if self.debug_mode:
+            logger.info(f"Using cameras: Left={left_camera_id}, Right={right_camera_id}")
+            logger.info(f"Camera info: {cameras}")
+
         # Prepare for capture
         left_images = []
         right_images = []
-        
+
         # Project patterns and capture images
         for i, pattern in enumerate(patterns):
             pattern_name = pattern.get("name", f"pattern_{i}")
-            
+
             # Use the appropriate projector method based on pattern type
             pattern_type = pattern.get("pattern_type", "")
-            
+
             success = False
             if pattern_type == "solid_field":
                 # Use direct solid field method
@@ -643,30 +766,52 @@ class RealTimeScanner:
                     foreground_width=pattern.get("foreground_width", 4),
                     background_width=pattern.get("background_width", 20)
                 )
-            
+
             if not success:
                 logger.warning(f"Failed to project pattern {pattern_name}")
                 continue
-            
+
             # Very short delay for projector to update
             time.sleep(self.config.pattern_interval)
-            
+
             # Capture stereo pair
             try:
                 left_img = self.client.camera.capture(left_camera_id)
                 right_img = self.client.camera.capture(right_camera_id)
-                
+
+                # Debug output - save pattern images if enabled
+                if self.debug_mode and hasattr(self, 'debug_dir') and i < 3:  # Save first few patterns only
+                    try:
+                        import os
+                        pattern_dir = os.path.join(self.debug_dir, "patterns")
+                        os.makedirs(pattern_dir, exist_ok=True)
+
+                        # Save the captured images for debugging
+                        if left_img is not None:
+                            cv2.imwrite(os.path.join(pattern_dir, f"pattern_{i}_left.png"), left_img)
+                        if right_img is not None:
+                            cv2.imwrite(os.path.join(pattern_dir, f"pattern_{i}_right.png"), right_img)
+
+                        logger.info(f"Saved pattern {i} images to {pattern_dir}")
+                    except Exception as e:
+                        logger.error(f"Error saving debug images: {e}")
+
+                # Log image information in debug mode
+                if self.debug_mode:
+                    logger.info(f"Pattern {pattern_name}: Left shape={left_img.shape if left_img is not None else 'None'}, "
+                               f"Right shape={right_img.shape if right_img is not None else 'None'}")
+
                 # Append to image lists
                 left_images.append(left_img)
                 right_images.append(right_img)
-                
+
             except Exception as e:
                 logger.error(f"Error capturing images: {e}")
                 continue
-        
+
         # Reset projector to black field
         self.client.projector.show_solid_field("Black")
-        
+
         return left_images, right_images
     
     def _process_frame(
@@ -821,22 +966,86 @@ class RealTimeScanner:
         Returns:
             Tuple of (decoded_coords, mask)
         """
-        # Compute shadow mask
-        diff = cv2.absdiff(white_ref, black_ref)
-        _, mask = cv2.threshold(diff, 30, 1, cv2.THRESH_BINARY)
+        # Debug - check if input images exist
+        if self.debug_mode:
+            if white_ref is None or black_ref is None:
+                logger.error("Reference images (white/black) are None!")
+                return np.zeros((1, 1, 2), dtype=np.float32), np.zeros((1, 1), dtype=np.uint8)
 
-        # Ensure mask is 2D
-        if len(mask.shape) > 2:
-            mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+            logger.info(f"White ref shape: {white_ref.shape}, Black ref shape: {black_ref.shape}")
+            logger.info(f"Gray images count: {len(gray_images)}")
+
+            # Save reference images for debugging
+            if hasattr(self, 'debug_dir'):
+                import os
+                ref_dir = os.path.join(self.debug_dir, "references")
+                os.makedirs(ref_dir, exist_ok=True)
+
+                # Save reference images
+                cv2.imwrite(os.path.join(ref_dir, "white_ref.png"), white_ref)
+                cv2.imwrite(os.path.join(ref_dir, "black_ref.png"), black_ref)
+
+        # Compute shadow mask with better handling
+        try:
+            diff = cv2.absdiff(white_ref, black_ref)
+
+            # Use a lower threshold for more sensitivity (was 30)
+            _, mask = cv2.threshold(diff, 15, 1, cv2.THRESH_BINARY)
+
+            # Ensure mask is 2D
+            if len(mask.shape) > 2:
+                # Convert to grayscale and enhance contrast
+                mask_gray = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+                # Use max value across color channels for better detection
+                mask = mask_gray
+
+            # Save mask for debugging
+            if self.debug_mode and hasattr(self, 'debug_dir'):
+                import os
+                mask_dir = os.path.join(self.debug_dir, "masks")
+                os.makedirs(mask_dir, exist_ok=True)
+
+                # Save raw difference image
+                cv2.imwrite(os.path.join(mask_dir, "diff_raw.png"), diff)
+
+                # Save mask with enhanced visibility for viewing
+                mask_vis = mask.copy() * 255
+                cv2.imwrite(os.path.join(mask_dir, "mask.png"), mask_vis)
+
+                # Log mask statistics
+                non_zero = np.count_nonzero(mask)
+                total = mask.shape[0] * mask.shape[1]
+                logger.info(f"Mask: {non_zero}/{total} pixels ({non_zero/total*100:.2f}% coverage)")
+        except Exception as e:
+            logger.error(f"Error computing mask: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            if self.debug_mode:
+                logger.error(f"White ref: {white_ref.shape if white_ref is not None else 'None'}, "
+                          f"Black ref: {black_ref.shape if black_ref is not None else 'None'}")
+            # Return empty mask as fallback
+            mask = np.zeros((1, 1), dtype=np.uint8)
 
         # Convert images to grayscale if needed
         gray_processed = []
-        for img in gray_images:
+        for i, img in enumerate(gray_images):
+            if img is None:
+                logger.warning(f"Gray code image {i} is None!")
+                # Add placeholder empty image
+                img = np.zeros_like(white_ref if white_ref is not None else np.zeros((100, 100)))
+
             if len(img.shape) == 3:
                 gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
                 gray_processed.append(gray_img)
             else:
                 gray_processed.append(img)
+
+            # Save gray code images for debugging
+            if self.debug_mode and hasattr(self, 'debug_dir') and i < 4: # Save first few only
+                import os
+                gc_dir = os.path.join(self.debug_dir, "gray_codes")
+                os.makedirs(gc_dir, exist_ok=True)
+                cv2.imwrite(os.path.join(gc_dir, f"gray_code_{i}.png"), img)
 
         # First, determine number of patterns (must be even with half for normal and half for inverted)
         num_patterns = len(gray_processed)
@@ -984,80 +1193,125 @@ class RealTimeScanner:
         right_coords: np.ndarray,
         left_mask: np.ndarray,
         right_mask: np.ndarray,
-        epipolar_tolerance: float = 3.0
+        epipolar_tolerance: float = 5.0  # Increased from 3.0 to 5.0 for more matches
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Find corresponding points between stereo images.
-        
+
         Args:
             left_coords: Left camera-projector correspondences
             right_coords: Right camera-projector correspondences
             left_mask: Left camera shadow mask
             right_mask: Right camera shadow mask
             epipolar_tolerance: Max distance from epipolar line
-            
+
         Returns:
             Tuple of (left_points, right_points) as Nx2 arrays
         """
         height, width = left_mask.shape
-        
+
+        # Debug info about inputs
+        if self.debug_mode:
+            logger.info(f"Left mask non-zero pixels: {np.count_nonzero(left_mask)}")
+            logger.info(f"Right mask non-zero pixels: {np.count_nonzero(right_mask)}")
+            logger.info(f"Left coords shape: {left_coords.shape}")
+            logger.info(f"Right coords shape: {right_coords.shape}")
+
         # Create mapping from projector to right camera
         proj_to_right = {}
-        
+        valid_right_count = 0
+
         # Build projection map
         for y in range(height):
             for x in range(width):
                 if right_mask[y, x] == 0:
                     continue  # Skip shadowed pixels
-                
+
                 # Get projector coordinates
                 proj_v = int(right_coords[y, x, 0])
                 proj_u = int(right_coords[y, x, 1])
-                
+
                 if proj_v <= 0 or proj_u <= 0:
                     continue  # Skip invalid coords
-                
+
+                valid_right_count += 1
+
                 # Store coordinates
                 key = (proj_v, proj_u)
                 if key not in proj_to_right:
                     proj_to_right[key] = []
                 proj_to_right[key].append((x, y))
-        
+
+        if self.debug_mode:
+            logger.info(f"Valid projector coordinates in right image: {valid_right_count}")
+            logger.info(f"Unique projector coordinates: {len(proj_to_right)}")
+
         # Find correspondences
         left_points = []
         right_points = []
-        
+        valid_left_count = 0
+        match_count = 0
+
         for y in range(height):
             for x in range(width):
                 if left_mask[y, x] == 0:
                     continue  # Skip shadowed pixels
-                
+
                 # Get projector coordinates
                 proj_v = int(left_coords[y, x, 0])
                 proj_u = int(left_coords[y, x, 1])
-                
+
                 if proj_v <= 0 or proj_u <= 0:
                     continue  # Skip invalid coords
-                
+
+                valid_left_count += 1
+
                 # Find matches in right image
                 key = (proj_v, proj_u)
                 if key in proj_to_right:
                     # Find best match based on epipolar constraint
                     best_match = None
                     min_y_diff = float('inf')
-                    
+
                     for rx, ry in proj_to_right[key]:
                         y_diff = abs(y - ry)
                         if y_diff < min_y_diff:
                             min_y_diff = y_diff
                             best_match = (rx, ry)
-                    
+
                     # Only use if close to epipolar line
                     if min_y_diff <= epipolar_tolerance:
+                        match_count += 1
                         right_x, right_y = best_match
                         left_points.append([x, y])
                         right_points.append([right_x, right_y])
-        
+
+        if not left_points or not right_points:
+            logger.warning("No stereo correspondences found!")
+            logger.info(f"Valid projector coordinates in left image: {valid_left_count}")
+            logger.info(f"Valid projector coordinates in right image: {valid_right_count}")
+            logger.info(f"Matched points: {match_count}")
+
+            # Debug output: Try to understand mask and coordinate issues
+            if valid_left_count == 0 or valid_right_count == 0:
+                logger.warning("No valid projector coordinates found. Check pattern projection and detection.")
+
+                # Save debug images if debugging enabled
+                if self.debug_mode and hasattr(self, 'debug_dir'):
+                    import os
+                    os.makedirs(self.debug_dir, exist_ok=True)
+
+                    # Save masks for debugging
+                    left_mask_vis = left_mask.astype(np.uint8) * 255
+                    right_mask_vis = right_mask.astype(np.uint8) * 255
+
+                    cv2.imwrite(os.path.join(self.debug_dir, "left_mask_debug.png"), left_mask_vis)
+                    cv2.imwrite(os.path.join(self.debug_dir, "right_mask_debug.png"), right_mask_vis)
+
+                    logger.info(f"Saved debug masks to {self.debug_dir}")
+        else:
+            logger.info(f"Found {len(left_points)} stereo correspondences")
+
         return np.array(left_points), np.array(right_points)
     
     def _triangulate_points(
@@ -1459,6 +1713,109 @@ class RealTimeScanner:
         except Exception as e:
             logger.error(f"Error saving preview image: {e}")
             return False
+
+    def check_camera_focus(self, camera_id: Optional[str] = None,
+                           threshold_for_good: float = None,
+                           roi: Optional[Tuple[int, int, int, int]] = None) -> Tuple[float, str, np.ndarray]:
+        """
+        Check the focus quality of a camera.
+
+        Args:
+            camera_id: Camera ID (if None, uses the first camera)
+            threshold_for_good: Optional custom threshold to determine good focus
+            roi: Optional region of interest (x, y, width, height) to analyze
+
+        Returns:
+            Tuple of (focus_score, quality_level, image)
+        """
+        if not hasattr(self.client, 'camera'):
+            logger.error("Client has no camera module")
+            return 0.0, "unknown", None
+
+        return self.client.camera.check_focus(camera_id,
+                                           num_samples=3,
+                                           roi=roi,
+                                           threshold_for_good=threshold_for_good)
+
+    def check_stereo_focus(self, left_camera_id: Optional[str] = None,
+                           right_camera_id: Optional[str] = None,
+                           threshold_for_good: float = None,
+                           roi: Optional[Tuple[int, int, int, int]] = None) -> Dict[str, Any]:
+        """
+        Check the focus quality of both stereo cameras.
+
+        Args:
+            left_camera_id: ID of left camera (if None, auto-detected)
+            right_camera_id: ID of right camera (if None, auto-detected)
+            threshold_for_good: Optional custom threshold to determine good focus
+            roi: Optional region of interest (x, y, width, height) to analyze
+
+        Returns:
+            Dictionary with focus results for both cameras
+        """
+        if not hasattr(self.client, 'camera'):
+            logger.error("Client has no camera module")
+            return {}, {}
+
+        return self.client.camera.check_stereo_focus(left_camera_id,
+                                                  right_camera_id,
+                                                  num_samples=3,
+                                                  roi=roi,
+                                                  threshold_for_good=threshold_for_good)
+
+    def interactive_focus_check(self, camera_id: Optional[str] = None, interval: float = 0.5,
+                               roi: Optional[Tuple[int, int, int, int]] = None,
+                               threshold_for_good: float = None) -> Tuple[float, str, np.ndarray]:
+        """
+        Run an interactive focus check with continuous feedback for a single camera.
+
+        Args:
+            camera_id: Camera ID (if None, uses the first camera)
+            interval: Seconds between focus checks
+            roi: Optional region of interest (x, y, width, height) to analyze
+            threshold_for_good: Optional custom threshold to determine good focus
+
+        Returns:
+            Tuple of (focus_score, quality_level, image)
+        """
+        if not hasattr(self.client, 'camera'):
+            logger.error("Client has no camera module")
+            return 0.0, "unknown", None
+
+        return self.client.camera.interactive_focus_check(camera_id,
+                                                      interval=interval,
+                                                      roi=roi,
+                                                      threshold_for_good=threshold_for_good)
+
+    def interactive_stereo_focus_check(self, left_camera_id: Optional[str] = None,
+                                      right_camera_id: Optional[str] = None,
+                                      interval: float = 0.5,
+                                      roi: Optional[Tuple[int, int, int, int]] = None,
+                                      threshold_for_good: float = None) -> Dict[str, Any]:
+        """
+        Run an interactive focus check with continuous feedback for stereo cameras.
+
+        Args:
+            left_camera_id: ID of left camera (if None, auto-detected)
+            right_camera_id: ID of right camera (if None, auto-detected)
+            interval: Seconds between focus checks
+            roi: Optional region of interest (x, y, width, height) to analyze
+            threshold_for_good: Optional custom threshold to determine good focus
+
+        Returns:
+            Dictionary with focus results for both cameras
+        """
+        if not hasattr(self.client, 'camera'):
+            logger.error("Client has no camera module")
+            return {}, {}
+
+        return self.client.camera.interactive_stereo_focus_check(
+            left_camera_id,
+            right_camera_id,
+            interval=interval,
+            roi=roi,
+            threshold_for_good=threshold_for_good
+        )
 
 
 def create_realtime_scanner(
