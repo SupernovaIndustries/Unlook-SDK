@@ -2,8 +2,12 @@
 Neural Network-based Point Cloud Enhancement Module.
 
 This module provides neural network-based enhancement for point clouds,
-including noise reduction, outlier removal, and feature enhancement.
-It's based on modern deep learning techniques for 3D data processing.
+including noise reduction, outlier removal, feature enhancement,
+upsampling, and meshing with real-time scanning optimizations.
+
+It integrates with Open3D and its ML modules when available, falling back
+to PyTorch-based implementations when needed, with a focus on real-time
+performance for structured light scanning applications.
 """
 
 import os
@@ -506,39 +510,253 @@ class PointCloudEnhancer:
         point_cloud: Union[np.ndarray, "o3d.geometry.PointCloud"],
         denoise_strength: float = 0.5,
         upsample: bool = False,
-        target_points: Optional[int] = None
-    ) -> Union[np.ndarray, "o3d.geometry.PointCloud"]:
+        target_points: Optional[int] = None,
+        outlier_removal: bool = True,
+        normal_estimation: bool = False,
+        meshing: bool = False,
+        voxel_size: float = 0.01
+    ) -> Union[np.ndarray, "o3d.geometry.PointCloud", "o3d.geometry.TriangleMesh"]:
         """
         Enhance a point cloud with multiple operations.
-        
+
         This method applies a sequence of enhancement operations:
         1. Denoising
-        2. Upsampling (optional)
-        
+        2. Outlier removal (optional)
+        3. Upsampling (optional)
+        4. Normal estimation (optional)
+        5. Meshing (optional)
+
         Args:
             point_cloud: Input point cloud
             denoise_strength: Denoising strength (0.0 to 1.0)
             upsample: Whether to upsample the point cloud
             target_points: Target number of points after upsampling
-            
+            outlier_removal: Whether to remove outlier points
+            normal_estimation: Whether to estimate normals
+            meshing: Whether to create a mesh (requires normal_estimation)
+            voxel_size: Voxel size for processing (smaller = more detail)
+
         Returns:
-            Enhanced point cloud in the same format as input
+            Enhanced point cloud or mesh in the same format as input
         """
+        # Skip processing if input is invalid
+        if point_cloud is None:
+            logger.warning("Input point cloud is None")
+            return point_cloud
+
+        # Check if we should use Open3D processing for advanced operations
+        use_open3d_processing = OPEN3D_AVAILABLE and (outlier_removal or normal_estimation or meshing)
+
         # Start timer
         start_time = time.time()
-        
-        # Apply denoising
-        if denoise_strength > 0:
-            point_cloud = self.denoise(point_cloud, strength=denoise_strength)
-        
-        # Apply upsampling if requested
-        if upsample and target_points is not None:
-            point_cloud = self.upsample(point_cloud, target_points=target_points)
-        
-        # Log processing time
-        elapsed = time.time() - start_time
-        logger.info(f"Point cloud enhancement completed in {elapsed:.3f} seconds")
-        
+
+        if use_open3d_processing:
+            try:
+                # Use integrated Open3D processing pipeline
+                result = process_point_cloud_with_open3d(
+                    point_cloud=point_cloud,
+                    voxel_size=voxel_size,
+                    denoise=denoise_strength > 0,
+                    outlier_removal=outlier_removal,
+                    normal_estimation=normal_estimation,
+                    meshing=meshing,
+                    num_neighbors=20,
+                    std_ratio=2.0
+                )
+
+                # Apply additional processing if needed
+                if upsample and not meshing and target_points is not None:
+                    # Don't upsample if we already created a mesh
+                    result = self.upsample(result, target_points=target_points)
+
+                # Log processing time
+                elapsed = time.time() - start_time
+                logger.info(f"Point cloud enhancement with Open3D completed in {elapsed:.3f} seconds")
+
+                return result
+
+            except Exception as e:
+                logger.error(f"Open3D processing failed: {e}, falling back to basic enhancement")
+                # Fall back to basic enhancement
+
+        # Basic enhancement pipeline
+        try:
+            # Apply denoising
+            if denoise_strength > 0:
+                point_cloud = self.denoise(point_cloud, strength=denoise_strength)
+
+            # Apply upsampling if requested
+            if upsample and target_points is not None:
+                point_cloud = self.upsample(point_cloud, target_points=target_points)
+
+            # Log processing time
+            elapsed = time.time() - start_time
+            logger.info(f"Point cloud enhancement completed in {elapsed:.3f} seconds")
+
+            return point_cloud
+
+        except Exception as e:
+            logger.error(f"Point cloud enhancement failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return point_cloud
+
+
+# Open3D integration helper functions
+def process_point_cloud_with_open3d(
+    point_cloud: Union[np.ndarray, "o3d.geometry.PointCloud"],
+    voxel_size: float = 0.01,
+    denoise: bool = True,
+    outlier_removal: bool = True,
+    normal_estimation: bool = True,
+    meshing: bool = False,
+    num_neighbors: int = 20,
+    std_ratio: float = 2.0
+) -> Union[np.ndarray, "o3d.geometry.PointCloud", "o3d.geometry.TriangleMesh"]:
+    """
+    Process point cloud with Open3D algorithms for better quality.
+
+    Args:
+        point_cloud: Input point cloud
+        voxel_size: Voxel size for downsampling (smaller = more detail but slower)
+        denoise: Apply denoising
+        outlier_removal: Remove outliers
+        normal_estimation: Estimate normals
+        meshing: Generate mesh (requires normal estimation)
+        num_neighbors: Number of neighbors for outlier removal
+        std_ratio: Standard deviation ratio for outlier removal
+
+    Returns:
+        Processed point cloud or mesh
+    """
+    if not OPEN3D_AVAILABLE:
+        logger.warning("Open3D not available, returning original point cloud")
+        return point_cloud
+
+    try:
+        # Convert to Open3D point cloud if needed
+        is_o3d = isinstance(point_cloud, o3d.geometry.PointCloud)
+        if not is_o3d:
+            o3d_cloud = o3d.geometry.PointCloud()
+            o3d_cloud.points = o3d.utility.Vector3dVector(point_cloud)
+        else:
+            o3d_cloud = point_cloud
+
+        # Skip processing if empty
+        if len(o3d_cloud.points) == 0:
+            return point_cloud
+
+        # Make a copy to avoid modifying the original
+        processed_cloud = o3d_cloud.clone()
+
+        # Down-sample to make processing faster and more robust
+        processed_cloud = processed_cloud.voxel_down_sample(voxel_size)
+
+        # Apply statistical outlier removal if requested
+        if outlier_removal and len(processed_cloud.points) > 50:
+            try:
+                processed_cloud, _ = processed_cloud.remove_statistical_outlier(
+                    nb_neighbors=num_neighbors,
+                    std_ratio=std_ratio
+                )
+                logger.debug(f"Outlier removal: {len(o3d_cloud.points)} -> {len(processed_cloud.points)} points")
+            except Exception as e:
+                logger.warning(f"Outlier removal failed: {e}")
+
+        # Apply bilateral filtering if denoising is requested
+        if denoise and len(processed_cloud.points) > 50:
+            try:
+                # First compute normals if not done yet and not explicitly disabled
+                if not processed_cloud.has_normals() and normal_estimation:
+                    processed_cloud.estimate_normals(
+                        search_param=o3d.geometry.KDTreeSearchParamHybrid(
+                            radius=voxel_size*2, max_nn=30))
+
+                # Apply smoothing - using a small custom implementation since Open3D lacks built-in point denoising
+                points = np.asarray(processed_cloud.points)
+                normals = np.asarray(processed_cloud.normals) if processed_cloud.has_normals() else None
+
+                if normals is not None:
+                    # Project small movements along normal direction (simple bilateral filter approximation)
+                    tree = o3d.geometry.KDTreeFlann(processed_cloud)
+                    smoothed_points = points.copy()
+
+                    # Only process a random subset of points for speed in real-time applications
+                    sample_size = min(5000, len(points))
+                    indices = np.random.choice(len(points), sample_size, replace=False)
+
+                    for idx in indices:
+                        # Find neighbors
+                        _, neighbor_indices, _ = tree.search_knn_vector_3d(points[idx], 10)
+                        neighbor_points = points[neighbor_indices]
+
+                        # Compute weighted average based on distance and normal similarity
+                        weights = np.exp(-np.linalg.norm(neighbor_points - points[idx], axis=1) / (voxel_size*2)**2)
+                        avg_point = np.average(neighbor_points, axis=0, weights=weights)
+
+                        # Project back along normal direction to preserve surface
+                        normal = normals[idx]
+                        diff = avg_point - points[idx]
+                        proj_dist = np.dot(diff, normal)
+                        smoothed_points[idx] = points[idx] + 0.5 * (diff - proj_dist * normal)
+
+                    # Update points
+                    processed_cloud.points = o3d.utility.Vector3dVector(smoothed_points)
+                    logger.debug("Applied bilateral smoothing to point cloud")
+            except Exception as e:
+                logger.warning(f"Denoising failed: {e}")
+
+        # Estimate normals if requested
+        if normal_estimation and not processed_cloud.has_normals():
+            try:
+                processed_cloud.estimate_normals(
+                    search_param=o3d.geometry.KDTreeSearchParamHybrid(
+                        radius=voxel_size*2, max_nn=30))
+                processed_cloud.orient_normals_consistent_tangent_plane(k=15)
+                logger.debug("Estimated point cloud normals")
+            except Exception as e:
+                logger.warning(f"Normal estimation failed: {e}")
+
+        # Create mesh if requested
+        if meshing and processed_cloud.has_normals() and len(processed_cloud.points) > 100:
+            try:
+                # First try Poisson reconstruction
+                try:
+                    mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
+                        processed_cloud, depth=8, width=0, scale=1.1, linear_fit=True)
+
+                    # Remove low-density vertices
+                    vertices_to_remove = densities < np.quantile(densities, 0.1)
+                    mesh.remove_vertices_by_mask(vertices_to_remove)
+                    logger.debug(f"Created mesh with {len(mesh.triangles)} triangles using Poisson reconstruction")
+
+                    return mesh
+                except Exception as e:
+                    logger.warning(f"Poisson reconstruction failed: {e}, trying Ball Pivoting")
+
+                    # Fall back to Ball Pivoting
+                    radii = [voxel_size*2, voxel_size*4, voxel_size*8]
+                    mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
+                        processed_cloud, o3d.utility.DoubleVector(radii))
+
+                    if len(mesh.triangles) > 0:
+                        logger.debug(f"Created mesh with {len(mesh.triangles)} triangles using Ball Pivoting")
+                        return mesh
+                    else:
+                        logger.warning("Ball Pivoting created an empty mesh, returning point cloud")
+            except Exception as e:
+                logger.warning(f"Meshing failed: {e}")
+
+        # Return in the same format as input
+        if not is_o3d:
+            return np.asarray(processed_cloud.points)
+        else:
+            return processed_cloud
+
+    except Exception as e:
+        logger.error(f"Error during Open3D processing: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return point_cloud
 
 
@@ -549,11 +767,11 @@ def get_point_cloud_enhancer(
 ) -> PointCloudEnhancer:
     """
     Get a preconfigured point cloud enhancer.
-    
+
     Args:
         use_gpu: Whether to use GPU acceleration if available
         model_dir: Directory for model storage
-        
+
     Returns:
         Configured PointCloudEnhancer instance
     """
@@ -562,5 +780,5 @@ def get_point_cloud_enhancer(
         enable_open3d_ml=True,
         model_dir=model_dir
     )
-    
+
     return enhancer

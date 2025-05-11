@@ -133,11 +133,11 @@ def setup_cuda_env():
 def is_cuda_available():
     """
     Check if CUDA is available by trying to use a CUDA-enabled library.
-    
+
     Returns:
         bool: True if CUDA is available, False otherwise
     """
-    # Try PyTorch first
+    # Try PyTorch first (most reliable method)
     try:
         import torch
         if torch.cuda.is_available():
@@ -145,7 +145,7 @@ def is_cuda_available():
             return True
     except ImportError:
         pass
-    
+
     # Try CuPy
     try:
         setup_cuda_env()  # Ensure environment is set up
@@ -157,16 +157,55 @@ def is_cuda_available():
         pass
     except Exception as e:
         logger.warning(f"CuPy error when checking CUDA: {e}")
-        
-    # Try OpenCV CUDA
+
+    # Try OpenCV CUDA with extended validation
     try:
         import cv2
-        if cv2.cuda.getCudaEnabledDeviceCount() > 0:
-            logger.info("CUDA available via OpenCV")
-            return True
-    except (ImportError, AttributeError):
+        if hasattr(cv2, 'cuda') and hasattr(cv2.cuda, 'getCudaEnabledDeviceCount'):
+            device_count = cv2.cuda.getCudaEnabledDeviceCount()
+            if device_count > 0:
+                # Verify OpenCV CUDA actually works with a small operation
+                try:
+                    # Create a small test array and transfer to GPU
+                    import numpy as np
+                    test_array = np.zeros((10, 10), dtype=np.float32)
+                    test_gpu_mat = cv2.cuda.GpuMat()
+                    test_gpu_mat.upload(test_array)
+
+                    # Try a simple operation
+                    result_gpu_mat = cv2.cuda.GpuMat()
+                    cv2.cuda.threshold(test_gpu_mat, result_gpu_mat, 0, 1, cv2.THRESH_BINARY)
+
+                    # Download result
+                    result = result_gpu_mat.download()
+
+                    # Release resources
+                    test_gpu_mat.release()
+                    result_gpu_mat.release()
+
+                    logger.info("CUDA available via OpenCV with successful validation")
+                    return True
+                except Exception as e:
+                    logger.warning(f"OpenCV CUDA available but validation failed: {e}")
+                    # Don't return True here since validation failed
+            else:
+                logger.warning("OpenCV reports no CUDA devices available")
+    except (ImportError, AttributeError, Exception) as e:
+        logger.warning(f"OpenCV CUDA error: {e}")
+
+    # Check system CUDA directly via subprocess
+    try:
+        import subprocess
+        try:
+            output = subprocess.check_output(["nvidia-smi"], stderr=subprocess.STDOUT, universal_newlines=True)
+            if "NVIDIA-SMI" in output and "Driver Version" in output:
+                logger.info("CUDA available via nvidia-smi, but no Python CUDA bindings working")
+                # We don't return True here because we need Python bindings to work
+        except (subprocess.SubprocessError, FileNotFoundError):
+            pass
+    except ImportError:
         pass
-        
+
     logger.warning("CUDA not available through any supported library")
     return False
 

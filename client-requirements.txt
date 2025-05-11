@@ -4,28 +4,34 @@
 # Core requirements
 numpy>=1.20.0
 opencv-python>=4.5.0
+opencv-contrib-python>=4.5.0  # For structured light pattern generation and decoding
 pyzmq>=22.0.0
 msgpack>=1.0.2
 pyyaml>=6.0
 
 # For 3D scanning and visualization
-open3d>=0.15.0     # For mesh generation and point cloud processing
+open3d>=0.19.0     # For mesh generation and point cloud processing
 matplotlib>=3.4.0  # For data visualization
 
 # For examples and utilities
 pillow>=8.0.0      # Image processing
 tqdm>=4.60.0       # Progress bars
-scipy>=1.7.0       # Scientific computing
+scipy>=1.10.0      # Scientific computing
 
-# For neural network enhancement
-torch>=2.0.0       # PyTorch - will work on CPU without CUDA
+# GPU acceleration (optional)
+# Install based on your GPU hardware:
+# cupy-cuda11x>=12.0.0  # For CUDA 11.x
+# cupy-cuda12x>=12.0.0  # For CUDA 12.x
+
+# For neural network enhancement (PyTorch)
+torch>=2.0.0       # Will work on CPU without CUDA
 torchvision>=0.16.0  # Required for some neural network operations
 
-# Neural Network and Point Cloud Processing
-open3d>=0.17.0     # Required for point cloud processing (includes Open3D ML)
-scipy>=1.10.0      # Required for various scientific computing needs
+# For saving point clouds in diverse formats
+h5py>=3.1.0        # For HDF5 file format support
 
-# Optional GPU acceleration packages are not included here
-# See installation instructions in README.md for GPU support
+# Optional: for development and testing
+pytest>=7.0.0      # For running tests
+mypy>=1.0.0        # For type checking
 
 # Instead of python-pcl, we use Open3D for all point cloud processing

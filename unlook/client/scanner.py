@@ -5,6 +5,7 @@ Main client for connecting to an UnLook scanner.
 import logging
 import threading
 import time
+import random
 from typing import Dict, List, Optional, Any, Callable, Tuple
 
 import zmq
@@ -279,12 +280,26 @@ class UnlookClient(EventEmitter):
         """Clean up connection resources."""
         try:
             if self.control_socket:
-                self.poller.unregister(self.control_socket)
-                self.control_socket.close()
+                try:
+                    # Only unregister if the socket is still registered with the poller
+                    self.poller.unregister(self.control_socket)
+                except Exception as e:
+                    logger.debug(f"Error unregistering socket from poller: {e}")
+
+                try:
+                    # Force socket to close with a timeout
+                    self.control_socket.setsockopt(zmq.LINGER, 0)
+                    self.control_socket.close(linger=0)
+                except Exception as e:
+                    logger.debug(f"Error closing socket: {e}")
+
+                # Explicitly set to None
                 self.control_socket = None
 
         except Exception as e:
             logger.error(f"Error cleaning up connection: {e}")
+            # Ensure variables are reset even after errors
+            self.control_socket = None
 
     def send_message(
             self,
@@ -309,88 +324,200 @@ class UnlookClient(EventEmitter):
         """
         if not self.connected or not self.control_socket:
             logger.error("Cannot send message: not connected")
+            if self.scanner and self.scanner.endpoint:
+                # Try to reconnect once
+                if self._attempt_reconnection(timeout):
+                    logger.info("Reconnected successfully, proceeding with message")
+                else:
+                    return False, None, None
+            else:
+                return False, None, None
+
+        # Lock to prevent concurrent access
+        with self._lock:
+            message = Message(msg_type=msg_type, payload=payload)
+            attempt = 0
+            max_attempts = retries + 2  # Allow more retries for important operations
+
+            # Add jitter to avoid retry storms
+            jitter = random.uniform(0.8, 1.2)
+
+            while attempt < max_attempts:
+                try:
+                    # Check socket state
+                    if not self.control_socket:
+                        logger.error("Socket is None, reconnecting...")
+                        if not self._attempt_reconnection(timeout):
+                            attempt += 1
+                            continue
+
+                    # Send message
+                    logger.debug(f"Sending {msg_type} message (attempt {attempt+1}/{max_attempts})")
+                    self.control_socket.send(message.to_bytes())
+
+                    # Wait for response with timeout
+                    socks = dict(self.poller.poll(timeout))
+                    if self.control_socket not in socks or socks[self.control_socket] != zmq.POLLIN:
+                        # Handle timeout with exponential backoff
+                        attempt += 1
+                        logger.warning(f"Timeout waiting for response (attempt {attempt}/{max_attempts})")
+
+                        # Calculate backoff time - start at 100ms and double each retry with jitter
+                        backoff_time = min(0.1 * (2 ** (attempt - 1)) * jitter, 2.0)  # Cap at 2 seconds
+                        time.sleep(backoff_time)
+
+                        # Proactive reconnection on timeout
+                        if attempt % 2 == 0:  # Every other timeout, try to reconnect
+                            logger.info(f"Proactive reconnection on timeout attempt {attempt}")
+                            self._attempt_reconnection(timeout)
+
+                        continue
+
+                    # Receive response
+                    response_data = self.control_socket.recv()
+
+                    # If we expect a binary response
+                    if binary_response:
+                        # Deserialize binary response
+                        try:
+                            msg_type, payload, binary_data = deserialize_binary_message(response_data)
+                            # Create a message from the response
+                            response = Message(
+                                msg_type=MessageType(msg_type),
+                                payload=payload
+                            )
+                            return True, response, binary_data
+                        except Exception as e:
+                            logger.error(f"Error deserializing binary response: {e}")
+                            attempt += 1
+                            if attempt < max_attempts:
+                                # Calculate backoff time for parsing errors too
+                                backoff_time = min(0.1 * (2 ** (attempt - 1)) * jitter, 1.0)
+                                time.sleep(backoff_time)
+                                continue
+                            return False, None, None
+                    else:
+                        # Normal response
+                        try:
+                            response = Message.from_bytes(response_data)
+
+                            # Handle errors
+                            if response.msg_type == MessageType.ERROR:
+                                error_msg = response.payload.get("error_message", "Unknown error")
+                                # Check for "Operation cannot be accomplished" error which might need reconnection
+                                if "Operation cannot be accomplished" in error_msg or "not a socket" in error_msg:
+                                    attempt += 1
+                                    logger.error(f"Operation cannot be accomplished (attempt {attempt}/{max_attempts})")
+                                    if attempt < max_attempts:
+                                        # Force reconnection for these specific errors
+                                        self._attempt_reconnection(timeout)
+                                        # Short delay before retry
+                                        time.sleep(0.2)
+                                        continue
+
+                                logger.error(f"Error from server: {error_msg}")
+                                return False, response, None
+
+                            # Success case
+                            return True, response, None
+                        except Exception as e:
+                            logger.error(f"Error parsing response: {e}")
+                            attempt += 1
+                            if attempt < max_attempts:
+                                time.sleep(0.1 * jitter)
+                                continue
+                            return False, None, None
+
+                except Exception as e:
+                    logger.error(f"Error sending message: {e} (attempt {attempt+1}/{max_attempts})")
+                    attempt += 1
+
+                    # If not the last attempt, wait before retrying with exponential backoff
+                    if attempt < max_attempts:
+                        backoff_time = min(0.1 * (2 ** (attempt - 1)) * jitter, 2.0)  # Cap at 2 seconds
+                        time.sleep(backoff_time)
+
+                    # Try reconnection after the first attempt for more aggressive recovery
+                    if attempt >= 1 and attempt < max_attempts:
+                        self._attempt_reconnection(timeout)
+
+            # All attempts failed
+            logger.error("All message sending attempts failed")
+            # Try one final desperate reconnection attempt before giving up
+            self._attempt_reconnection(timeout * 2)
             return False, None, None
 
-        message = Message(msg_type=msg_type, payload=payload)
-        attempt = 0
+    def _attempt_reconnection(self, timeout: int) -> bool:
+        """
+        Attempt to reconnect the ZMQ socket.
 
-        while attempt < retries:
+        Args:
+            timeout: Socket timeout in milliseconds
+
+        Returns:
+            True if reconnection was successful, False otherwise
+        """
+        try:
+            # Try to reconnect
+            logger.info("Attempting to reconnect...")
+            self.emit(EventType.RECONNECTING)
+
+            # Close existing connection
+            self._cleanup_connection()
+
+            # Wait a short time to ensure socket closes properly
+            time.sleep(0.1)
+
             try:
-                # Send message
-                self.control_socket.send(message.to_bytes())
+                # Recreate new context if needed
+                if not self.zmq_context or self.zmq_context.closed:
+                    logger.debug("Creating new ZMQ context")
+                    self.zmq_context = zmq.Context()
 
-                # Wait for response with timeout
-                socks = dict(self.poller.poll(timeout))
-                if self.control_socket not in socks or socks[self.control_socket] != zmq.POLLIN:
-                    logger.warning(f"Timeout waiting for response (attempt {attempt + 1}/{retries})")
-                    attempt += 1
-                    continue
+                # Recreate socket with improved parameters
+                self.control_socket = self.zmq_context.socket(zmq.REQ)
+                self.control_socket.setsockopt(zmq.LINGER, 0)  # Don't linger on close
+                self.control_socket.setsockopt(zmq.RCVTIMEO, timeout)  # Receive timeout
+                self.control_socket.setsockopt(zmq.SNDTIMEO, timeout)  # Send timeout
+                self.control_socket.setsockopt(zmq.IMMEDIATE, 1)  # Don't queue messages for disconnected peers
+                self.control_socket.setsockopt(zmq.RECONNECT_IVL, 100)  # 100ms reconnection interval
+                self.control_socket.setsockopt(zmq.RECONNECT_IVL_MAX, 5000)  # 5s max reconnection interval
+                self.control_socket.setsockopt(zmq.TCP_KEEPALIVE, 1)  # Enable TCP keepalive
+                self.control_socket.setsockopt(zmq.TCP_KEEPALIVE_IDLE, 60)  # Seconds before sending keepalives
+                self.control_socket.setsockopt(zmq.TCP_KEEPALIVE_INTVL, 30)  # Interval between keepalives
 
-                # Receive response
-                response_data = self.control_socket.recv()
+                # Connect to endpoint
+                logger.debug(f"Connecting to endpoint: {self.scanner.endpoint}")
+                self.control_socket.connect(self.scanner.endpoint)
 
-                # If we expect a binary response
-                if binary_response:
-                    # Deserialize binary response
+                # Register with poller
+                self.poller.register(self.control_socket, zmq.POLLIN)
+
+                # Try simple ping to verify connection
+                success = self._ping_server(timeout)
+                if not success:
+                    raise Exception("Ping failed after reconnection")
+
+                logger.info("Socket reconnected successfully and verified with ping")
+                return True
+
+            except Exception as inner_e:
+                logger.error(f"Error during socket recreation: {inner_e}")
+                # Ensure resources are cleaned up
+                if self.control_socket:
                     try:
-                        msg_type, payload, binary_data = deserialize_binary_message(response_data)
-                        # Create a message from the response
-                        response = Message(
-                            msg_type=MessageType(msg_type),
-                            payload=payload
-                        )
-                        return True, response, binary_data
-                    except Exception as e:
-                        logger.error(f"Error deserializing binary response: {e}")
-                        return False, None, None
-                else:
-                    # Normal response
-                    response = Message.from_bytes(response_data)
+                        self.control_socket.close(linger=0)
+                    except:
+                        pass
+                    self.control_socket = None
+                raise
 
-                    # Handle errors
-                    if response.msg_type == MessageType.ERROR:
-                        error_msg = response.payload.get("error_message", "Unknown error")
-                        logger.error(f"Error from server: {error_msg}")
-                        return False, response, None
-
-                    return True, response, None
-
-            except Exception as e:
-                logger.error(f"Error sending message: {e} (attempt {attempt + 1}/{retries})")
-                attempt += 1
-
-                # If not the last attempt, wait before retrying
-                if attempt < retries:
-                    time.sleep(0.5)
-
-                # Check if the socket is still valid
-                if attempt == retries - 1:
-                    try:
-                        # Try to reconnect
-                        logger.info("Attempting to reconnect...")
-                        self.emit(EventType.RECONNECTING)
-
-                        # Close existing connection
-                        self._cleanup_connection()
-
-                        # Recreate socket
-                        self.control_socket = self.zmq_context.socket(zmq.REQ)
-                        self.control_socket.setsockopt(zmq.LINGER, 0)
-                        self.control_socket.setsockopt(zmq.RCVTIMEO, timeout)
-                        self.control_socket.connect(self.scanner.endpoint)
-
-                        # Register with poller
-                        self.poller.register(self.control_socket, zmq.POLLIN)
-
-                    except Exception as reconnect_error:
-                        logger.error(f"Reconnection failed: {reconnect_error}")
-                        self.connected = False
-                        self.emit(EventType.DISCONNECTED)
-                        return False, None, None
-
-        # All attempts failed
-        logger.error("All message sending attempts failed")
-        return False, None, None
+        except Exception as e:
+            logger.error(f"Reconnection failed: {e}")
+            self.control_socket = None
+            self.connected = False
+            self.emit(EventType.DISCONNECTED)
+            return False
 
     def get_info(self) -> Dict[str, Any]:
         """
@@ -409,6 +536,50 @@ class UnlookClient(EventEmitter):
         else:
             return {}
 
+    def _ping_server(self, timeout: int) -> bool:
+        """
+        Send a ping message to the server to verify connection.
+
+        Args:
+            timeout: Timeout in milliseconds
+
+        Returns:
+            True if ping successful, False otherwise
+        """
+        if not self.control_socket:
+            return False
+
+        try:
+            # Create a simple ping message
+            ping_msg = Message(
+                msg_type=MessageType.PING,
+                payload={"timestamp": time.time()}
+            )
+
+            # Send ping
+            self.control_socket.send(ping_msg.to_bytes())
+
+            # Wait for response with timeout
+            socks = dict(self.poller.poll(timeout))
+            if self.control_socket not in socks or socks[self.control_socket] != zmq.POLLIN:
+                logger.warning("Ping timeout")
+                return False
+
+            # Receive response
+            response_data = self.control_socket.recv()
+            response = Message.from_bytes(response_data)
+
+            # Check response type
+            if response.msg_type != MessageType.PONG:
+                logger.warning(f"Unexpected response to ping: {response.msg_type}")
+                return False
+
+            return True
+
+        except Exception as e:
+            logger.warning(f"Ping failed: {e}")
+            return False
+
     def check_connection(self) -> bool:
         """
         Check if the connection to the scanner is active.
@@ -420,6 +591,11 @@ class UnlookClient(EventEmitter):
             return False
 
         try:
+            # Use faster ping method first
+            if self._ping_server(DEFAULT_TIMEOUT):
+                return True
+
+            # Fall back to full info check
             info = self.get_info()
             return bool(info)
         except Exception:
@@ -427,8 +603,17 @@ class UnlookClient(EventEmitter):
 
     def __del__(self):
         """Clean up resources when the object is destroyed."""
-        self.disconnect()
-        self.stop_discovery()
+        try:
+            self.disconnect()
+            self.stop_discovery()
+            # Clean up ZMQ context
+            if hasattr(self, 'zmq_context') and self.zmq_context:
+                try:
+                    self.zmq_context.term()
+                except:
+                    pass
+        except:
+            pass
 
     # Backward compatibility with old event API
     def on_event(self, event: EventType, callback: Callable):

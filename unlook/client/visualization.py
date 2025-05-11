@@ -31,16 +31,16 @@ class ScanVisualizer:
     def __init__(self, use_window: bool = True):
         """
         Initialize the visualizer.
-        
+
         Args:
             use_window: Whether to use interactive window (True) or offscreen rendering (False)
         """
         self.use_window = use_window
-        
+
         if not OPEN3D_AVAILABLE:
             logger.error("open3d is required for ScanVisualizer")
             raise ImportError("open3d is required for ScanVisualizer")
-        
+
         # Check if we have a GUI
         # Different versions of Open3D have different ways to detect GUI capabilities
         try:
@@ -57,10 +57,14 @@ class ScanVisualizer:
             # If any error occurs, assume no GUI
             logger.warning("Could not determine GUI capabilities, assuming GUI is available")
             self.has_gui = True
-        
+
         if use_window and not self.has_gui:
             logger.warning("No GUI available. Falling back to offscreen rendering.")
             self.use_window = False
+
+        # Initialize instance variables
+        self.vis = None
+        self.window_created = False
     
     @staticmethod
     def load_point_cloud(filepath: str) -> o3d.geometry.PointCloud:

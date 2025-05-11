@@ -70,60 +70,69 @@ class Projector:
             if isinstance(pattern, dict) and "pattern_type" in pattern:
                 pattern_type = pattern["pattern_type"]
 
-                if pattern_type == "solid_field":
-                    return self.client.show_solid_field(pattern.get("color", "White"))
+                try:
+                    # Dispatch to appropriate method based on pattern type
+                    if pattern_type == "solid_field":
+                        result = self.client.show_solid_field(pattern.get("color", "White"))
 
-                elif pattern_type == "horizontal_lines":
-                    return self.client.show_horizontal_lines(
-                        pattern.get("foreground_color", "White"),
-                        pattern.get("background_color", "Black"),
-                        pattern.get("foreground_width", 4),
-                        pattern.get("background_width", 20)
-                    )
+                    elif pattern_type == "horizontal_lines":
+                        result = self.client.show_horizontal_lines(
+                            pattern.get("foreground_color", "White"),
+                            pattern.get("background_color", "Black"),
+                            pattern.get("foreground_width", 4),
+                            pattern.get("background_width", 20)
+                        )
 
-                elif pattern_type == "vertical_lines":
-                    return self.client.show_vertical_lines(
-                        pattern.get("foreground_color", "White"),
-                        pattern.get("background_color", "Black"),
-                        pattern.get("foreground_width", 4),
-                        pattern.get("background_width", 20)
-                    )
+                    elif pattern_type == "vertical_lines":
+                        result = self.client.show_vertical_lines(
+                            pattern.get("foreground_color", "White"),
+                            pattern.get("background_color", "Black"),
+                            pattern.get("foreground_width", 4),
+                            pattern.get("background_width", 20)
+                        )
 
-                elif pattern_type == "grid":
-                    return self.client.show_grid(
-                        pattern.get("foreground_color", "White"),
-                        pattern.get("background_color", "Black"),
-                        pattern.get("h_foreground_width", 4),
-                        pattern.get("h_background_width", 20),
-                        pattern.get("v_foreground_width", 4),
-                        pattern.get("v_background_width", 20)
-                    )
+                    elif pattern_type == "grid":
+                        result = self.client.show_grid(
+                            pattern.get("foreground_color", "White"),
+                            pattern.get("background_color", "Black"),
+                            pattern.get("h_foreground_width", 4),
+                            pattern.get("h_background_width", 20),
+                            pattern.get("v_foreground_width", 4),
+                            pattern.get("v_background_width", 20)
+                        )
 
-                elif pattern_type == "checkerboard":
-                    return self.client.show_checkerboard(
-                        pattern.get("foreground_color", "White"),
-                        pattern.get("background_color", "Black"),
-                        pattern.get("horizontal_count", 8),
-                        pattern.get("vertical_count", 6)
-                    )
+                    elif pattern_type == "checkerboard":
+                        result = self.client.show_checkerboard(
+                            pattern.get("foreground_color", "White"),
+                            pattern.get("background_color", "Black"),
+                            pattern.get("horizontal_count", 8),
+                            pattern.get("vertical_count", 6)
+                        )
 
-                elif pattern_type == "colorbars":
-                    return self.client.show_colorbars()
+                    elif pattern_type == "colorbars":
+                        result = self.client.show_colorbars()
 
-                elif pattern_type == "raw_image":
-                    # For raw images, we need to directly pass the binary data
-                    if "image" in pattern:
-                        # In a connected client, we would send the binary data
-                        logger.info(f"Projecting raw image pattern: {pattern.get('name', 'unnamed')}")
-                        # Here we should handle the binary image data properly
-                        # For now, we'll just log and return success
-                        return True
+                    elif pattern_type == "raw_image":
+                        # For raw images, we need to directly pass the binary data
+                        if "image" in pattern:
+                            # In a connected client, we would send the binary data
+                            logger.info(f"Projecting raw image pattern: {pattern.get('name', 'unnamed')}")
+                            # Here we should handle the binary image data properly
+                            # For now, we'll just log and return success
+                            result = True
+                        else:
+                            logger.warning(f"Raw image pattern missing image data: {pattern.get('name', 'unnamed')}")
+                            return False
+
                     else:
-                        logger.warning(f"Raw image pattern missing image data: {pattern.get('name', 'unnamed')}")
+                        logger.warning(f"Unknown pattern type: {pattern_type}")
                         return False
 
-                else:
-                    logger.warning(f"Unknown pattern type: {pattern_type}")
+                    # If we got here, the operation was successful
+                    return result
+
+                except Exception as e:
+                    logger.error(f"Error projecting pattern: {e}")
                     return False
             else:
                 logger.warning("Invalid pattern format")
@@ -147,7 +156,13 @@ class Projector:
         """
         # If we have a real client, use it to project sequence
         if self.client:
-            return self.client.start_pattern_sequence(patterns, interval=interval)
+            try:
+                # Start pattern sequence
+                result = self.client.start_pattern_sequence(patterns, interval=interval)
+                return result
+            except Exception as e:
+                logger.error(f"Error starting pattern sequence with {len(patterns)} patterns: {e}")
+                return False
 
         # If we don't have a client, this is an error - we want to use real hardware only
         logger.error(f"No projector client available. Real hardware required. Pattern sequence with {len(patterns)} patterns.")
@@ -697,12 +712,13 @@ class ProjectorClient:
         """
         return self.set_mode("TestPatternGenerator")
         
-    def start_pattern_sequence(self, 
-                              patterns: List[Dict[str, Any]], 
+    def start_pattern_sequence(self,
+                              patterns: List[Dict[str, Any]],
                               interval: float = 0.5,
                               loop: bool = False,
                               sync_with_camera: bool = False,
-                              start_immediately: bool = True) -> Dict[str, Any]:
+                              start_immediately: bool = True,
+                              max_retries: int = 3) -> Dict[str, Any]:
         """
         Define and start a pattern sequence on the projector.
         

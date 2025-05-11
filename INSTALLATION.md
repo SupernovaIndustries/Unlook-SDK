@@ -32,6 +32,31 @@ pip install -r client-requirements.txt
 
 For optimal performance, installing GPU acceleration is recommended.
 
+### OpenCV with CUDA Support (Recommended)
+
+For real-time scanning functionality, OpenCV with CUDA support is highly recommended:
+
+```bash
+# Run the automated OpenCV CUDA setup script
+python setup_opencv_cuda.py
+```
+
+This script will:
+1. Check if OpenCV with CUDA is already installed
+2. Install it from pre-built packages if possible
+3. Build from source with proper CUDA configuration if needed
+
+Alternatively, you can install manually:
+
+```bash
+# Option 1: Install pre-built package (easier but may not work with all CUDA versions)
+pip uninstall -y opencv-python opencv-contrib-python
+pip install opencv-contrib-python-cuda
+
+# Option 2: Build from source (more reliable but takes longer)
+python scripts/build_opencv_cuda.py
+```
+
 ### NVIDIA GPUs
 
 ```bash
@@ -65,6 +90,7 @@ If you don't have a compatible GPU, you can still run the SDK with CPU-only supp
 # Install CPU-only versions
 pip install torch torchvision
 pip install cupy
+pip install opencv-contrib-python  # Regular OpenCV without CUDA
 ```
 
 ## Open3D and Open3D-ML

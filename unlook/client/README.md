@@ -8,7 +8,8 @@ This directory contains the client-side implementation of the Unlook SDK, provid
 - **camera_calibration.py** - Stereo camera calibration utilities
 - **camera_config.py** - Camera configuration and settings management
 - **projector.py** - Projector control and pattern generation
-- **realtime_scanner.py** - Real-time 3D scanning implementation
+- **projector_adapter.py** - Adapter for different projector implementations
+- **realtime_scanner.py** - CPU-optimized real-time 3D scanning implementation
 - **scanner.py** - Base scanner functionality
 - **scanner3d.py** - 3D scanner implementation
 - **structured_light.py** - Structured light pattern generation and processing
@@ -35,12 +36,14 @@ Full control over connected projectors:
 
 ### Real-time Scanning
 
-GPU-accelerated real-time 3D scanning:
+Robust and reliable real-time 3D scanning:
 
-- Fast scan modes optimized for handheld operation
-- Point cloud generation and processing
+- CPU-optimized implementation for reliable operation
+- Configurable quality presets for different performance needs
+- Comprehensive error handling and diagnostics
+- Robust projection-capture synchronization
 - Open3D integration for visualization and processing
-- Optional neural network enhancement
+- Adaptable to different hardware configurations
 
 ### 3D Reconstruction
 
@@ -57,20 +60,47 @@ The client module is typically used through the main `UnlookClient` class:
 
 ```python
 from unlook import UnlookClient
-from unlook.client.realtime_scanner import create_realtime_scanner
+from unlook.client.realtime_scanner import create_realtime_scanner, RealTimeScanConfig
 
+# Create client and connect to scanner
 client = UnlookClient(auto_discover=True)
-client.connect_to_first_available()
+client.start_discovery()
+time.sleep(5)  # Wait for discovery
+scanner_info = client.get_discovered_scanners()[0]
+client.connect(scanner_info)
 
 # Access camera functions
-client.camera.capture("camera_1")
+left_img, right_img = client.camera.capture_stereo_pair()
 
 # Control the projector
-client.projector.show_pattern("solid_field", color="White")
+client.projector.show_solid_field(color="White")
 
-# Create a real-time scanner
-scanner = create_realtime_scanner(client, quality="high")
-scanner.start()
+# Create a robust CPU-optimized scanner
+config = RealTimeScanConfig()
+config.set_quality_preset("medium")  # Options: fast, medium, high
+config.pattern_interval = 0.3        # Time between patterns (seconds)
+config.capture_delay = 0.1           # Delay before capture (seconds)
+config.epipolar_tolerance = 15.0     # Tolerance for stereo matching (pixels)
+
+# Create the scanner
+scanner = create_realtime_scanner(
+    client=client,
+    config=config,
+    on_new_frame=lambda point_cloud, scan_count, fps: print(f"New scan #{scan_count}, points: {len(point_cloud.points)}")
+)
+
+# Set synchronization mode
+scanner.pattern_sync_mode = "strict"  # strict or normal
+
+# Start scanning with debug output
+scanner.start(debug_mode=True)
+
+# Get the resulting point cloud
+point_cloud = scanner.get_current_point_cloud()
+
+# Stop scanner when done
+scanner.stop()
+client.disconnect()
 ```
 
 ## Extension Points

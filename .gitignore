@@ -24,3 +24,14 @@ unlook/client/__pycache__/projector.cpython-312.pyc
 /debug_patterns
 /debug_patterns
 /debug_output
+
+**/CLAUDE.local.md
+/tmp
+/unlook/core/__pycache__
+/unlook/utils/__pycache__
+/opencv-cuda
+files_to_delete.md
+files_to_delete.md
+/unlook/client/debug
+/unlook/examples/open3d
+/unlook/examples/unlook_debug
