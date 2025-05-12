@@ -18,14 +18,15 @@ pillow>=8.0.0      # Image processing
 tqdm>=4.60.0       # Progress bars
 scipy>=1.10.0      # Scientific computing
 
-# GPU acceleration (optional)
-# Install based on your GPU hardware:
-# cupy-cuda11x>=12.0.0  # For CUDA 11.x
+# GPU acceleration (required for optimal performance)
+# Uncomment the appropriate line based on your CUDA version:
+cupy-cuda11x>=12.0.0  # For CUDA 11.x
 # cupy-cuda12x>=12.0.0  # For CUDA 12.x
 
-# For neural network enhancement (PyTorch)
-torch>=2.0.0       # Will work on CPU without CUDA
-torchvision>=0.16.0  # Required for some neural network operations
+# For neural network enhancement (MVS2D model)
+torch>=2.0.0       # Will work on CPU, but CUDA recommended
+torchvision>=0.16.0  # Required for models and transformations
+tensorboard>=2.11.0  # For visualizing training progress
 
 # For saving point clouds in diverse formats
 h5py>=3.1.0        # For HDF5 file format support

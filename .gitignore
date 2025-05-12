@@ -36,3 +36,7 @@ files_to_delete.md
 /unlook/examples/open3d
 /unlook/examples/unlook_debug
 /unlook/examples/Open3D-ML
+/unlook/examples/3rdparty
+/unlook/examples/CMakeFiles
+/unlook/examples/content
+/unlook/examples/modules
