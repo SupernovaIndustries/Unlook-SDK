@@ -9,27 +9,76 @@ import logging
 import numpy as np
 import time
 import cv2
+import os
+import sys
+from pathlib import Path
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
-# Try to import GPU libraries
+# Import CUDA environment setup utilities
+try:
+    from ..utils.cuda_setup import setup_cuda_env, is_cuda_available, find_cuda_path
+    CUDA_SETUP_AVAILABLE = True
+    logger.info("CUDA environment setup utilities available")
+except ImportError:
+    CUDA_SETUP_AVAILABLE = False
+    logger.warning("CUDA environment setup utilities not available. GPU acceleration may be limited.")
+
+# Set up CUDA environment first before importing GPU libraries
+if CUDA_SETUP_AVAILABLE:
+    logger.info("Setting up CUDA environment before importing GPU libraries")
+    try:
+        # Find and set CUDA paths
+        cuda_path = find_cuda_path()
+        if cuda_path:
+            logger.info(f"Found CUDA installation at: {cuda_path}")
+            # Set environment variables
+            os.environ["CUDA_PATH"] = cuda_path
+            
+            # Set up CUDA environment
+            setup_cuda_env()
+            logger.info(f"CUDA environment set up with CUDA_PATH={os.environ.get('CUDA_PATH')}")
+        else:
+            logger.warning("Could not find CUDA installation path")
+    except Exception as e:
+        logger.error(f"Error setting up CUDA environment: {e}")
+
+# Try to import GPU libraries after setting up CUDA environment
 try:
     import cupy as cp
     import cupyx.scipy.ndimage
     CUPY_AVAILABLE = True
-    logger.info("CuPy is available for GPU acceleration")
-except ImportError:
+    logger.info(f"CuPy is available for GPU acceleration (version: {cp.__version__})")
+    
+    # Check if CuPy can actually access CUDA devices
+    try:
+        num_gpus = cp.cuda.runtime.getDeviceCount()
+        if num_gpus > 0:
+            device = cp.cuda.Device(0)
+            device_name = device.attributes["name"].decode("utf-8")
+            memory_size = device.attributes["totalGlobalMem"] / (1024**3)  # Convert to GB
+            logger.info(f"Found {num_gpus} CUDA device(s). Using: {device_name} with {memory_size:.2f} GB memory")
+        else:
+            logger.warning("CuPy is installed but no CUDA devices were detected")
+            CUPY_AVAILABLE = False
+    except Exception as e:
+        logger.error(f"Error accessing CUDA devices with CuPy: {e}")
+        CUPY_AVAILABLE = False
+except ImportError as e:
     CUPY_AVAILABLE = False
-    logger.warning("CuPy not found. GPU acceleration disabled. Install with: pip install cupy-cuda11x")
+    logger.warning(f"CuPy not found ({e}). GPU acceleration disabled. Install with: pip install cupy-cuda11x")
 
 # Try to import OpenCV with CUDA support
 OPENCV_CUDA_AVAILABLE = False
-if cv2.cuda.getCudaEnabledDeviceCount() > 0:
-    OPENCV_CUDA_AVAILABLE = True
-    logger.info(f"OpenCV with CUDA support available. CUDA devices: {cv2.cuda.getCudaEnabledDeviceCount()}")
-else:
-    logger.warning("OpenCV with CUDA support not available. Some operations will run on CPU.")
+try:
+    if cv2.cuda.getCudaEnabledDeviceCount() > 0:
+        OPENCV_CUDA_AVAILABLE = True
+        logger.info(f"OpenCV with CUDA support available. CUDA devices: {cv2.cuda.getCudaEnabledDeviceCount()}")
+    else:
+        logger.warning("OpenCV with CUDA support not available. Some operations will run on CPU.")
+except Exception as e:
+    logger.warning(f"Error checking OpenCV CUDA support: {e}")
 
 class GPUAccelerator:
     """
@@ -45,31 +94,38 @@ class GPUAccelerator:
         """
         self.enable_gpu = enable_gpu
         
+        # Set up CUDA environment if needed
+        if CUDA_SETUP_AVAILABLE and enable_gpu and not CUPY_AVAILABLE:
+            logger.info("Attempting to set up CUDA environment again")
+            setup_success = setup_cuda_env()
+            logger.info(f"CUDA environment setup {'successful' if setup_success else 'failed'}")
+        
         # Check GPU availability and set up resources
         self.gpu_available = CUPY_AVAILABLE and self.enable_gpu
+        self.device = None
+        self.mem_pool = None
+        self.pinned_mem_pool = None
         
         if self.gpu_available:
             try:
                 # Initialize CUDA device
                 self.device = cp.cuda.Device(0)  # Use first GPU
                 self.device.use()
-                logger.info(f"Using CUDA device: {self.device.attributes['name']}")
+                device_name = self.device.attributes['name'].decode("utf-8") if hasattr(self.device.attributes['name'], 'decode') else self.device.attributes['name']
+                logger.info(f"Using CUDA device: {device_name}")
                 logger.info(f"GPU memory: {self.device.mem_info[1]/1024**3:.2f} GB total")
+                
+                # Create memory pools for better management
+                self.mem_pool = cp.get_default_memory_pool()
+                self.pinned_mem_pool = cp.get_default_pinned_memory_pool()
+                logger.info("GPU memory pools initialized")
                 
                 # Warm up the GPU
                 self._warm_up_gpu()
             except Exception as e:
-                logger.warning(f"Failed to initialize GPU: {e}")
+                logger.error(f"Failed to initialize GPU: {e}")
                 self.gpu_available = False
-        
-        # Create memory pools for better management
-        if self.gpu_available:
-            try:
-                self.mem_pool = cp.get_default_memory_pool()
-                self.pinned_mem_pool = cp.get_default_pinned_memory_pool()
-                logger.info("GPU memory pools initialized")
-            except Exception as e:
-                logger.warning(f"Failed to create memory pools: {e}")
+                self.device = None
     
     def _warm_up_gpu(self):
         """Warm up the GPU with a simple computation to avoid initial delay."""
@@ -108,10 +164,11 @@ class GPUAccelerator:
     
     def free_memory(self):
         """Free unused GPU memory."""
-        if self.gpu_available:
+        if self.gpu_available and self.mem_pool is not None:
             try:
                 self.mem_pool.free_all_blocks()
-                self.pinned_mem_pool.free_all_blocks()
+                if self.pinned_mem_pool is not None:
+                    self.pinned_mem_pool.free_all_blocks()
                 logger.debug("Freed unused GPU memory")
             except Exception as e:
                 logger.warning(f"Failed to free GPU memory: {e}")
@@ -133,6 +190,14 @@ class GPUAccelerator:
             # Fall back to CPU version
             logger.info("Using CPU triangulation (GPU not available)")
             return self._triangulate_points_cpu(P1, P2, points_left, points_right)
+        
+        # Log detailed GPU status for debugging
+        try:
+            device_info = f"Device: {self.device.attributes['name'].decode() if hasattr(self.device.attributes['name'], 'decode') else self.device.attributes['name']}, "
+            device_info += f"Memory: {self.device.mem_info[0]/1024**3:.2f}GB used / {self.device.mem_info[1]/1024**3:.2f}GB total"
+            logger.info(f"GPU status: {device_info}")
+        except Exception as e:
+            logger.warning(f"Could not get GPU device info: {e}")
         
         try:
             start_time = time.time()
@@ -446,7 +511,23 @@ class GPUAccelerator:
 # Function to check if GPU acceleration is available
 def is_gpu_available():
     """Check if GPU acceleration is available."""
-    return CUPY_AVAILABLE or OPENCV_CUDA_AVAILABLE
+    # First check CUDA availability through our utility
+    if CUDA_SETUP_AVAILABLE:
+        cuda_available = is_cuda_available()
+        if cuda_available:
+            logger.info("CUDA is available according to CUDA setup utility")
+            return True
+    
+    # Then check CuPy and OpenCV
+    if CUPY_AVAILABLE:
+        logger.info("GPU acceleration available via CuPy")
+        return True
+    if OPENCV_CUDA_AVAILABLE:
+        logger.info("GPU acceleration available via OpenCV CUDA")
+        return True
+    
+    logger.warning("GPU acceleration not available")
+    return False
 
 # Create singleton instance
 gpu_accelerator = None
@@ -455,5 +536,102 @@ def get_gpu_accelerator(enable_gpu=True):
     """Get or create the GPU accelerator singleton instance."""
     global gpu_accelerator
     if gpu_accelerator is None:
+        # Set up CUDA environment before creating accelerator if it's not already set up
+        if CUDA_SETUP_AVAILABLE and enable_gpu and not CUPY_AVAILABLE:
+            logger.info("Setting up CUDA environment before creating GPU accelerator")
+            setup_success = setup_cuda_env()
+            logger.info(f"CUDA environment setup {'successful' if setup_success else 'failed'}")
+        
         gpu_accelerator = GPUAccelerator(enable_gpu=enable_gpu)
     return gpu_accelerator
+
+# Diagnostic function to check GPU configuration
+def diagnose_gpu():
+    """Run GPU diagnostics and return detailed status information."""
+    diagnostics = {
+        "cuda_setup_available": CUDA_SETUP_AVAILABLE,
+        "cuda_path": os.environ.get("CUDA_PATH", "Not set"),
+        "ld_library_path": os.environ.get("LD_LIBRARY_PATH", "Not set"),
+        "cupy_available": CUPY_AVAILABLE,
+        "opencv_cuda_available": OPENCV_CUDA_AVAILABLE,
+        "gpu_device_info": None,
+        "cuda_version": None,
+        "gpu_memory": None,
+    }
+    
+    # Check if CuPy can access CUDA
+    if CUPY_AVAILABLE:
+        try:
+            num_gpus = cp.cuda.runtime.getDeviceCount()
+            diagnostics["cuda_device_count"] = num_gpus
+            
+            if num_gpus > 0:
+                # Get device information
+                device = cp.cuda.Device(0)
+                device_name = device.attributes["name"].decode("utf-8") if hasattr(device.attributes["name"], "decode") else device.attributes["name"]
+                diagnostics["gpu_device_info"] = device_name
+                
+                # Get memory information
+                mem_free, mem_total = device.mem_info
+                diagnostics["gpu_memory"] = {
+                    "free_gb": mem_free / (1024**3),
+                    "total_gb": mem_total / (1024**3),
+                    "used_gb": (mem_total - mem_free) / (1024**3)
+                }
+                
+                # Get CUDA version
+                diagnostics["cuda_version"] = cp.cuda.runtime.runtimeGetVersion()
+        except Exception as e:
+            diagnostics["gpu_error"] = str(e)
+    
+    return diagnostics
+
+if __name__ == "__main__":
+    # Configure logging for standalone execution
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    
+    # Initialize GPU acceleration
+    if setup_cuda_env():
+        logger.info("CUDA environment set up successfully")
+    else:
+        logger.warning("Failed to set up CUDA environment")
+    
+    # Check GPU availability
+    gpu_available = is_gpu_available()
+    logger.info(f"GPU acceleration available: {gpu_available}")
+    
+    # Display diagnostics
+    diag = diagnose_gpu()
+    logger.info(f"GPU diagnostics: {diag}")
+    
+    # Test GPU accelerator
+    if gpu_available:
+        accelerator = get_gpu_accelerator()
+        logger.info(f"GPU accelerator initialized: {accelerator.gpu_available}")
+        
+        # Run a simple test
+        if accelerator.gpu_available:
+            try:
+                # Create test data
+                test_size = 1000
+                points_left = np.random.rand(2, test_size).astype(np.float32)
+                points_right = np.random.rand(2, test_size).astype(np.float32)
+                
+                # Create test projection matrices
+                P1 = np.array([
+                    [800, 0, 640, 0],
+                    [0, 800, 360, 0],
+                    [0, 0, 1, 0]
+                ], dtype=np.float32)
+                
+                P2 = np.array([
+                    [800, 0, 640, -80000],
+                    [0, 800, 360, 0],
+                    [0, 0, 1, 0]
+                ], dtype=np.float32)
+                
+                # Test triangulation
+                points_3d = accelerator.triangulate_points_gpu(P1, P2, points_left, points_right)
+                logger.info(f"Test triangulation successful, generated {len(points_3d)} 3D points")
+            except Exception as e:
+                logger.error(f"Test failed: {e}")
