@@ -21,6 +21,7 @@ from .core.discovery import ScannerInfo, DiscoveryService
 
 # For server-only mode detection
 import builtins
+import logging
 
 # Client API - For applications that need to connect to a scanner
 # Import client modules conditionally to prevent circular imports in server-only mode
@@ -31,13 +32,17 @@ try:
     if not _SERVER_ONLY_MODE:
         from .client import UnlookClient
         _client_imported = True
-except (ImportError, NameError):
+except (ImportError, NameError) as e:
     # If builtins isn't found or client can't be imported
+    logger = logging.getLogger(__name__)
+    logger.debug(f"Import error: {e}")
     try:
         from .client import UnlookClient
         _client_imported = True
-    except ImportError:
-        pass
+    except ImportError as e2:
+        logger.error(f"Failed to import UnlookClient: {e2}")
+        UnlookClient = None
+        _client_imported = False
 
 # High-level 3D scanning API
 UnlookScanner = None

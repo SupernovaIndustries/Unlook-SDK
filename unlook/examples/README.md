@@ -7,6 +7,7 @@ This directory contains examples showcasing different features of the Unlook SDK
 - `camera_config_example.py` - Shows how to configure camera parameters
 - `camera_calibration_example.py` - Shows how to calibrate the stereo camera system
 - `test_client.py` - Simple test client for connecting to the scanner
+- `uncertainty_visualization_example.py` - Demonstrates uncertainty visualization for ISO/ASTM 52902 compliance
 
 ## Scanning Examples
 
@@ -106,6 +107,23 @@ For hardware setup and configuration, please refer to the documentation in the `
 - `camera_configuration.md` - Instructions for camera setup
 - `optimal_camera_spacing.md` - Guidelines for camera positioning
 - `pattern_sequences.md` - Details on scanning pattern sequences
+
+## ISO/ASTM 52902 Compliance
+
+- `uncertainty_visualization_example.py` - Demonstrates uncertainty visualization and reporting tools for ISO/ASTM 52902 compliance
+
+```bash
+# Generate uncertainty visualizations and reports
+python uncertainty_visualization_example.py
+```
+
+This example demonstrates the following ISO/ASTM 52902 compliance features:
+
+1. Point cloud uncertainty measurement
+2. Uncertainty visualization with color-coded heatmaps
+3. Statistical uncertainty analysis
+4. Comprehensive ISO/ASTM 52902 compliance reporting
+5. Uncertainty histograms and visualization tools
 
 ## Running Examples
 

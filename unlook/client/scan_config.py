@@ -15,6 +15,9 @@ class PatternType(Enum):
     PHASE_SHIFT = "phase_shift"
     ADVANCED_GRAY_CODE = "advanced_gray_code"  # Advanced Gray code from structured-light-stereo
     ADVANCED_PHASE_SHIFT = "advanced_phase_shift"  # Advanced phase shift from structured-light-stereo
+    MULTI_SCALE = "multi_scale"  # Multi-scale Gray code patterns with varying line widths
+    MULTI_FREQUENCY = "multi_frequency"  # Multi-frequency phase shift patterns
+    VARIABLE_WIDTH = "variable_width"  # Variable width Gray code patterns
 
 
 class ScanningQuality(Enum):
@@ -44,11 +47,13 @@ class ScanConfig:
         self.num_gray_codes = 10
         self.num_phase_shifts = 8
         self.phase_shift_frequencies = [1, 8, 16]
+        self.min_bit_width = 4  # Minimum bit width for variable width patterns
+        self.max_bit_width = 10  # Maximum bit width for variable width patterns
         
         # Scanning settings
         self.quality = ScanningQuality.HIGH
         self.mode = ScanningMode.SINGLE
-        self.pattern_type = PatternType.ADVANCED_GRAY_CODE
+        self.pattern_type = PatternType.MULTI_SCALE  # Use the new multi-scale patterns by default
         
         # Image acquisition settings
         self.exposure_time = 10000  # in microseconds
@@ -91,6 +96,9 @@ class ScanConfig:
             config.phase_shift_frequencies = [1]
             config.mesh_quality = 7
             config.smoothing_iterations = 2
+            config.pattern_type = PatternType.MULTI_SCALE
+            config.min_bit_width = 3
+            config.max_bit_width = 8
         
         elif quality == ScanningQuality.MEDIUM:
             config.num_gray_codes = 10
@@ -98,6 +106,9 @@ class ScanConfig:
             config.phase_shift_frequencies = [1, 8]
             config.mesh_quality = 8
             config.smoothing_iterations = 3
+            config.pattern_type = PatternType.MULTI_SCALE
+            config.min_bit_width = 4
+            config.max_bit_width = 10
         
         elif quality == ScanningQuality.HIGH:
             config.num_gray_codes = 10
@@ -105,13 +116,18 @@ class ScanConfig:
             config.phase_shift_frequencies = [1, 8, 16]
             config.mesh_quality = 9
             config.smoothing_iterations = 5
+            config.pattern_type = PatternType.VARIABLE_WIDTH
+            config.min_bit_width = 4
+            config.max_bit_width = 10
         
         elif quality == ScanningQuality.ULTRA:
             config.num_gray_codes = 12
             config.num_phase_shifts = 12
-            config.phase_shift_frequencies = [1, 8, 16, 32]
+            config.phase_shift_frequencies = [1, 8, 16, 32, 64]
             config.mesh_quality = 10
             config.smoothing_iterations = 7
+            # Use both variable width and multi-frequency patterns for ultra quality
+            config.pattern_type = PatternType.MULTI_FREQUENCY
         
         return config
     
@@ -189,6 +205,21 @@ class ScanConfig:
         self.num_phase_shifts = num_shifts
         self.phase_shift_frequencies = frequencies
         return self
+        
+    def set_variable_width_settings(self, min_bits: int, max_bits: int) -> 'ScanConfig':
+        """
+        Set variable width Gray code pattern settings.
+        
+        Args:
+            min_bits: Minimum number of bits (larger stripes)
+            max_bits: Maximum number of bits (finer stripes)
+            
+        Returns:
+            Self for method chaining
+        """
+        self.min_bit_width = min_bits
+        self.max_bit_width = max_bits
+        return self
     
     def set_mesh_settings(self, quality: int = None, smoothing: int = None) -> 'ScanConfig':
         """
@@ -247,6 +278,8 @@ class ScanConfig:
             "num_gray_codes": self.num_gray_codes,
             "num_phase_shifts": self.num_phase_shifts,
             "phase_shift_frequencies": self.phase_shift_frequencies,
+            "min_bit_width": self.min_bit_width,
+            "max_bit_width": self.max_bit_width,
             "quality": self.quality.value,
             "mode": self.mode.value,
             "pattern_type": self.pattern_type.value,

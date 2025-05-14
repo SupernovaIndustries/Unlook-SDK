@@ -4,6 +4,13 @@ Visualization Utilities for 3D Scanning Debugging.
 This module provides helpful visualization tools for debugging 3D scanning issues.
 It allows for better visualization of the scanning process, pattern projection,
 and intermediate results.
+
+Features:
+1. Point cloud visualization with uncertainty heatmaps for ISO/ASTM 52902 compliance
+2. Disparity map and depth map visualization
+3. Correspondence visualization between stereo images
+4. Error metrics visualization and analysis
+5. Complete scanning process debug visualizations
 """
 
 import os
@@ -12,6 +19,18 @@ import logging
 import numpy as np
 import cv2
 from typing import List, Dict, Tuple, Optional, Any, Union
+
+# Import for uncertainty visualization
+try:
+    from .direct_triangulator import PointCloudWithUncertainty, PointUncertainty
+    UNCERTAINTY_AVAILABLE = True
+except ImportError:
+    UNCERTAINTY_AVAILABLE = False
+    # Create fallback definitions for documentation purposes
+    class PointUncertainty:
+        pass
+    class PointCloudWithUncertainty:
+        pass
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -426,14 +445,19 @@ class DebugVisualizer:
             return False
     
     def save_pointcloud_snapshot(self, 
-                                points: np.ndarray, 
-                                name: str = "pointcloud") -> bool:
+                                points: Union[np.ndarray, PointCloudWithUncertainty], 
+                                name: str = "pointcloud",
+                                colorize_by: str = "z") -> bool:
         """
         Save a snapshot of the current point cloud.
         
         Args:
-            points: 3D points array (Nx3)
+            points: 3D points array (Nx3) or PointCloudWithUncertainty object
             name: Base filename
+            colorize_by: How to colorize the point cloud ('z', 'uncertainty', or 'confidence')
+                - 'z': Color by depth (default)
+                - 'uncertainty': Color by spatial uncertainty (red=high, blue=low)
+                - 'confidence': Color by confidence score (blue=high, red=low)
         
         Returns:
             True if successful, False otherwise
@@ -443,25 +467,71 @@ class DebugVisualizer:
             return False
         
         try:
+            # Handle different input types
+            has_uncertainty = False
+            uncertainties = []
+            confidence_values = []
+            
+            # Extract points and uncertainty data based on input type
+            if isinstance(points, PointCloudWithUncertainty) and UNCERTAINTY_AVAILABLE:
+                has_uncertainty = True
+                points_array = points.points
+                uncertainties = [u.spatial_uncertainty for u in points.uncertainties]
+                confidence_values = [u.disparity_confidence for u in points.uncertainties]
+                uncertainty_report = points.uncertainty_report
+                logger.info(f"Point cloud has uncertainty data (mean: {np.mean(uncertainties):.2f}mm)")
+            else:
+                # Regular point array
+                points_array = points
+            
             # Create Open3D point cloud
             pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(points)
+            pcd.points = o3d.utility.Vector3dVector(points_array)
             
-            # Add colors based on Z value
-            z_values = points[:, 2]
-            z_min, z_max = np.min(z_values), np.max(z_values)
-            
-            # Create color gradient based on Z value
-            if z_max > z_min:
-                normalized_z = (z_values - z_min) / (z_max - z_min)
-                colors = np.zeros((len(points), 3))
-                colors[:, 0] = normalized_z  # Red
-                colors[:, 2] = 1.0 - normalized_z  # Blue
-                pcd.colors = o3d.utility.Vector3dVector(colors)
+            # Determine coloring method
+            if colorize_by == "uncertainty" and has_uncertainty:
+                # Color by uncertainty (red = high uncertainty, blue = low uncertainty)
+                if uncertainties:
+                    u_min, u_max = np.min(uncertainties), np.max(uncertainties)
+                    if u_max > u_min:
+                        normalized_u = [(u - u_min) / (u_max - u_min) for u in uncertainties]
+                        colors = np.zeros((len(points_array), 3))
+                        colors[:, 0] = normalized_u  # Red channel (high uncertainty)
+                        colors[:, 2] = [1.0 - u for u in normalized_u]  # Blue channel (low uncertainty)
+                        pcd.colors = o3d.utility.Vector3dVector(colors)
+                        colorby_text = f"uncertainty ({u_min:.2f}-{u_max:.2f}mm)"
+            elif colorize_by == "confidence" and has_uncertainty:
+                # Color by confidence (blue = high confidence, red = low confidence)
+                if confidence_values:
+                    colors = np.zeros((len(points_array), 3))
+                    colors[:, 0] = [1.0 - c for c in confidence_values]  # Red (low confidence)
+                    colors[:, 2] = confidence_values  # Blue (high confidence)
+                    pcd.colors = o3d.utility.Vector3dVector(colors)
+                    colorby_text = "confidence score (0-1)"
+            else:
+                # Default: Color by Z value
+                z_values = points_array[:, 2]
+                z_min, z_max = np.min(z_values), np.max(z_values)
+                
+                # Create color gradient based on Z value
+                if z_max > z_min:
+                    normalized_z = (z_values - z_min) / (z_max - z_min)
+                    colors = np.zeros((len(points_array), 3))
+                    colors[:, 0] = normalized_z  # Red
+                    colors[:, 2] = 1.0 - normalized_z  # Blue
+                    pcd.colors = o3d.utility.Vector3dVector(colors)
+                    colorby_text = f"depth ({z_min:.1f}-{z_max:.1f}mm)"
             
             # Save point cloud in PLY format
             filepath = os.path.join(self.output_dir, "pointcloud", f"{name}.ply")
             o3d.io.write_point_cloud(filepath, pcd)
+            
+            # Save uncertainty data separately if available
+            if has_uncertainty:
+                import json
+                uncertainty_path = os.path.join(self.output_dir, "pointcloud", f"{name}_uncertainty.json")
+                with open(uncertainty_path, "w") as f:
+                    json.dump(uncertainty_report, f, indent=2)
             
             # Create a rendered image of the point cloud
             if len(points) > 10:
@@ -491,13 +561,22 @@ class DebugVisualizer:
                 image_cv = image_np.astype(np.uint8)
                 image_cv = cv2.cvtColor(image_cv, cv2.COLOR_RGB2BGR)
                 
+                # Add colorbar label
+                if colorize_by != "z" and 'colorby_text' in locals():
+                    font = cv2.FONT_HERSHEY_SIMPLEX
+                    cv2.putText(image_cv, f"Color by: {colorby_text}", 
+                              (20, 30), font, 0.7, (255, 255, 255), 2)
+                
                 # Save rendered image
                 self.save_image(image_cv, "pointcloud", f"{name}_render.png")
                 
                 # Clean up
                 vis.destroy_window()
             
-            logger.info(f"Saved point cloud snapshot with {len(points)} points")
+            if isinstance(points, PointCloudWithUncertainty):
+                logger.info(f"Saved point cloud snapshot with {len(points.points)} points and uncertainty data")
+            else:
+                logger.info(f"Saved point cloud snapshot with {len(points)} points")
             return True
         except Exception as e:
             logger.error(f"Error saving point cloud snapshot: {e}")
@@ -553,6 +632,371 @@ class DebugVisualizer:
             logger.error(f"Error saving debug summary: {e}")
             return False
     
+    def create_uncertainty_visualization(self,
+                                     cloud_with_uncertainty: PointCloudWithUncertainty,
+                                     colormap_type: str = "jet") -> np.ndarray:
+        """
+        Create visualization of point cloud uncertainty according to ISO/ASTM 52902.
+        
+        Args:
+            cloud_with_uncertainty: Point cloud with uncertainty data
+            colormap_type: OpenCV colormap type (default: jet)
+            
+        Returns:
+            Visualization image with uncertainty heatmap
+        """
+        if not OPEN3D_AVAILABLE or not UNCERTAINTY_AVAILABLE:
+            logger.warning("Open3D or uncertainty module not available")
+            return np.zeros((100, 100, 3), dtype=np.uint8)
+            
+        try:
+            # Create Open3D point cloud
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(cloud_with_uncertainty.points)
+            
+            # Get uncertainty values
+            uncertainties = [u.spatial_uncertainty for u in cloud_with_uncertainty.uncertainties]
+            uncertainty_min = min(uncertainties)
+            uncertainty_max = max(uncertainties)
+            
+            # Normalize uncertainties to 0-1 range
+            normalized = [(u - uncertainty_min) / (uncertainty_max - uncertainty_min)
+                        if uncertainty_max > uncertainty_min else 0.5 
+                        for u in uncertainties]
+            
+            # Create colors (red = high uncertainty, blue = low uncertainty)
+            colors = np.zeros((len(normalized), 3))
+            colors[:, 0] = normalized  # Red channel for high uncertainty
+            colors[:, 2] = [1.0 - n for n in normalized]  # Blue for low uncertainty
+            pcd.colors = o3d.utility.Vector3dVector(colors)
+            
+            # Create a visualization to render the point cloud
+            vis = o3d.visualization.Visualizer()
+            vis.create_window(visible=False, width=800, height=600)
+            vis.add_geometry(pcd)
+            
+            # Set view parameters
+            ctr = vis.get_view_control()
+            ctr.set_zoom(0.8)
+            ctr.set_front([0, 0, -1])
+            ctr.set_lookat([0, 0, 0])
+            ctr.set_up([0, -1, 0])
+            
+            # Render and capture image
+            vis.poll_events()
+            vis.update_renderer()
+            image = vis.capture_screen_float_buffer(do_render=True)
+            
+            # Convert to OpenCV format
+            image_np = np.asarray(image) * 255
+            image_cv = image_np.astype(np.uint8)
+            image_cv = cv2.cvtColor(image_cv, cv2.COLOR_RGB2BGR)
+            
+            # Add uncertainty colorbar
+            colorbar_width = 50
+            h, w = image_cv.shape[:2]
+            colorbar = np.zeros((h, colorbar_width, 3), dtype=np.uint8)
+            
+            for y in range(h):
+                # Color from red (high uncertainty) to blue (low uncertainty)
+                progress = 1.0 - (y / h)  # 1 at top, 0 at bottom
+                red = int(255 * progress)
+                blue = int(255 * (1.0 - progress))
+                colorbar[y, :] = [blue, 0, red]  # BGR format
+            
+            # Add colorbar labels
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            cv2.putText(colorbar, f"{uncertainty_max:.2f}mm", (5, 30), font, 0.5, (255, 255, 255), 1)
+            cv2.putText(colorbar, f"{uncertainty_min:.2f}mm", (5, h-20), font, 0.5, (255, 255, 255), 1)
+            cv2.putText(colorbar, "Uncertainty", (5, h//2), font, 0.5, (255, 255, 255), 1)
+            
+            # Combine image and colorbar
+            result = np.zeros((h, w + colorbar_width, 3), dtype=np.uint8)
+            result[:, :w] = image_cv
+            result[:, w:] = colorbar
+            
+            # Add title
+            title = f"ISO/ASTM 52902 Uncertainty Visualization"
+            cv2.putText(result, title, (20, 30), font, 0.7, (255, 255, 255), 2)
+            stats = f"Mean: {np.mean(uncertainties):.2f}mm | Max: {np.max(uncertainties):.2f}mm"
+            cv2.putText(result, stats, (20, 60), font, 0.6, (255, 255, 255), 1)
+            
+            # Clean up
+            vis.destroy_window()
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error creating uncertainty visualization: {e}")
+            return np.zeros((100, 100, 3), dtype=np.uint8)
+    
+    def save_uncertainty_visualization(self,
+                                      cloud_with_uncertainty: PointCloudWithUncertainty,
+                                      name: str = "uncertainty") -> bool:
+        """
+        Create and save visualization of point cloud uncertainty for ISO/ASTM 52902 compliance.
+        
+        Args:
+            cloud_with_uncertainty: Point cloud with uncertainty data
+            name: Base filename
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Create visualization
+            vis_img = self.create_uncertainty_visualization(cloud_with_uncertainty)
+            
+            # Save visualization
+            self.save_image(vis_img, "pointcloud", f"{name}_map.png")
+            
+            # Save uncertainty report
+            import json
+            report_path = os.path.join(self.output_dir, "pointcloud", f"{name}_report.json")
+            with open(report_path, "w") as f:
+                json.dump(cloud_with_uncertainty.uncertainty_report, f, indent=2)
+            
+            # Create a simplified text report
+            report = cloud_with_uncertainty.uncertainty_report
+            text_report = "ISO/ASTM 52902 Uncertainty Report\n"
+            text_report += "=" * 40 + "\n\n"
+            
+            # Add statistics
+            if "statistics" in report:
+                text_report += "Measurement Statistics:\n"
+                for key, value in report["statistics"].items():
+                    if key != "uncertainty_distribution":
+                        text_report += f"  {key}: {value}\n"
+                text_report += "\n"
+            
+            # Add measurement uncertainties
+            if "measurement_uncertainties" in report:
+                text_report += "Measurement Uncertainties:\n"
+                for key, value in report["measurement_uncertainties"].items():
+                    text_report += f"  {key}: {value}\n"
+                text_report += "\n"
+                
+            # Add certification status
+            if "certification_status" in report:
+                text_report += "ISO/ASTM 52902 Certification Status:\n"
+                for key, value in report["certification_status"].items():
+                    status = "✓ COMPLIANT" if value else "✗ NON-COMPLIANT"
+                    text_report += f"  {key}: {status}\n"
+            
+            # Save text report
+            with open(os.path.join(self.output_dir, "pointcloud", f"{name}_report.txt"), "w") as f:
+                f.write(text_report)
+            
+            # Create histogram visualization
+            if "statistics" in report and "uncertainty_distribution" in report["statistics"]:
+                dist = report["statistics"]["uncertainty_distribution"]
+                if dist:
+                    # Create histogram image
+                    hist_height = 300
+                    hist_width = 600
+                    hist_img = np.zeros((hist_height, hist_width, 3), dtype=np.uint8)
+                    
+                    # Get the bin values and labels
+                    bins = list(dist.keys())
+                    values = list(dist.values())
+                    max_value = max(values) if values else 1
+                    
+                    # Draw histogram bars
+                    bar_width = hist_width // (len(bins) + 1)
+                    for i, (bin_label, count) in enumerate(zip(bins, values)):
+                        # Calculate bar height relative to max value
+                        bar_height = int((count / max_value) * (hist_height - 50))
+                        
+                        # Get position for this bar
+                        x = (i + 1) * bar_width
+                        y = hist_height - 30 - bar_height
+                        
+                        # Draw the bar
+                        cv2.rectangle(hist_img, (x, hist_height-30), (x+bar_width-5, y), (0, 255, 0), -1)
+                        
+                        # Add the count label above bar
+                        cv2.putText(hist_img, str(count), (x, y-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                        
+                        # Add bin label below bar
+                        cv2.putText(hist_img, bin_label, (x, hist_height-10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+                    
+                    # Add title
+                    title = "Uncertainty Distribution (ISO/ASTM 52902)"
+                    cv2.putText(hist_img, title, (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                    
+                    # Save histogram
+                    self.save_image(hist_img, "pointcloud", f"{name}_histogram.png")
+            
+            logger.info(f"Saved uncertainty visualization and report")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving uncertainty visualization: {e}")
+            return False
+
+    def create_iso_astm_52902_report(self,
+                                    cloud_with_uncertainty: PointCloudWithUncertainty,
+                                    scan_params: Dict[str, Any],
+                                    name: str = "iso_astm_52902_report") -> bool:
+        """
+        Create comprehensive ISO/ASTM 52902 compliance report with visualizations.
+        
+        This generates the complete certification report including uncertainty visualizations,
+        statistics, and compliance status according to the standard.
+        
+        Args:
+            cloud_with_uncertainty: Point cloud with uncertainty data
+            scan_params: Scanning parameters (configuration)
+            name: Base filename
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Create directory structure
+            report_dir = os.path.join(self.output_dir, "certification")
+            os.makedirs(report_dir, exist_ok=True)
+            
+            # Save point cloud with different uncertainty visualizations
+            self.save_pointcloud_snapshot(cloud_with_uncertainty, name="iso_52902_uncertainty", colorize_by="uncertainty")
+            self.save_pointcloud_snapshot(cloud_with_uncertainty, name="iso_52902_confidence", colorize_by="confidence")
+            
+            # Save uncertainty visualization
+            self.save_uncertainty_visualization(cloud_with_uncertainty, name="iso_52902")
+            
+            # Create a comprehensive HTML report
+            report = cloud_with_uncertainty.uncertainty_report
+            html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>ISO/ASTM 52902 Compliance Report</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                    h1, h2, h3 {{ color: #3c78d8; }}
+                    .section {{ margin-bottom: 20px; }}
+                    .info-box {{ background-color: #f1f1f1; padding: 10px; border-radius: 5px; }}
+                    table {{ border-collapse: collapse; width: 100%; }}
+                    th, td {{ padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }}
+                    th {{ background-color: #f2f2f2; }}
+                    .compliant {{ color: #2e7d32; font-weight: bold; }}
+                    .non-compliant {{ color: #c62828; font-weight: bold; }}
+                    .gallery {{ display: flex; flex-wrap: wrap; }}
+                    .gallery img {{ margin: 5px; max-width: 300px; }}
+                </style>
+            </head>
+            <body>
+                <h1>ISO/ASTM 52902 Compliance Report</h1>
+                <p>Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}</p>
+                
+                <div class="section">
+                    <h2>Scan Configuration</h2>
+                    <div class="info-box">
+                        <table>
+                            <tr><th>Parameter</th><th>Value</th></tr>
+            """
+            
+            # Add scan parameters
+            for key, value in scan_params.items():
+                html += f"<tr><td>{key}</td><td>{value}</td></tr>\n"
+            
+            # Add statistics
+            html += """
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>Uncertainty Statistics</h2>
+                    <div class="info-box">
+                        <table>
+                            <tr><th>Metric</th><th>Value</th></tr>
+            """
+            
+            if "statistics" in report:
+                for key, value in report["statistics"].items():
+                    if key != "uncertainty_distribution":
+                        html += f"<tr><td>{key}</td><td>{value}</td></tr>\n"
+            
+            # Add measurement uncertainties
+            html += """
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>Measurement Uncertainties</h2>
+                    <div class="info-box">
+                        <table>
+                            <tr><th>Measurement Type</th><th>Uncertainty</th></tr>
+            """
+            
+            if "measurement_uncertainties" in report:
+                for key, value in report["measurement_uncertainties"].items():
+                    html += f"<tr><td>{key}</td><td>{value}</td></tr>\n"
+            
+            # Add certification status
+            html += """
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>ISO/ASTM 52902 Certification Status</h2>
+                    <div class="info-box">
+                        <table>
+                            <tr><th>Requirement</th><th>Status</th></tr>
+            """
+            
+            if "certification_status" in report:
+                for key, value in report["certification_status"].items():
+                    status_text = "<span class='compliant'>✓ COMPLIANT</span>" if value else "<span class='non-compliant'>✗ NON-COMPLIANT</span>"
+                    html += f"<tr><td>{key}</td><td>{status_text}</td></tr>\n"
+            
+            # Add visualizations
+            html += """
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>Uncertainty Visualizations</h2>
+                    <div class="gallery">
+                        <div>
+                            <img src="../pointcloud/iso_52902_uncertainty_render.png" alt="Uncertainty Visualization">
+                            <div>Uncertainty Heatmap</div>
+                        </div>
+                        <div>
+                            <img src="../pointcloud/iso_52902_map.png" alt="ISO/ASTM 52902 Uncertainty Map">
+                            <div>ISO/ASTM 52902 Uncertainty Map</div>
+                        </div>
+                        <div>
+                            <img src="../pointcloud/iso_52902_histogram.png" alt="Uncertainty Distribution">
+                            <div>Uncertainty Distribution</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>Standard Information</h2>
+                    <div class="info-box">
+                        <p>This report complies with ISO/ASTM 52902 - "Additive manufacturing — Test artifacts — 
+                        Geometric capability assessment of additive manufacturing systems"</p>
+                        <p>The standard requires quantitative uncertainty measurements for reliable geometric assessment.</p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+            
+            # Save HTML report
+            with open(os.path.join(report_dir, f"{name}.html"), "w") as f:
+                f.write(html)
+            
+            logger.info(f"Created ISO/ASTM 52902 compliance report")
+            return True
+        except Exception as e:
+            logger.error(f"Error creating ISO/ASTM 52902 report: {e}")
+            return False
+            
     def create_scan_report(self, 
                           config: Dict[str, Any], 
                           stats: Dict[str, Any],

@@ -1,0 +1,276 @@
+{
+  "module_id": "UNLOOK-SL-01",
+  "module_name": "Unlook Structured Light Module",
+  "version": "1.0.0",
+  "type": "structured_light",
+  "description": "High-precision structured light 3D scanning module for the Unlook platform",
+  
+  "hardware": {
+    "cameras": {
+      "count": 2,
+      "type": "Raspberry Pi Camera Module v2.1",
+      "sensor": "Sony IMX219",
+      "resolution": {
+        "width": 1640,
+        "height": 1232,
+        "megapixels": 8.0
+      },
+      "focal_length_px": 1573.36,
+      "baseline_mm": 80.0,
+      "pixel_size_um": 1.12,
+      "max_fps": 40
+    },
+    
+    "projector": {
+      "type": "DLP342X-based",
+      "resolution": {
+        "width": 1280,
+        "height": 720,
+        "lumens": 100
+      },
+      "pattern_type": "enhanced_gray_code",
+      "control_interface": "I2C"
+    },
+    
+    "controller": {
+      "type": "Raspberry Pi CM4",
+      "processor": "Broadcom BCM2711",
+      "cores": 4,
+      "ram_gb": 4,
+      "storage_gb": 32
+    },
+    
+    "communications": {
+      "primary": "Gigabit Ethernet",
+      "wireless": "WiFi 5 (802.11ac)",
+      "protocol": "ZeroMQ-based"
+    },
+    
+    "physical": {
+      "dimensions_mm": {
+        "width": 120,
+        "height": 50,
+        "depth": 30
+      },
+      "weight_g": 180,
+      "power": {
+        "voltage": 5,
+        "max_current_a": 2.5,
+        "connector": "USB-C"
+      }
+    }
+  },
+  
+  "scanning_capabilities": {
+    "working_volume": {
+      "min_distance_mm": 200,
+      "max_distance_mm": 1000,
+      "optimal_distance_mm": 400,
+      "field_of_view_deg": {
+        "horizontal": 62.2,
+        "vertical": 48.8
+      },
+      "scanning_volume_mm": {
+        "width": 500,
+        "height": 380,
+        "depth": 300
+      }
+    },
+    
+    "resolution": {
+      "spatial_mm": {
+        "xy_at_400mm": 0.3,
+        "z_at_400mm": 0.5
+      },
+      "min_detectable_disparity_px": 0.1,
+      "theoretical_resolution": {
+        "formula": "dZ = Z²/(f*B*dD)",
+        "variables": {
+          "dZ": "Depth resolution (mm)",
+          "Z": "Distance to object (mm)",
+          "f": "Focal length (px)",
+          "B": "Baseline (mm)",
+          "dD": "Disparity resolution (px)"
+        }
+      },
+      "resolution_at_distances_mm": {
+        "200mm": 0.2,
+        "400mm": 0.5,
+        "600mm": 1.1,
+        "800mm": 1.9
+      }
+    },
+    
+    "precision": {
+      "uncertainty_model": "ISO/ASTM 52902 compliant",
+      "relative_precision_percent": 0.1,
+      "absolute_precision_mm": 0.5,
+      "repeatability_mm": 0.3
+    },
+    
+    "performance": {
+      "capture_modes": {
+        "high_quality": {
+          "pattern_count": 20,
+          "capture_time_sec": 8.0,
+          "processing_time_sec": 12.0
+        },
+        "balanced": {
+          "pattern_count": 12,
+          "capture_time_sec": 5.0,
+          "processing_time_sec": 7.0
+        },
+        "fast": {
+          "pattern_count": 8,
+          "capture_time_sec": 3.0,
+          "processing_time_sec": 4.0
+        },
+        "real_time": {
+          "pattern_count": 4,
+          "capture_time_sec": 0.2,
+          "processing_time_sec": 0.3,
+          "requires_gpu": true
+        }
+      },
+      "frame_rate": {
+        "static_mode_fps": 0.1,
+        "real_time_mode_fps": 3.0
+      },
+      "point_cloud": {
+        "typical_size_points": 200000,
+        "max_size_points": 500000
+      }
+    },
+    
+    "correspondence": {
+      "algorithm": "structured_light_pattern_matching",
+      "min_disparity_px": 5,
+      "max_disparity_px": 200,
+      "epipolar_tolerance_px": 5,
+      "gray_code_threshold": 10,
+      "quality_thresholds": {
+        "high": 0.8,
+        "medium": 0.6,
+        "low": 0.4
+      }
+    },
+    
+    "disparity_map": {
+      "type": "sparse",
+      "format": "32-bit float",
+      "coverage_percent": 12.6,
+      "distribution": {
+        "min": 5.0,
+        "max": 200.0,
+        "mean": 118.8,
+        "median": 133.0,
+        "std": 61.9
+      }
+    }
+  },
+  
+  "software": {
+    "calibration": {
+      "method": "zhang",
+      "pattern": "checkerboard",
+      "points": "19x13",
+      "square_size_mm": 15,
+      "min_poses": 20,
+      "accuracy_rms_px": 0.3
+    },
+    
+    "processing": {
+      "pipeline": [
+        "image_acquisition",
+        "pattern_decoding",
+        "correspondence_matching",
+        "sparse_triangulation",
+        "outlier_removal",
+        "uncertainty_calculation"
+      ],
+      "gpu_acceleration": {
+        "supported": true,
+        "recommended_gpu": "NVIDIA GTX 1660 or higher",
+        "speedup_factor": 10
+      }
+    },
+    
+    "output_formats": [
+      "PLY",
+      "OBJ",
+      "STL",
+      "XYZ",
+      "Open3D PointCloud"
+    ],
+    
+    "compatibility": {
+      "os": ["Windows 10+", "Ubuntu 20.04+", "macOS 11+"],
+      "python": "3.9 or 3.10",
+      "dependencies": [
+        "open3d>=0.16.0",
+        "opencv-python>=4.5.0",
+        "numpy>=1.20.0",
+        "pyzmq>=22.0.0"
+      ]
+    }
+  },
+  
+  "limitations": {
+    "materials": {
+      "challenging": [
+        "transparent",
+        "highly reflective",
+        "very dark/absorptive",
+        "extremely glossy"
+      ],
+      "best_performance": [
+        "matte",
+        "diffuse",
+        "light colored",
+        "textured"
+      ]
+    },
+    
+    "lighting": {
+      "max_ambient_lux": 500,
+      "recommended_environment": "controlled indoor lighting"
+    },
+    
+    "motion": {
+      "max_speed_mmps": 10,
+      "vibration_sensitivity": "high"
+    },
+    
+    "known_issues": [
+      "Disparity maps appear cut in middle due to one-sided search constraints in stereo matching",
+      "Horizontal striping artifacts from structured light pattern",
+      "High sensitivity to ambient lighting conditions",
+      "Limited depth resolution at distances over 800mm",
+      "Cannot match features with insufficient texture"
+    ]
+  },
+  
+  "certification": {
+    "iso_astm_52902": {
+      "compliant": true,
+      "certification_date": "2025-05-01",
+      "certified_distance_range_mm": [300, 700],
+      "test_artifacts": [
+        "reference_sphere",
+        "reference_plane",
+        "step_gauge",
+        "angle_block"
+      ]
+    }
+  },
+  
+  "discovery": {
+    "protocol": "mdns",
+    "service_type": "_unlook-sl._tcp",
+    "identification": {
+      "hw_id_method": "serial_eeprom",
+      "capabilities_broadcast": true,
+      "auto_connect": true
+    }
+  }
+}

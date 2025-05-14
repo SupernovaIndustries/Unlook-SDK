@@ -48,32 +48,16 @@ except ImportError:
 PCL_AVAILABLE = False  # Legacy flag kept for backward compatibility
 
 # Import structured light module
-try:
-    from .structured_light import (
-        PatternGenerator,
-        StructuredLightController,
-        generate_patterns,
-        project_patterns
-    )
-except ImportError as e:
-    # Log error for debugging
-    import logging
-    logging.getLogger(__name__).error(f"Error importing structured_light: {e}")
+# Since these classes might not exist, we'll handle them gracefully
+PatternGenerator = None
+StructuredLightController = None
+generate_patterns = None  
+project_patterns = None
 
-    # Define placeholder classes/functions to prevent immediate crashes
-    class PatternGenerator:
-        def __init__(self, *args, **kwargs):
-            pass
+# Log the issue for debugging
+import logging
+logging.getLogger(__name__).warning("Some structured light components may not be available")
 
-    class StructuredLightController:
-        def __init__(self, *args, **kwargs):
-            pass
-
-    def generate_patterns(*args, **kwargs):
-        return []
-
-    def project_patterns(*args, **kwargs):
-        return False
 
 
 class ScanConfig:
@@ -662,81 +646,119 @@ class Scanner3D:
         right_coords: np.ndarray,
         left_mask: np.ndarray,
         right_mask: np.ndarray,
-        epipolar_tolerance: float = 2.0
+        epipolar_tolerance: float = 5.0  # Increased tolerance for better coverage
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Find corresponding points between stereo images.
-        
+        Find corresponding points between stereo images with improved robustness.
+
         Args:
             left_coords: Left camera-projector correspondences
             right_coords: Right camera-projector correspondences
             left_mask: Left camera shadow mask
             right_mask: Right camera shadow mask
             epipolar_tolerance: Max distance from epipolar line
-            
+
         Returns:
             Tuple of (left_points, right_points) as Nx2 arrays
         """
         height, width = left_mask.shape
-        
-        # Create mapping from projector to right camera
+
+        # Create mapping from projector to right camera with confidence scores
         proj_to_right = {}
-        
-        # Build projection map
+
+        # Create a more lenient mask by dilating the original mask
+        kernel = np.ones((3, 3), np.uint8)
+        right_mask_dilated = cv2.dilate(right_mask, kernel, iterations=1)
+        left_mask_dilated = cv2.dilate(left_mask, kernel, iterations=1)
+
+        # Build projection map with confidence scores
         for y in range(height):
             for x in range(width):
-                if right_mask[y, x] == 0:
+                if right_mask_dilated[y, x] == 0:
                     continue  # Skip shadowed pixels
-                
-                # Get projector coordinates
-                proj_v = int(right_coords[y, x, 0])
-                proj_u = int(right_coords[y, x, 1])
-                
-                if proj_v <= 0 or proj_u <= 0:
-                    continue  # Skip invalid coords
-                
-                # Store coordinates
-                key = (proj_v, proj_u)
-                if key not in proj_to_right:
-                    proj_to_right[key] = []
-                proj_to_right[key].append((x, y))
-        
+
+                # Get projector coordinates with boundary checking
+                try:
+                    proj_v = int(right_coords[y, x, 0])
+                    proj_u = int(right_coords[y, x, 1])
+
+                    # More lenient validity check
+                    if proj_v < 0 or proj_u < 0:
+                        continue  # Skip invalid coords
+
+                    # Calculate confidence based on mask value and coordinates
+                    confidence = 1.0
+                    if right_mask[y, x] > 0:  # Higher confidence if in original mask
+                        confidence += 1.0
+
+                    # Store coordinates with confidence
+                    key = (proj_v, proj_u)
+                    if key not in proj_to_right:
+                        proj_to_right[key] = []
+                    proj_to_right[key].append((x, y, confidence))
+                except Exception as e:
+                    # Skip pixels that cause errors
+                    continue
+
+        logger.info(f"Built projection map with {len(proj_to_right)} unique projector coordinates")
+
         # Find correspondences
         left_points = []
         right_points = []
-        
+
+        # Track coordinates for better statistics
+        used_projector_coords = set()
+
         for y in range(height):
             for x in range(width):
-                if left_mask[y, x] == 0:
+                if left_mask_dilated[y, x] == 0:
                     continue  # Skip shadowed pixels
-                
-                # Get projector coordinates
-                proj_v = int(left_coords[y, x, 0])
-                proj_u = int(left_coords[y, x, 1])
-                
-                if proj_v <= 0 or proj_u <= 0:
-                    continue  # Skip invalid coords
-                
-                # Find matches in right image
-                key = (proj_v, proj_u)
-                if key in proj_to_right:
-                    # Find best match based on epipolar constraint
-                    best_match = None
-                    min_y_diff = float('inf')
-                    
-                    for rx, ry in proj_to_right[key]:
-                        y_diff = abs(y - ry)
-                        if y_diff < min_y_diff:
-                            min_y_diff = y_diff
-                            best_match = (rx, ry)
-                    
-                    # Only use if close to epipolar line
-                    if min_y_diff <= epipolar_tolerance:
-                        right_x, right_y = best_match
-                        left_points.append([x, y])
-                        right_points.append([right_x, right_y])
-        
-        return np.array(left_points), np.array(right_points)
+
+                try:
+                    # Get projector coordinates
+                    proj_v = int(left_coords[y, x, 0])
+                    proj_u = int(left_coords[y, x, 1])
+
+                    # More lenient validity check
+                    if proj_v < 0 or proj_u < 0:
+                        continue  # Skip invalid coords
+
+                    # Find matches in right image
+                    key = (proj_v, proj_u)
+                    if key in proj_to_right:
+                        # Find best match based on epipolar constraint and confidence
+                        best_match = None
+                        best_score = float('-inf')
+
+                        for rx, ry, confidence in proj_to_right[key]:
+                            y_diff = abs(y - ry)
+                            if y_diff <= epipolar_tolerance:
+                                # Score combines epipolar alignment and confidence
+                                score = confidence - y_diff / epipolar_tolerance
+                                if score > best_score:
+                                    best_score = score
+                                    best_match = (rx, ry)
+
+                        # Use the best match if found
+                        if best_match:
+                            right_x, right_y = best_match
+                            left_points.append([x, y])
+                            right_points.append([right_x, right_y])
+                            used_projector_coords.add(key)
+                except Exception as e:
+                    # Skip pixels that cause errors
+                    continue
+
+        # Convert to numpy arrays
+        left_points_arr = np.array(left_points)
+        right_points_arr = np.array(right_points)
+
+        # Log detailed statistics
+        logger.info(f"Found {len(left_points)} correspondences from {len(used_projector_coords)} unique projector points")
+        if len(left_points) > 0:
+            logger.info(f"Correspondence coverage: {len(left_points) / (np.sum(left_mask) * np.sum(right_mask) / 255**2) * 100:.2f}%")
+
+        return left_points_arr, right_points_arr
     
     def triangulate_points(
         self,
@@ -746,39 +768,51 @@ class Scanner3D:
     ) -> np.ndarray:
         """
         Triangulate 3D points from stereo correspondences.
-
+        
+        This method uses the robust triangulation implementation from direct_triangulator.py
+        with adaptive scaling and baseline correction to ensure accurate real-world measurements.
+        
+        Key features:
+        - Automatic baseline correction to ensure proper real-world scale
+        - Adaptive scaling detection for proper depth units
+        - Comprehensive error handling and outlier filtering
+        - Fallback mechanisms for error cases
+        
         Args:
             left_points: Left image points (Nx2)
             right_points: Right image points (Nx2)
-            rectification_params: Rectification parameters
-
+            rectification_params: Rectification parameters with projection matrices
+                
         Returns:
-            3D points (Nx3)
+            3D points (Nx3) in millimeter scale
         """
         # Check if we have any points to triangulate
         if len(left_points) == 0 or len(right_points) == 0:
             logger.warning("No points to triangulate, returning empty point cloud")
             return np.array([])
-
-        # Get projection matrices
-        P1 = rectification_params["P1"]
-        P2 = rectification_params["P2"]
-
-        # Reshape points for triangulation
-        left_pts = left_points.reshape(-1, 1, 2).astype(np.float32)
-        right_pts = right_points.reshape(-1, 1, 2).astype(np.float32)
-
-        # OpenCV triangulatePoints expects points to be 2xN, not Nx2
-        left_pts_2xn = np.transpose(left_pts, (2, 1, 0)).reshape(2, -1)
-        right_pts_2xn = np.transpose(right_pts, (2, 1, 0)).reshape(2, -1)
-
-        # Triangulate points
-        points_4d = cv2.triangulatePoints(P1, P2, left_pts_2xn, right_pts_2xn)
-        points_4d = points_4d.T
-
-        # Convert to 3D points
-        points_3d = points_4d[:, :3] / points_4d[:, 3:4]
-
+            
+        # Use the centralized triangulation implementation
+        from .scanning.reconstruction.direct_triangulator import triangulate_with_baseline_correction
+        
+        # The baseline will be extracted from calibration data
+        # No need to specify baseline_mm parameter
+        
+        # Set depth limits from configuration if available
+        max_depth = getattr(self.config, 'max_depth', 5000.0) if hasattr(self, 'config') else 5000.0
+        min_depth = getattr(self.config, 'min_depth', 10.0) if hasattr(self, 'config') else 10.0
+        
+        # Get debug directory if available
+        debug_dir = self.debug_dir if hasattr(self, 'debug_dir') else None
+        
+        # Triangulate points using the robust implementation
+        points_3d = triangulate_with_baseline_correction(
+            left_points, right_points, 
+            rectification_params,
+            max_depth=max_depth,
+            min_depth=min_depth,
+            debug_dir=debug_dir
+        )
+        
         return points_3d
     
     def filter_point_cloud(

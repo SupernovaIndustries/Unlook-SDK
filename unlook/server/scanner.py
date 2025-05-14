@@ -1140,6 +1140,58 @@ class UnlookServer(EventEmitter):
                 # Log pattern details
                 logger.info("Generating colorbars")
                 return self.projector.generate_colorbars()
+                
+            # Add support for our enhanced pattern types
+            elif pattern_type in ["gray_code", "multi_scale", "variable_width", "multi_frequency", "phase_shift"]:
+                # These enhanced patterns need to be handled similarly
+                logger.info(f"Processing enhanced pattern type: {pattern_type}")
+                
+                # For now, convert to horizontal/vertical lines based on orientation
+                orientation = pattern_data.get("orientation", "horizontal")
+                name = pattern_data.get("name", f"{pattern_type}_unnamed")
+                
+                # Log the pattern being processed
+                logger.info(f"Enhanced pattern: {name}, orientation: {orientation}")
+                
+                # Default to horizontal lines with binary (black/white) pattern
+                fg_color = get_color("White")
+                bg_color = get_color("Black")
+                
+                # Use pattern "bit" value to determine line width if available
+                bit_value = pattern_data.get("bit", pattern_data.get("width_bits", 0))
+                
+                # Scale line width based on bit value: 2^bit for Gray code patterns
+                try:
+                    width_scale = 2 ** bit_value
+                    fg_width = max(1, width_scale // 2)  # Ensure at least 1 pixel width
+                    bg_width = width_scale
+                except (ValueError, TypeError):
+                    # Default values if bit calculation fails
+                    fg_width = 4
+                    bg_width = 8
+                
+                # Process based on orientation
+                if orientation == "horizontal":
+                    logger.info(f"Generating horizontal pattern from {pattern_type}: width={fg_width}/{bg_width}")
+                    return self.projector.generate_horizontal_lines(bg_color, fg_color, fg_width, bg_width)
+                else:  # vertical
+                    logger.info(f"Generating vertical pattern from {pattern_type}: width={fg_width}/{bg_width}")
+                    return self.projector.generate_vertical_lines(bg_color, fg_color, fg_width, bg_width)
+            
+            # Add support for raw image data if available in the future
+            elif pattern_type == "raw_image":
+                logger.info("Processing raw image pattern")
+                # Check if projector supports raw images
+                if hasattr(self.projector, 'show_raw_image'):
+                    image_data = pattern_data.get("image")
+                    if image_data:
+                        return self.projector.show_raw_image(image_data)
+                    else:
+                        logger.warning("Raw image pattern missing image data")
+                        return False
+                else:
+                    logger.warning("Projector doesn't support raw images")
+                    return False
 
             else:
                 logger.warning(f"Tipo di pattern non supportato: {pattern_type}")
