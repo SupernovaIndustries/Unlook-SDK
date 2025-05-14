@@ -57,3 +57,5 @@ test_imports.py
 /unlook/client/scanning/__pycache__
 /unlook/examples/raw_captures
 /unlook_sdk.egg-info
+/unlook/examples/scanning/unlook_debug
+/unlook/client/examples/unlook_debug

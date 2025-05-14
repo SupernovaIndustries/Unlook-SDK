@@ -315,7 +315,110 @@ class StaticScanner:
                 else:
                     logger.warning(f"Failed to load calibration from {path}")
         
-        logger.warning("No calibration files found. Scanning may not work correctly.")
+        logger.warning("No calibration files found. Using default calibration parameters.")
+        self._use_default_calibration()
+
+    def _use_default_calibration(self):
+        """
+        Load default calibration parameters when no calibration files are found.
+        """
+        logger.info("Loading default calibration parameters")
+        
+        # Load default calibration from the calibration folder
+        default_path = os.path.join(os.path.dirname(__file__), 
+                                  "..", "..", "..", "..",
+                                  "calibration", "default", "default_stereo.json")
+        
+        if os.path.exists(default_path):
+            try:
+                with open(default_path, 'r') as f:
+                    calibration_data = json.load(f)
+                
+                # Set calibration data
+                self.camera_matrix_left = np.array(calibration_data["camera_matrix_left"])
+                self.camera_matrix_right = np.array(calibration_data["camera_matrix_right"])
+                self.dist_coeffs_left = np.array(calibration_data["dist_coeffs_left"])
+                self.dist_coeffs_right = np.array(calibration_data["dist_coeffs_right"])
+                self.R = np.array(calibration_data["R"])
+                self.T = np.array(calibration_data["T"])
+                self.P1 = np.array(calibration_data["P1"])
+                self.P2 = np.array(calibration_data["P2"])
+                self.Q = np.array(calibration_data["Q"])
+                self.baseline_mm = calibration_data.get("baseline_mm", 79.5)
+                
+                # Additional matrices
+                if "R1" in calibration_data:
+                    self.R1 = np.array(calibration_data["R1"])
+                else:
+                    self.R1 = np.eye(3)
+                    
+                if "R2" in calibration_data:
+                    self.R2 = np.array(calibration_data["R2"])
+                else:
+                    self.R2 = np.eye(3)
+                
+                self.is_calibrated = True
+                self.calibration_file = default_path
+                logger.info(f"Loaded default calibration from {default_path}")
+                logger.info(f"Default baseline: {self.baseline_mm}mm")
+            except Exception as e:
+                logger.error(f"Failed to load default calibration: {e}")
+                self._set_identity_calibration()
+        else:
+            logger.warning(f"Default calibration file not found at {default_path}")
+            self._set_identity_calibration()
+    
+    def _set_identity_calibration(self):
+        """
+        Set identity calibration matrices as a last resort.
+        This will not produce accurate results but allows the system to run.
+        """
+        logger.warning("Using identity calibration matrices - results will be inaccurate")
+        
+        # Default image size
+        width = 1456
+        height = 1088
+        fx = fy = 1745  # Approximate focal length
+        cx = width / 2
+        cy = height / 2
+        
+        # Simple camera matrices
+        self.camera_matrix_left = np.array([
+            [fx, 0, cx],
+            [0, fy, cy],
+            [0, 0, 1]
+        ])
+        self.camera_matrix_right = self.camera_matrix_left.copy()
+        
+        # No distortion
+        self.dist_coeffs_left = np.zeros(5)
+        self.dist_coeffs_right = np.zeros(5)
+        
+        # Identity rotation
+        self.R = np.eye(3)
+        
+        # Translation - default baseline of 80mm
+        self.T = np.array([[-80.0], [0.0], [0.0]])
+        self.baseline_mm = 80.0
+        
+        # Rectification matrices
+        self.R1 = np.eye(3)
+        self.R2 = np.eye(3)
+        
+        # Projection matrices
+        self.P1 = np.hstack([self.camera_matrix_left, np.zeros((3, 1))])
+        self.P2 = np.hstack([self.camera_matrix_right, self.T * fx / self.baseline_mm])
+        
+        # Q matrix for disparity to depth
+        self.Q = np.array([
+            [1, 0, 0, -cx],
+            [0, 1, 0, -cy],
+            [0, 0, 0, fx],
+            [0, 0, 1/self.baseline_mm, 0]
+        ])
+        
+        self.is_calibrated = True
+        self.calibration_file = "identity"
 
     def _ensure_debug_dirs(self):
         """
@@ -853,7 +956,7 @@ class StaticScanner:
             # Turn off auto-exposure and auto-white balance for better results
             if hasattr(self.client.camera, 'set_exposure'):
                 logger.info(f"Setting exposure to {self.config.exposure}")
-                self.client.camera.set_exposure(self.config.exposure)
+                self.client.camera.set_exposure(self.config.exposure, gain=self.config.gain)
             else:
                 logger.warning("Camera does not support setting exposure")
             

@@ -24,8 +24,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 
 from unlook.client import UnlookClient
-from unlook.client.camera_calibration import StereoCalibrator
-from unlook.client.scanner3d import UnlookScanner
+from unlook.client.scanning.calibration import StereoCalibrator
+from unlook.client.scanner3d import Scanner3D
 
 
 def capture_calibration_images(output_dir: str, 

@@ -31,7 +31,7 @@ logger = logging.getLogger("load_calibration_images")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 try:
-    from unlook.client.camera_calibration import StereoCalibrator, save_calibration
+    from unlook.client.scanning.calibration import StereoCalibrator, save_calibration
 except ImportError as e:
     logger.error(f"Required dependency missing: {e}")
     sys.exit(1)

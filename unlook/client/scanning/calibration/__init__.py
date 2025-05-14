@@ -1,6 +1,6 @@
 """Camera calibration utilities for 3D scanning."""
 
-from .camera_calibration import StereoCalibrator
+from .camera_calibration import StereoCalibrator, save_calibration
 from .calibration_utils import (
     load_calibration,
     find_calibration_file,
@@ -11,6 +11,7 @@ from .calibration_utils import (
 
 __all__ = [
     "StereoCalibrator",
+    "save_calibration",
     "load_calibration",
     "find_calibration_file",
     "save_calibration_to_standard_location",

@@ -352,8 +352,20 @@ class UnlookClient(EventEmitter):
                             continue
 
                     # Send message
-                    logger.debug(f"Sending {msg_type} message (attempt {attempt+1}/{max_attempts})")
-                    self.control_socket.send(message.to_bytes())
+                    logger.debug(f"Sending {msg_type} message (type: {type(msg_type)}) (attempt {attempt+1}/{max_attempts})")
+                    
+                    try:
+                        self.control_socket.send(message.to_bytes())
+                    except AttributeError as e:
+                        if "'str' object has no attribute 'value'" in str(e):
+                            # Convert string to MessageType if needed
+                            if isinstance(msg_type, str):
+                                logger.warning(f"MessageType was passed as string '{msg_type}', converting to enum")
+                                msg_type = MessageType(msg_type)
+                                message = Message(msg_type=msg_type, payload=payload)
+                                self.control_socket.send(message.to_bytes())
+                            else:
+                                raise
 
                     # Wait for response with timeout
                     socks = dict(self.poller.poll(timeout))

@@ -299,7 +299,7 @@ def main():
         # Create the scanner
         # Note: This manual approach resolves the checkerboard_size issue
         # by directly creating and configuring the scanner
-        from unlook.client.camera_calibration import StereoCalibrator
+        from unlook.client.scanning.calibration import StereoCalibrator
         
         logger.info("Creating scanner...")
         scanner = StaticScanner(
