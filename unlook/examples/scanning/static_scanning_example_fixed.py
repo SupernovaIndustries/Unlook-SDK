@@ -83,13 +83,13 @@ def find_calibration_file():
     # Search in these locations in order
     locations = [
         # Custom calibration directory
-        Path(__file__).resolve().parent.parent / "calibration" / "custom" / "stereo_calibration.json",
+        Path(__file__).resolve().parent.parent.parent / "calibration" / "custom" / "stereo_calibration.json",
         # Examples directory
         Path(__file__).resolve().parent / "stereo_calibration.json",
         # Current directory
         Path.cwd() / "stereo_calibration.json",
         # Default calibration
-        Path(__file__).resolve().parent.parent / "calibration" / "default" / "default_stereo.json"
+        Path(__file__).resolve().parent.parent.parent / "calibration" / "default" / "default_stereo.json"
     ]
     
     for path in locations:
@@ -166,9 +166,10 @@ def main():
     parser = argparse.ArgumentParser(description="Simple Calibration-Based 3D Scanner")
     
     # Scanning options
-    parser.add_argument("--pattern", choices=["multi_scale", "multi_frequency", "variable_width", 
+    parser.add_argument("--pattern", choices=["enhanced_gray", "multi_scale", "multi_frequency", "variable_width", 
                                              "maze", "voronoi", "hybrid_aruco"],
-                       help="Pattern type to use for scanning")
+                       default="enhanced_gray",
+                       help="Pattern type to use for scanning (default: enhanced_gray)")
     
     parser.add_argument("--enhancement-level", type=int, default=3, choices=[0, 1, 2, 3],
                        help="Enhancement level for pattern processing (0-3, default: 3)")
@@ -178,6 +179,13 @@ def main():
                        
     parser.add_argument("--calibration", type=str, default=None,
                        help="Path to calibration file (will auto-detect if not specified)")
+    
+    # Camera optimization
+    parser.add_argument("--auto-optimize", action="store_true", default=True,
+                       help="Enable automatic camera settings optimization (default: True)")
+    
+    parser.add_argument("--no-auto-optimize", dest="auto_optimize", action="store_false",
+                       help="Disable automatic camera settings optimization")
     
     # Output options
     parser.add_argument("--output", type=str, default=None,
@@ -227,14 +235,17 @@ def main():
     config = StaticScanConfig(
         quality=args.quality,
         use_enhanced_processor=True,  # Always use enhanced processor
-        enhancement_level=args.enhancement_level
+        enhancement_level=args.enhancement_level,
+        enable_auto_optimization=args.auto_optimize
     )
     logger.info(f"Using quality preset: {args.quality}")
     logger.info(f"Enhanced pattern processor enabled with level {args.enhancement_level}")
+    logger.info(f"Camera auto-optimization: {'enabled' if args.auto_optimize else 'disabled'}")
     
     # Then override with pattern type if specified
     if args.pattern:
         pattern_map = {
+            "enhanced_gray": PatternType.ENHANCED_GRAY,
             "multi_scale": PatternType.MULTI_SCALE,
             "multi_frequency": PatternType.MULTI_FREQUENCY,
             "variable_width": PatternType.VARIABLE_WIDTH,

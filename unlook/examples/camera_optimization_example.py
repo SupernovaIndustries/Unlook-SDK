@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from unlook import UnlookClient
-from unlook.client.camera import CameraAutoOptimizer
+from unlook.client.camera.camera_auto_optimizer import CameraAutoOptimizer
 
 # Configure logging
 logging.basicConfig(

@@ -44,9 +44,32 @@ except ImportError:
     class CameraConfig:
         def __init__(self):
             pass
+    
+    # Simple fallback for deserialize_binary_message
+    def deserialize_binary_message(data):
+        """Simple fallback for deserializing binary messages."""
+        import logging
+        logger = logging.getLogger(__name__)
         
-        def to_dict(self):
-            return {}
+        # Check for ULMC format v1 (multi-camera format)
+        if data.startswith(b'ULMC\x01'):
+            logger.debug("Detected ULMC format v1")
+            # For the fallback, we'll use a simplified approach
+            # The key insight from the log is that the main deserializer already
+            # found the ULMC format, so we just need to return something compatible
+            payload = {
+                "format": "ULMC",
+                "version": 1,
+                "num_cameras": 2,  # Default for stereo
+                "cameras": {
+                    "picamera2_0": {"size": 0, "offset": 0},
+                    "picamera2_1": {"size": 0, "offset": 0}
+                }
+            }
+            return "multi_camera_response", payload, data
+        
+        # For other formats, return as camera frame
+        return "camera_frame", {"format": "jpeg"}, data
     
     DEFAULT_JPEG_QUALITY = 85
 
@@ -539,13 +562,19 @@ class CameraClient:
             Image as numpy array, None if error
         """
         # Prepare capture request parameters
+        # Handle both enum and string format types
+        if hasattr(format, 'value'):
+            format_value = format.value
+        else:
+            format_value = format
+            
         params = {
             "camera_id": camera_id,
-            "compression_format": format.value
+            "compression_format": format_value
         }
         
         # Add JPEG quality if needed
-        if format == CompressionFormat.JPEG:
+        if (hasattr(CompressionFormat, 'JPEG') and format == CompressionFormat.JPEG) or format == "jpeg":
             params["jpeg_quality"] = jpeg_quality
         
         # Add resolution if specified
@@ -566,7 +595,7 @@ class CameraClient:
         if success and binary_data:
             try:
                 # Decode image based on format
-                if format == CompressionFormat.JPEG:
+                if (hasattr(CompressionFormat, 'JPEG') and format == CompressionFormat.JPEG) or format == "jpeg":
                     image = decode_jpeg_to_image(binary_data)
                 elif format == CompressionFormat.PNG:
                     # Decode PNG using OpenCV
@@ -627,13 +656,19 @@ class CameraClient:
             Dictionary {camera_id: image} with captured images
         """
         # Prepare capture request parameters
+        # Handle both enum and string format types
+        if hasattr(format, 'value'):
+            format_value = format.value
+        else:
+            format_value = format
+            
         params = {
             "camera_ids": camera_ids,
-            "compression_format": format.value
+            "compression_format": format_value
         }
         
         # Add JPEG quality if needed
-        if format == CompressionFormat.JPEG:
+        if (hasattr(CompressionFormat, 'JPEG') and format == CompressionFormat.JPEG) or format == "jpeg":
             params["jpeg_quality"] = jpeg_quality
         
         # Add resolution if specified

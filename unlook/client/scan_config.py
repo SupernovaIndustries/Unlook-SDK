@@ -13,6 +13,7 @@ class PatternType(Enum):
     VERTICAL_LINES = "vertical_lines"
     GRAY_CODE = "gray_code"
     PHASE_SHIFT = "phase_shift"
+    ENHANCED_GRAY = "enhanced_gray"  # Enhanced Gray code with phase shift for improved quality
     ADVANCED_GRAY_CODE = "advanced_gray_code"  # Advanced Gray code from structured-light-stereo
     ADVANCED_PHASE_SHIFT = "advanced_phase_shift"  # Advanced phase shift from structured-light-stereo
     MULTI_SCALE = "multi_scale"  # Multi-scale Gray code patterns with varying line widths

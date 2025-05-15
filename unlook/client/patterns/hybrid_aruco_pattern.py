@@ -18,7 +18,17 @@ import json
 
 try:
     # Check if cv2.aruco is available
-    _ = cv2.aruco.Dictionary_get
+    _ = cv2.aruco
+    # Check for the correct API in different OpenCV versions
+    if hasattr(cv2.aruco, 'Dictionary_get'):
+        # Older OpenCV API
+        ARUCO_DICT_GET = cv2.aruco.Dictionary_get
+    elif hasattr(cv2.aruco, 'getPredefinedDictionary'):
+        # Newer OpenCV API
+        ARUCO_DICT_GET = cv2.aruco.getPredefinedDictionary
+    else:
+        # Fallback for very new versions
+        ARUCO_DICT_GET = lambda dict_type: cv2.aruco.ArucoDetector(cv2.aruco.getPredefinedDictionary(dict_type))
     ARUCO_AVAILABLE = True
 except (AttributeError, ImportError):
     ARUCO_AVAILABLE = False
@@ -52,7 +62,7 @@ class HybridArUcoPatternGenerator:
             
         self.width = width
         self.height = height
-        self.aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
+        self.aruco_dict = ARUCO_DICT_GET(cv2.aruco.DICT_4X4_50)
         self.marker_size = 80  # Default marker size in pixels
         self.marker_spacing = 200  # Spacing between markers
         logger.info(f"Initialized HybridArUcoPatternGenerator with resolution {width}x{height}")
@@ -168,10 +178,8 @@ class HybridArUcoPatternGenerator:
         for i, (x, y) in enumerate(positions):
             # Generate ArUco marker
             marker_id = i
-            marker_img = np.zeros((self.marker_size, self.marker_size), 
-                                dtype=np.uint8)
-            cv2.aruco.drawMarker(self.aruco_dict, marker_id, 
-                               self.marker_size, marker_img)
+            marker_img = cv2.aruco.generateImageMarker(self.aruco_dict, marker_id, 
+                                                     self.marker_size)
             
             # Add white border to marker
             border_size = 10
@@ -265,10 +273,8 @@ class HybridArUcoPatternGenerator:
                 y = int((row + 1) * y_spacing)
                 
                 # Generate marker
-                marker_img = np.zeros((self.marker_size, self.marker_size), 
-                                    dtype=np.uint8)
-                cv2.aruco.drawMarker(self.aruco_dict, marker_id, 
-                                   self.marker_size, marker_img)
+                marker_img = cv2.aruco.generateImageMarker(self.aruco_dict, marker_id, 
+                                                         self.marker_size)
                 
                 # Place marker
                 half_size = self.marker_size // 2
@@ -300,8 +306,12 @@ class HybridArUcoPatternDecoder:
     
     def __init__(self):
         """Initialize hybrid pattern decoder."""
-        self.aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)
-        self.aruco_params = cv2.aruco.DetectorParameters_create()
+        self.aruco_dict = ARUCO_DICT_GET(cv2.aruco.DICT_4X4_50)
+        # Use the correct API for different OpenCV versions
+        if hasattr(cv2.aruco, 'DetectorParameters_create'):
+            self.aruco_params = cv2.aruco.DetectorParameters_create()
+        else:
+            self.aruco_params = cv2.aruco.DetectorParameters()
         logger.info("Initialized HybridArUcoPatternDecoder")
     
     def decode(self,

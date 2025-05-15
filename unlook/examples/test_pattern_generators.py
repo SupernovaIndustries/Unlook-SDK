@@ -102,8 +102,11 @@ def test_decoders():
     """Test basic decoder functionality."""
     print("\nTesting Pattern Decoders...")
     
-    # Test Maze decoder
-    maze_decoder = MazePatternDecoder()
+    # Test Maze decoder with encoding info
+    maze_generator = MazePatternGenerator(1280, 720)
+    maze_generator.generate()  # Generate pattern to populate encoding info
+    encoding_info = maze_generator.get_encoding_info()
+    maze_decoder = MazePatternDecoder(encoding_info)
     print("MazePatternDecoder initialized successfully")
     
     # Test Voronoi decoder

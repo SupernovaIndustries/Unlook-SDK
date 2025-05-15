@@ -135,30 +135,48 @@ class CameraAutoOptimizer:
     
     def _capture_references(self, projector_client) -> Dict[str, np.ndarray]:
         """Capture reference images for analysis."""
-        logger.info("Capturing reference images")
+        logger.info("Capturing reference images for camera optimization")
         references = {}
         
-        # Capture ambient (projector off)
+        # Step 1: Capture ambient (projector off) - baseline lighting
         if projector_client:
             projector_client.turn_off()
         time.sleep(0.5)
         references['ambient'] = self._capture_image()
+        logger.info("Captured ambient reference image")
         
-        # Capture with white projection
+        # Step 2: Capture with test pattern (lines) for pattern visibility
         if projector_client:
-            projector_client.show_solid_field('White')
-            time.sleep(0.5)
-            references['white'] = self._capture_image()
-            
-            # Capture with test pattern
             projector_client.show_horizontal_lines(
                 foreground_color='White',
                 background_color='Black',
-                foreground_width=50,
-                background_width=50
+                foreground_width=20,
+                background_width=20
             )
             time.sleep(0.5)
             references['pattern'] = self._capture_image()
+            logger.info("Captured pattern reference image")
+            
+            # Step 3: Capture with white projection for dynamic range
+            projector_client.show_solid_field('White')
+            time.sleep(0.5)
+            references['white'] = self._capture_image()
+            logger.info("Captured white reference image")
+            
+            # Step 4: Capture with black projection for noise floor
+            projector_client.show_solid_field('Black')
+            time.sleep(0.5)
+            references['black'] = self._capture_image()
+            logger.info("Captured black reference image")
+            
+            # Step 5: Capture with checkerboard for contrast analysis
+            projector_client.show_checkerboard(
+                horizontal_count=10,
+                vertical_count=10
+            )
+            time.sleep(0.5)
+            references['checkerboard'] = self._capture_image()
+            logger.info("Captured checkerboard reference image")
             
             projector_client.turn_off()
         
@@ -195,12 +213,20 @@ class CameraAutoOptimizer:
         # Classify lighting conditions
         if analysis['mean_intensity'] < 30:
             analysis['condition'] = 'dark'
+            analysis['recommended_exposure'] = (20000, 100000)  # High exposure for dark conditions
+            analysis['recommended_gain'] = (2.0, 8.0)  # Higher gain for dark conditions
         elif analysis['mean_intensity'] < 100:
             analysis['condition'] = 'low_light'
+            analysis['recommended_exposure'] = (10000, 50000)  # Medium exposure
+            analysis['recommended_gain'] = (1.5, 4.0)  # Medium gain
         elif analysis['mean_intensity'] < 180:
             analysis['condition'] = 'normal'
+            analysis['recommended_exposure'] = (5000, 20000)  # Standard exposure
+            analysis['recommended_gain'] = (1.0, 2.0)  # Standard gain
         else:
             analysis['condition'] = 'bright'
+            analysis['recommended_exposure'] = (1000, 10000)  # Low exposure for bright conditions
+            analysis['recommended_gain'] = (0.5, 1.5)  # Low gain for bright conditions
             
         return analysis
     

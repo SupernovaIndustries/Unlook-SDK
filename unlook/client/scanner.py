@@ -75,9 +75,14 @@ class UnlookClient(EventEmitter):
     def camera(self):
         """Lazy-loading of the camera client."""
         if self._camera is None:
-            # Delayed import to avoid circular imports
-            from .camera import CameraClient
-            self._camera = CameraClient(self)
+            # Use importlib to directly import from camera.py file
+            import importlib.util
+            import os
+            camera_file = os.path.join(os.path.dirname(__file__), 'camera.py')
+            spec = importlib.util.spec_from_file_location("camera_module", camera_file)
+            camera_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(camera_module)
+            self._camera = camera_module.CameraClient(self)
         return self._camera
 
     @property

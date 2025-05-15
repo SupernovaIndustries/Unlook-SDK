@@ -107,8 +107,14 @@ class Message:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert message to a dictionary."""
+        # Handle both enum and string message types
+        if hasattr(self.msg_type, 'value'):
+            type_value = self.msg_type.value
+        else:
+            type_value = self.msg_type
+            
         return {
-            "type": self.msg_type.value,
+            "type": type_value,
             "id": self.msg_id,
             "timestamp": self.timestamp,
             "reply_to": self.reply_to,

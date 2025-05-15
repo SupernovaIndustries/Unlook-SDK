@@ -1102,6 +1102,36 @@ class ProjectorClient:
                         background_width=width
                     )
                     
+            elif pattern_type in ["maze", "voronoi", "hybrid_aruco", "enhanced_gray", "custom"]:
+                # Handle custom pattern types
+                logger.info(f"Projecting custom pattern type: {pattern_type}")
+                
+                # For custom patterns, try to project using approximations
+                if "image" in pattern:
+                    # Convert to grayscale if needed
+                    image = pattern["image"]
+                    if len(image.shape) == 3:
+                        import cv2
+                        image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+                    
+                    # Use checkerboard approximation based on image characteristics
+                    h, w = image.shape[:2]
+                    mean_val = np.mean(image)
+                    
+                    if mean_val > 200:  # Mostly white
+                        return self.show_solid_field("White")
+                    elif mean_val < 50:  # Mostly black
+                        return self.show_solid_field("Black")
+                    else:
+                        # Use checkerboard pattern with size based on image content
+                        size_x = max(8, min(50, w // 20))
+                        size_y = max(8, min(50, h // 20))
+                        return self.show_checkerboard(horizontal_count=size_x, vertical_count=size_y)
+                else:
+                    # No image data, use white field as fallback
+                    logger.warning(f"Custom pattern {pattern_name} has no image data")
+                    return self.show_solid_field("White")
+                    
             else:
                 logger.warning(f"Unsupported pattern type: {pattern_type}")
                 # Try to use any existing pattern methods

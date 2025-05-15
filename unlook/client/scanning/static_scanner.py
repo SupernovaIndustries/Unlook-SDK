@@ -41,6 +41,8 @@ from .patterns.enhanced_patterns import (
     generate_variable_width_gray_code,
 )
 
+# Camera imports are handled through client lazy loading to avoid circular imports
+
 # For backward compatibility, rename the enhanced function
 generate_gray_code_patterns = generate_enhanced_gray_code_patterns
 
@@ -327,7 +329,7 @@ class StaticScanner:
         
         # Load default calibration from the calibration folder
         default_path = os.path.join(os.path.dirname(__file__), 
-                                  "..", "..", "..", "..",
+                                  "..", "..",
                                   "calibration", "default", "default_stereo.json")
         
         if os.path.exists(default_path):
@@ -516,6 +518,14 @@ class StaticScanner:
                 self.projector.turn_off()
                 time.sleep(0.5)  # Wait for projector to stabilize
             
+            # Check if camera is available
+            try:
+                camera = self.client.camera
+                logger.info("Successfully accessed camera object in capture")
+            except Exception as e:
+                logger.warning(f"Cannot access camera in capture: {e}")
+                return
+            
             # Capture ambient light reference image
             if hasattr(self.client.camera, 'capture_stereo_pair'):
                 ambient_left, ambient_right = self.client.camera.capture_stereo_pair()
@@ -531,6 +541,14 @@ class StaticScanner:
                 self.projector.project_white()
                 time.sleep(0.8)  # Longer delay to ensure projector is fully displaying white
             
+            # Check if camera is available for color capture
+            try:
+                camera = self.client.camera
+                logger.info("Successfully accessed camera for color capture")
+            except Exception as e:
+                logger.warning(f"Cannot access camera for color capture: {e}")
+                return
+            
             # Capture color reference image
             if hasattr(self.client.camera, 'capture_stereo_pair'):
                 left_color, right_color = self.client.camera.capture_stereo_pair()
@@ -543,7 +561,9 @@ class StaticScanner:
                 # Store color images in the result dictionary
                 captured_images['color'].append((left_color, right_color))
         except Exception as e:
-            logger.warning(f"Could not capture color reference images: {e}")
+            logger.warning(f"Could not capture reference images: {e}")
+            # Don't fail the entire scan just because we couldn't capture reference images
+            pass
         
         # Project and capture each pattern
         # Try using pattern sequence approach if projector supports it
@@ -569,7 +589,37 @@ class StaticScanner:
                     
                     # Project this single pattern with detailed logging
                     logger.info(f"About to project pattern: {pattern_name}, type: {pattern_type}")
-                    success = self.projector.project_pattern(pattern)
+                    
+                    # Handle custom patterns that need special projection
+                    if pattern_type in ["maze", "voronoi", "hybrid_aruco", "enhanced_gray", "custom"]:
+                        # For custom patterns, use checkerboard approximation
+                        logger.info(f"Using checkerboard approximation for {pattern_type} pattern")
+                        
+                        # Analyze the pattern to determine appropriate checkerboard size
+                        if "image" in pattern:
+                            img = pattern["image"]
+                            h, w = img.shape[:2]
+                            
+                            # Simple approximation: use mean intensity to determine checkerboard
+                            mean_val = np.mean(img)
+                            
+                            if mean_val > 128:
+                                self.projector.show_solid_field("White")
+                            elif mean_val < 50:
+                                self.projector.show_solid_field("Black")
+                            else:
+                                # Use checkerboard with size based on pattern complexity
+                                size_x = max(10, min(50, w // 20))
+                                size_y = max(10, min(50, h // 20))
+                                self.projector.show_checkerboard(horizontal_count=size_x, vertical_count=size_y)
+                            success = True
+                        else:
+                            logger.warning(f"Pattern {pattern_name} has no image, using white field")
+                            success = self.projector.show_solid_field("White")
+                    else:
+                        # Use standard pattern projection for supported types
+                        success = self.projector.project_pattern(pattern)
+                    
                     if success:
                         logger.info(f"Successfully projected pattern: {pattern_name}")
                     else:
@@ -585,6 +635,14 @@ class StaticScanner:
                     
                     # Try to capture the pattern
                     try:
+                        # Check if camera is available
+                        try:
+                            camera = self.client.camera
+                            logger.info(f"Camera access successful for pattern {pattern_name}")
+                        except Exception as e:
+                            logger.error(f"Cannot access camera for pattern {pattern_name}: {e}")
+                            continue
+                        
                         # Capture images for this pattern
                         if hasattr(self.client.camera, 'capture_stereo_pair'):
                             left_img, right_img = self.client.camera.capture_stereo_pair()
@@ -631,6 +689,15 @@ class StaticScanner:
                             captured_images['multi_frequency'].append((left_img_gray, right_img_gray))
                         elif pattern_type == "variable_width":
                             captured_images['variable_width'].append((left_img_gray, right_img_gray))
+                        elif pattern_type == "maze":
+                            captured_images['maze'].append((left_img_gray, right_img_gray))
+                        elif pattern_type == "voronoi":
+                            captured_images['voronoi'].append((left_img_gray, right_img_gray))
+                        elif pattern_type == "hybrid_aruco":
+                            captured_images['hybrid_aruco'].append((left_img_gray, right_img_gray))
+                        elif pattern_type in ["enhanced_gray", "custom"]:
+                            # Add support for enhanced gray and custom patterns
+                            captured_images.setdefault(pattern_type, []).append((left_img_gray, right_img_gray))
                         
                         # Save the raw captured images if requested
                         if debug_dir:
@@ -639,6 +706,9 @@ class StaticScanner:
                             cv2.imwrite(os.path.join(debug_dir, f"{pattern_name}_right.png"), right_img)
                     except Exception as e:
                         logger.error(f"Error capturing pattern {pattern_name}: {e}")
+                        # Debug: show full traceback
+                        import traceback
+                        logger.debug(f"Full traceback: {traceback.format_exc()}")
             except Exception as e:
                 logger.error(f"Error processing pattern sequence: {e}")
                 return {}
@@ -776,6 +846,9 @@ class StaticScanner:
                             continue
                     except Exception as e:
                         logger.error(f"Error capturing pattern {pattern_name}: {e}")
+                        # Debug: show full traceback
+                        import traceback
+                        logger.debug(f"Full traceback: {traceback.format_exc()}")
         
         # Log summary of captured images
         total_patterns = sum(len(images) for images in captured_images.values())
@@ -967,22 +1040,58 @@ class StaticScanner:
         logger.info("Configuring cameras for structured light scanning")
         
         try:
-            # Set camera parameters for structured light scanning
-            # Turn off auto-exposure and auto-white balance for better results
-            if hasattr(self.client.camera, 'set_exposure'):
-                logger.info(f"Setting exposure to {self.config.exposure}")
-                self.client.camera.set_exposure(self.config.exposure, gain=self.config.gain)
-            else:
-                logger.warning("Camera does not support setting exposure")
+            # First check if we can access the camera
+            try:
+                camera = self.client.camera
+                logger.info("Successfully accessed camera object")
+            except Exception as e:
+                logger.warning(f"Cannot access camera: {e}")
+                return
             
-            # Set fixed gain for consistent brightness
-            if hasattr(self.client.camera, 'set_gain'):
-                logger.info(f"Setting gain to {self.config.gain}")
-                self.client.camera.set_gain(self.config.gain)
-            else:
-                logger.warning("Camera does not support setting gain")
+            # Try to optimize camera settings automatically
+            optimize_success = False
+            if self.config.enable_auto_optimization:
+                try:
+                    from ..camera.camera_auto_optimizer import CameraAutoOptimizer
+                    logger.info("Running automatic camera optimization...")
+                    optimizer = CameraAutoOptimizer(self.client.camera)
+                    optimization_result = optimizer.optimize_settings(self.projector)
+                    
+                    # Apply the optimized settings
+                    optimized_settings = optimization_result.settings
+                    logger.info(f"Optimization complete. Quality score: {optimization_result.quality_score:.2f}")
+                    logger.info(f"Optimal exposure: {optimized_settings.exposure_time}μs")
+                    logger.info(f"Optimal gain: {optimized_settings.analog_gain}")
+                    
+                    # Apply these settings to both cameras in the stereo pair
+                    if hasattr(self.client.camera, 'set_exposure'):
+                        left_camera, right_camera = self.client.camera.get_stereo_pair()
+                        if left_camera and right_camera:
+                            self.client.camera.set_exposure(left_camera, optimized_settings.exposure_time)
+                            self.client.camera.set_exposure(right_camera, optimized_settings.exposure_time)
+                    # Note: set_gain doesn't exist, gain is set via set_exposure method
+                    
+                    optimize_success = True
+                    
+                except Exception as e:
+                    logger.warning(f"Auto-optimization failed: {e}. Using default settings.")
+            
+            # If optimization wasn't used or failed, apply default settings
+            if not optimize_success:
+                # Set camera parameters for structured light scanning
+                # Turn off auto-exposure and auto-white balance for better results
+                if hasattr(self.client.camera, 'set_exposure'):
+                    logger.info(f"Setting exposure to {self.config.exposure}")
+                    left_camera, right_camera = self.client.camera.get_stereo_pair()
+                    if left_camera and right_camera:
+                        self.client.camera.set_exposure(left_camera, self.config.exposure, gain=self.config.gain)
+                        self.client.camera.set_exposure(right_camera, self.config.exposure, gain=self.config.gain)
+                else:
+                    logger.warning("Camera does not support setting exposure")
                 
-            # Disable auto exposure as it can change between pattern projections
+                # Note: set_gain doesn't exist, gain is set via set_exposure method
+            
+            # Always try to disable auto exposure for consistency
             if hasattr(self.client.camera, 'set_auto_exposure'):
                 logger.info("Disabling auto exposure for consistent brightness")
                 self.client.camera.set_auto_exposure(False)
@@ -1076,6 +1185,27 @@ class StaticScanner:
                 max_bits=self.config.num_gray_codes if hasattr(self.config, 'num_gray_codes') else 10,
                 orientation="both"
             )
+            
+        elif pattern_type == 'enhanced_gray':
+            # Generate enhanced Gray code patterns with phase shift
+            logger.info("Generating enhanced Gray code patterns with phase shift")
+            
+            # Generate patterns using configured parameters
+            from .patterns.enhanced_pattern_processor import EnhancedPatternProcessor
+            processor = EnhancedPatternProcessor()
+            
+            # Configure the processor based on scanner config
+            if hasattr(self.config, 'enhancement_level'):
+                processor.enhancement_level = self.config.enhancement_level
+            
+            patterns = processor.generate_enhanced_patterns(
+                width=pattern_width,
+                height=pattern_height,
+                num_gray_bits=self.config.num_gray_codes if hasattr(self.config, 'num_gray_codes') else 10,
+                num_phase_shifts=self.config.num_phase_shifts if hasattr(self.config, 'num_phase_shifts') else 8
+            )
+            
+            return patterns
             
         elif pattern_type == 'maze':
             # Generate maze patterns
@@ -1267,7 +1397,7 @@ class StaticScanner:
             
         # Add enhanced pattern types
         for pattern_type in ['multi_scale', 'multi_frequency', 'variable_width', 
-                            'maze', 'voronoi', 'hybrid_aruco']:
+                            'maze', 'voronoi', 'hybrid_aruco', 'enhanced_gray']:
             for left, right in captured_images.get(pattern_type, []):
                 left_images.append(left)
                 right_images.append(right)
@@ -1353,6 +1483,10 @@ class StaticScanner:
                 # Use pattern-specific decoder
                 logger.info(f"Using {pattern_type} pattern decoder")
                 return self._decode_special_patterns(left_images, right_images, pattern_type)
+            elif pattern_type == 'enhanced_gray':
+                # Enhanced gray code patterns are handled differently
+                logger.info("Decoding enhanced Gray code patterns")
+                return self._decode_enhanced_gray(left_images, right_images)
             else:
                 logger.warning(f"Not enough images for Gray code decoding: {len(left_images)}")
                 return self._basic_stereo_matching(left_images, right_images)
@@ -1709,6 +1843,76 @@ class StaticScanner:
         logger.info(f"Found {len(points_left)} correspondences from {pattern_type} patterns")
         
         return points_left, points_right, mask_left, mask_right
+    
+    def _decode_enhanced_gray(self, left_images: List[np.ndarray], right_images: List[np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Decode enhanced Gray code patterns that include phase shift information.
+        
+        Args:
+            left_images: List of left camera images
+            right_images: List of right camera images
+            
+        Returns:
+            Tuple of (left_coords, right_coords, mask_left, mask_right)
+        """
+        logger.info("Decoding enhanced Gray code patterns with phase shift")
+        
+        from .patterns.enhanced_pattern_processor import EnhancedPatternProcessor
+        processor = EnhancedPatternProcessor()
+        
+        # Set enhancement level from config
+        if hasattr(self.config, 'enhancement_level'):
+            processor.enhancement_level = self.config.enhancement_level
+        
+        # Process the captured images
+        results = processor.process_enhanced_captures({
+            'enhanced_gray': list(zip(left_images, right_images))
+        })
+        
+        if results:
+            x_coord_left = results.get('x_coord_left', np.zeros((left_images[0].shape[0], left_images[0].shape[1])))
+            y_coord_left = results.get('y_coord_left', np.zeros((left_images[0].shape[0], left_images[0].shape[1])))
+            x_coord_right = results.get('x_coord_right', np.zeros((right_images[0].shape[0], right_images[0].shape[1])))
+            y_coord_right = results.get('y_coord_right', np.zeros((right_images[0].shape[0], right_images[0].shape[1])))
+            
+            # Create masks for valid pixels
+            mask_left = (x_coord_left > 0) & (y_coord_left > 0)
+            mask_right = (x_coord_right > 0) & (y_coord_right > 0)
+            
+            # Find correspondences
+            points_left = []
+            points_right = []
+            
+            # Use the enhanced correspondence finder
+            valid_left = np.where(mask_left)
+            valid_right = np.where(mask_right)
+            
+            for i, (y, x) in enumerate(zip(valid_left[0], valid_left[1])):
+                proj_x_left = x_coord_left[y, x]
+                proj_y_left = y_coord_left[y, x]
+                
+                # Find matching point in right image
+                best_match = None
+                min_distance = float('inf')
+                
+                for j, (yr, xr) in enumerate(zip(valid_right[0], valid_right[1])):
+                    proj_x_right = x_coord_right[yr, xr]
+                    proj_y_right = y_coord_right[yr, xr]
+                    
+                    # Check if projector coordinates match
+                    dist = abs(proj_x_left - proj_x_right) + abs(proj_y_left - proj_y_right)
+                    if dist < min_distance and dist < 5:  # Threshold for matching
+                        min_distance = dist
+                        best_match = (xr, yr)
+                
+                if best_match:
+                    points_left.append([x, y])
+                    points_right.append(list(best_match))
+            
+            return np.array(points_left), np.array(points_right), mask_left, mask_right
+        else:
+            logger.warning("Enhanced pattern decoding failed, falling back to basic method")
+            return self._basic_stereo_matching(left_images, right_images)
     
     def _basic_stereo_matching(self, left_images: List[np.ndarray], right_images: List[np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Fallback decoding method using simple feature matching."""
@@ -2352,6 +2556,7 @@ class StaticScanConfig:
         debug: bool = False,
         use_enhanced_processor: bool = True,  # Changed to True by default
         enhancement_level: int = 3,  # Changed to maximum level by default
+        enable_auto_optimization: bool = True,  # Enable automatic camera optimization
     ):
         """
         Initialize scan configuration.
@@ -2376,6 +2581,7 @@ class StaticScanConfig:
             debug: Enable debug output
             use_enhanced_processor: Use enhanced pattern processor for low-contrast images
             enhancement_level: Enhancement level (0-3) for pattern processing
+            enable_auto_optimization: Enable automatic camera settings optimization based on lighting conditions
         """
         self.quality = quality
         self.pattern_type = pattern_type
@@ -2396,6 +2602,7 @@ class StaticScanConfig:
         self.debug = debug
         self.use_enhanced_processor = use_enhanced_processor
         self.enhancement_level = enhancement_level
+        self.enable_auto_optimization = enable_auto_optimization
 
 
 def create_static_scanner(client, config=None, calibration_file=None):
