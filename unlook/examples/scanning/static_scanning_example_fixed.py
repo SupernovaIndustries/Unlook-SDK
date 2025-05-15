@@ -25,13 +25,14 @@ Usage examples:
   python static_scanning_example_fixed.py
   
   # Specify pattern type for enhanced scanning
+  python static_scanning_example_fixed.py --pattern enhanced_gray
   python static_scanning_example_fixed.py --pattern multi_scale
   python static_scanning_example_fixed.py --pattern multi_frequency
   python static_scanning_example_fixed.py --pattern variable_width
   
-  # Use enhanced processor for challenging lighting conditions
-  python static_scanning_example_fixed.py --enhanced-processor
-  python static_scanning_example_fixed.py --enhanced-processor --enhancement-level 3
+  # Use enhanced processor with different levels
+  python static_scanning_example_fixed.py --enhancement-level 0  # No enhancement
+  python static_scanning_example_fixed.py --enhancement-level 3  # Maximum enhancement
   
   # Specify calibration file
   python static_scanning_example_fixed.py --calibration path/to/stereo_calibration.json
@@ -166,8 +167,7 @@ def main():
     parser = argparse.ArgumentParser(description="Simple Calibration-Based 3D Scanner")
     
     # Scanning options
-    parser.add_argument("--pattern", choices=["enhanced_gray", "multi_scale", "multi_frequency", "variable_width", 
-                                             "maze", "voronoi", "hybrid_aruco"],
+    parser.add_argument("--pattern", choices=["enhanced_gray", "multi_scale", "multi_frequency", "variable_width"],
                        default="enhanced_gray",
                        help="Pattern type to use for scanning (default: enhanced_gray)")
     

@@ -992,6 +992,46 @@ class StaticScanner:
         
         if len(points_left) == 0 or len(points_right) == 0:
             logger.error("No valid correspondences found")
+            
+            # Extra debugging for maze patterns
+            if self.config.pattern_type == 'maze' and self.debug_enabled:
+                logger.info("Saving debug information for maze pattern analysis...")
+                
+                # Save all captured pattern images
+                maze_debug_dir = self.debug_path / "maze_debug"
+                maze_debug_dir.mkdir(exist_ok=True, parents=True)
+                
+                # Save captured images from dictionary
+                for pattern_type, pairs in captured_images.items():
+                    for i, (left_img, right_img) in enumerate(pairs):
+                        if left_img is not None:
+                            cv2.imwrite(str(maze_debug_dir / f"captured_{pattern_type}_{i}_left.png"), left_img)
+                        if right_img is not None:
+                            cv2.imwrite(str(maze_debug_dir / f"captured_{pattern_type}_{i}_right.png"), right_img)
+                
+                # Save rectified images
+                for i, (left_img, right_img) in enumerate(zip(left_images, right_images)):
+                    cv2.imwrite(str(maze_debug_dir / f"rectified_{i}_left.png"), left_img)
+                    cv2.imwrite(str(maze_debug_dir / f"rectified_{i}_right.png"), right_img)
+                
+                # Save pattern metadata
+                pattern_info = {
+                    'num_patterns': len(patterns),
+                    'pattern_types': [p['pattern_type'] for p in patterns],
+                    'pattern_names': [p.get('name', 'unnamed') for p in patterns],
+                    'captured_types': list(captured_images.keys()),
+                    'captured_counts': {k: len(v) for k, v in captured_images.items()},
+                    'image_sizes': {
+                        'left': left_images[0].shape if left_images else None,
+                        'right': right_images[0].shape if right_images else None
+                    }
+                }
+                
+                with open(maze_debug_dir / "pattern_info.json", 'w') as f:
+                    json.dump(pattern_info, f, indent=2)
+                
+                logger.info(f"Maze pattern debug data saved to: {maze_debug_dir}")
+                
             return o3d.geometry.PointCloud()
         
         # Save correspondence points
@@ -1207,42 +1247,6 @@ class StaticScanner:
             
             return patterns
             
-        elif pattern_type == 'maze':
-            # Generate maze patterns
-            logger.info("Generating maze patterns")
-            from ..patterns.maze_pattern import MazePatternGenerator
-            
-            maze_gen = MazePatternGenerator(pattern_width, pattern_height)
-            
-            # Generate multiple maze patterns
-            patterns = []
-            
-            # Add white and black reference patterns
-            patterns.append({
-                "pattern_type": "solid_field",
-                "name": "white_reference",
-                "color": "White",
-                "image": np.ones((pattern_height, pattern_width), dtype=np.uint8) * 255
-            })
-            
-            patterns.append({
-                "pattern_type": "solid_field",
-                "name": "black_reference",
-                "color": "Black",
-                "image": np.zeros((pattern_height, pattern_width), dtype=np.uint8)
-            })
-            
-            # Generate maze patterns with different algorithms
-            algorithms = ["recursive_backtrack", "prim", "kruskal"]
-            for i, algo in enumerate(algorithms):
-                pattern_img = maze_gen.generate(algorithm=algo)
-                patterns.append({
-                    "pattern_type": "maze",
-                    "name": f"maze_{algo}_{i}",
-                    "image": pattern_img
-                })
-            
-            return patterns
             
         elif pattern_type == 'voronoi':
             # Generate Voronoi patterns
