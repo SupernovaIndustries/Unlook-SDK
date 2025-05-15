@@ -117,8 +117,10 @@ def extract_baseline_from_calibration(calib_path):
     
     try:
         # Load the calibration data
+        logger.debug(f"Loading calibration file: {calib_path}")
         with open(calib_path, 'r') as f:
             data = json.load(f)
+        logger.debug(f"Calibration keys available: {list(data.keys())}")
         
         # Check for direct baseline value
         if 'baseline_mm' in data:
@@ -164,7 +166,8 @@ def main():
     parser = argparse.ArgumentParser(description="Simple Calibration-Based 3D Scanner")
     
     # Scanning options
-    parser.add_argument("--pattern", choices=["multi_scale", "multi_frequency", "variable_width"],
+    parser.add_argument("--pattern", choices=["multi_scale", "multi_frequency", "variable_width", 
+                                             "maze", "voronoi", "hybrid_aruco"],
                        help="Pattern type to use for scanning")
     
     parser.add_argument("--enhancement-level", type=int, default=3, choices=[0, 1, 2, 3],
@@ -208,6 +211,10 @@ def main():
     calibration_file = args.calibration or find_calibration_file()
     if calibration_file:
         logger.info(f"Using calibration file: {calibration_file}")
+        logger.debug(f"Calibration file absolute path: {os.path.abspath(calibration_file)}")
+        logger.debug(f"Calibration file exists: {os.path.exists(calibration_file)}")
+        if os.path.exists(calibration_file):
+            logger.debug(f"Calibration file size: {os.path.getsize(calibration_file)} bytes")
     else:
         logger.warning("No calibration file found, will use default parameters")
     
@@ -230,7 +237,10 @@ def main():
         pattern_map = {
             "multi_scale": PatternType.MULTI_SCALE,
             "multi_frequency": PatternType.MULTI_FREQUENCY,
-            "variable_width": PatternType.VARIABLE_WIDTH
+            "variable_width": PatternType.VARIABLE_WIDTH,
+            "maze": PatternType.MAZE,
+            "voronoi": PatternType.VORONOI,
+            "hybrid_aruco": PatternType.HYBRID_ARUCO
         }
         
         if args.pattern in pattern_map:
@@ -320,6 +330,8 @@ def main():
                 with open(calibration_file, 'r') as f:
                     calib_data = json.load(f)
                 
+                logger.debug(f"Loaded calibration data with keys: {list(calib_data.keys())}")
+                
                 # Create calibration_data dictionary for the scanner
                 scanner.calibration_data = {}
                 
@@ -334,12 +346,13 @@ def main():
                                 np_value = np.array(value)
                                 # Set on calibrator
                                 setattr(scanner.calibrator, key, np_value)
+                                logger.debug(f"Set calibrator.{key} with shape {np_value.shape}")
                                 # Set on calibration_data
                                 scanner.calibration_data[key] = np_value
                                 # For key scanner attributes, set directly on scanner
                                 if key in ['P1', 'P2', 'Q', 'R1', 'R2']:
                                     setattr(scanner, key, np_value)
-                                    logger.info(f"Set scanner.{key} directly")
+                                    logger.info(f"Set scanner.{key} directly with shape {np_value.shape}")
                             except Exception as e:
                                 logger.warning(f"Error setting calibration parameter {key}: {e}")
                 

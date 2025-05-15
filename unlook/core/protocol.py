@@ -47,6 +47,11 @@ class MessageType(enum.Enum):
     DIRECT_FRAME = "direct_frame"  # Direct streaming frame
     DIRECT_STREAM_CONFIG = "direct_stream_config"  # Configure direct stream
     PROJECTOR_SYNC = "projector_sync"  # Synchronize projector with stream
+    
+    # Camera optimization
+    CAMERA_OPTIMIZE = "camera_optimize"  # Optimize camera settings automatically
+    CAMERA_AUTO_FOCUS = "camera_auto_focus"  # Perform auto-focus operation
+    CAMERA_TEST_CAPTURE = "camera_test_capture"  # Capture test image for optimization
 
     # 3D scanning
     SCAN_START = "scan_start"  # Start scan

@@ -550,6 +550,235 @@ class PiCamera2Manager:
                 logger.error(traceback.format_exc())
                 return None
 
+    def capture_test_image(self, camera_id: str, test_type: str = "normal") -> Optional[np.ndarray]:
+        """
+        Capture a test image for auto-optimization.
+        
+        Args:
+            camera_id: Camera ID
+            test_type: Type of test image ("underexposed", "normal", "overexposed")
+            
+        Returns:
+            Test image as numpy array, None if error
+        """
+        if not PICAMERA2_AVAILABLE:
+            logger.error("PiCamera2 not available, cannot capture test image.")
+            return None
+            
+        with self._lock:
+            if camera_id not in self.active_cameras:
+                logger.error(f"Camera {camera_id} not available")
+                return None
+                
+            camera = self.active_cameras[camera_id]
+            
+            try:
+                # Store current settings
+                original_controls = camera.capture_metadata()
+                
+                # Set test parameters based on type
+                test_controls = {}
+                if test_type == "underexposed":
+                    test_controls["ExposureTime"] = 5000  # 5ms
+                    test_controls["AnalogueGain"] = 1.0
+                elif test_type == "overexposed":
+                    test_controls["ExposureTime"] = 50000  # 50ms
+                    test_controls["AnalogueGain"] = 8.0
+                else:  # normal
+                    test_controls["ExposureTime"] = 20000  # 20ms
+                    test_controls["AnalogueGain"] = 2.0
+                
+                # Apply test settings
+                camera.set_controls(test_controls)
+                
+                # Wait for settings to take effect
+                time.sleep(0.5)
+                
+                # Capture test image
+                image = self.capture_image(camera_id)
+                
+                # Restore original settings
+                restore_controls = {
+                    "ExposureTime": original_controls.get("ExposureTime", 20000),
+                    "AnalogueGain": original_controls.get("AnalogueGain", 1.0)
+                }
+                camera.set_controls(restore_controls)
+                
+                return image
+                
+            except Exception as e:
+                logger.error(f"Error capturing test image: {e}")
+                return None
+    
+    def optimize_camera_settings(self, camera_id: str, target_brightness: float = 0.5, 
+                               target_contrast: float = 0.3) -> Dict[str, Any]:
+        """
+        Automatically optimize camera settings for pattern visibility.
+        
+        Args:
+            camera_id: Camera ID
+            target_brightness: Target mean brightness (0-1)
+            target_contrast: Target contrast level (0-1)
+            
+        Returns:
+            Optimized settings dictionary
+        """
+        if not PICAMERA2_AVAILABLE:
+            logger.error("PiCamera2 not available, cannot optimize settings.")
+            return {}
+            
+        logger.info(f"Starting camera optimization for {camera_id}")
+        
+        # Capture test images
+        test_types = ["underexposed", "normal", "overexposed"]
+        test_images = {}
+        
+        for test_type in test_types:
+            image = self.capture_test_image(camera_id, test_type)
+            if image is not None:
+                test_images[test_type] = image
+        
+        if len(test_images) < 3:
+            logger.error("Failed to capture enough test images for optimization")
+            return {}
+        
+        # Analyze images
+        best_settings = None
+        best_score = float('inf')
+        
+        # Try different exposure and gain combinations
+        exposure_times = [5000, 10000, 15000, 20000, 30000, 40000]
+        gains = [1.0, 1.5, 2.0, 3.0, 4.0, 6.0]
+        
+        for exposure in exposure_times:
+            for gain in gains:
+                # Test these settings
+                test_config = {
+                    "exposure_time": exposure,
+                    "gain": gain,
+                    "auto_exposure": False,
+                    "auto_gain": False
+                }
+                
+                # Configure and capture
+                self.configure_camera(camera_id, test_config)
+                time.sleep(0.3)  # Let settings stabilize
+                
+                image = self.capture_image(camera_id)
+                if image is None:
+                    continue
+                
+                # Convert to grayscale for analysis
+                if len(image.shape) == 3:
+                    import cv2
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = image
+                
+                # Calculate metrics
+                mean_brightness = np.mean(gray) / 255.0
+                std_contrast = np.std(gray) / 255.0
+                
+                # Score based on distance from targets
+                brightness_error = abs(mean_brightness - target_brightness)
+                contrast_error = abs(std_contrast - target_contrast)
+                score = brightness_error + contrast_error
+                
+                logger.debug(f"Exposure={exposure}, Gain={gain}, Brightness={mean_brightness:.3f}, "
+                           f"Contrast={std_contrast:.3f}, Score={score:.3f}")
+                
+                if score < best_score:
+                    best_score = score
+                    best_settings = {
+                        "exposure_time": exposure,
+                        "gain": gain,
+                        "auto_exposure": False,
+                        "auto_gain": False,
+                        "brightness": mean_brightness,
+                        "contrast": std_contrast
+                    }
+        
+        if best_settings:
+            logger.info(f"Optimization complete. Best settings: {best_settings}")
+            # Apply best settings
+            self.configure_camera(camera_id, best_settings)
+            return best_settings
+        else:
+            logger.error("Failed to find optimal settings")
+            return {}
+    
+    def auto_focus(self, camera_id: str, focus_region: Optional[List[int]] = None) -> bool:
+        """
+        Perform auto-focus operation.
+        
+        Args:
+            camera_id: Camera ID
+            focus_region: Optional region of interest for focus [x, y, width, height]
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not PICAMERA2_AVAILABLE:
+            logger.error("PiCamera2 not available, cannot perform auto-focus.")
+            return False
+            
+        with self._lock:
+            if camera_id not in self.active_cameras:
+                logger.error(f"Camera {camera_id} not available")
+                return False
+                
+            camera = self.active_cameras[camera_id]
+            
+            try:
+                # Check if camera supports autofocus
+                controls = camera.camera_controls
+                if "AfMode" not in controls:
+                    logger.warning(f"Camera {camera_id} does not support autofocus")
+                    return False
+                
+                # Set focus region if provided
+                if focus_region and len(focus_region) == 4:
+                    x, y, w, h = focus_region
+                    # Set the AF window for focus
+                    camera.set_controls({
+                        "AfWindows": [(x, y, w, h)],
+                        "AfMode": 1  # Auto mode
+                    })
+                else:
+                    # Use auto mode without specific region
+                    camera.set_controls({"AfMode": 1})
+                
+                # Trigger autofocus
+                camera.set_controls({"AfTrigger": 0})  # Start AF
+                
+                # Wait for focus to complete (with timeout)
+                start_time = time.time()
+                timeout = 5.0  # 5 second timeout
+                
+                while time.time() - start_time < timeout:
+                    metadata = camera.capture_metadata()
+                    af_state = metadata.get("AfState", 0)
+                    
+                    # Check if focus is complete (state depends on camera)
+                    if af_state == 2:  # Focused
+                        logger.info(f"Autofocus successful for camera {camera_id}")
+                        return True
+                    elif af_state == 0:  # Idle
+                        time.sleep(0.1)
+                        continue
+                    elif af_state == 1:  # Scanning
+                        time.sleep(0.1)
+                        continue
+                    else:  # Failed or unknown state
+                        break
+                
+                logger.warning(f"Autofocus timeout or failed for camera {camera_id}")
+                return False
+                
+            except Exception as e:
+                logger.error(f"Error during autofocus: {e}")
+                return False
+
     def close(self):
         """Close all active cameras."""
         with self._lock:

@@ -26,11 +26,17 @@
 - **3D Scanning**:
   - **✨ NEW! Simplified 3D scanning API** - create a 3D scan in just a few lines of code
   - **✨ NEW! Real-time scanning mode** - for handheld applications with GPU acceleration
+  - **✨ NEW! Advanced pattern types** - maze, Voronoi, and hybrid ArUco patterns
+  - **✨ NEW! Camera auto-optimization** - automatic exposure and gain adjustment
   - Stereo camera calibration and rectification
   - Point cloud generation and filtering
   - Mesh creation and export to multiple formats
 - **GPU Acceleration**: Optimized processing using GPU when available
 - **Neural Network Enhancement**: Point cloud filtering and enhancement using machine learning
+- **Advanced Pattern Systems**:
+  - Maze patterns for robust correspondence matching
+  - Voronoi patterns for dense surface reconstruction
+  - Hybrid ArUco patterns for absolute positioning
 - **Optimized Communication**: Efficient image transfer and control using ZeroMQ
 - **Easy Expandability**: Modular architecture to add new hardware and algorithms
 
@@ -230,6 +236,61 @@ result = client.projector.start_pattern_sequence(
     loop=True,         # Loop continuously
     sync_with_camera=True  # Enable projector-camera synchronization
 )
+```
+
+### Camera Auto-Optimization
+
+```python
+from unlook.client.camera import CameraAutoOptimizer
+
+# Create auto-optimizer
+optimizer = CameraAutoOptimizer(client)
+
+# Optimize camera settings automatically
+result = optimizer.optimize_camera_settings(
+    camera_id="camera_0",
+    use_projector=True,  # Use projector patterns for optimization
+    target_brightness=0.5,  # Target mean brightness
+    target_contrast=0.3     # Target contrast level
+)
+
+if result:
+    print(f"Optimal exposure: {result.exposure_time}μs")
+    print(f"Optimal gain: {result.gain}")
+```
+
+### Advanced Pattern Types
+
+```python
+from unlook.client.scanning import StaticScanner, StaticScanConfig
+from unlook.client.scan_config import PatternType
+
+# Create scanner with advanced patterns
+config = StaticScanConfig(
+    quality="high",
+    pattern_type=PatternType.MAZE,  # Options: MAZE, VORONOI, HYBRID_ARUCO
+    debug=True
+)
+
+scanner = StaticScanner(client=client, config=config)
+
+# Perform scan with advanced patterns
+point_cloud = scanner.perform_scan()
+```
+
+### Pattern Examples
+
+```python
+# Generate individual pattern examples
+from unlook.client.patterns import MazePatternGenerator, VoronoiPatternGenerator
+
+# Create maze pattern for robust correspondence
+maze_gen = MazePatternGenerator(1920, 1080)
+maze_pattern = maze_gen.generate(algorithm="recursive_backtrack")
+
+# Create Voronoi pattern for dense reconstruction
+voronoi_gen = VoronoiPatternGenerator(1920, 1080)
+voronoi_pattern = voronoi_gen.generate(num_points=100, color_scheme="grayscale")
 ```
 
 ## 🧩 Architecture

@@ -163,15 +163,8 @@ class StaticScanner:
         # Initialize storage for the point cloud
         self.point_cloud = None
         
-        # Initialize debug directory
-        examples_dir = str(Path(__file__).resolve().parent.parent / "examples")
-        self.debug_dir = os.path.join(examples_dir, "unlook_debug", f"scan_{time.strftime('%Y%m%d_%H%M%S')}")
-        if self.config.debug or self.config.save_intermediate_images:
-            self._ensure_debug_dirs()
-            logger.info(f"Debug output will be saved to: {self.debug_dir}")
-            # Print absolute path for easier access
-            abs_path = os.path.abspath(self.debug_dir)
-            print(f"\nDEBUG INFO: Scan data will be saved to:\n{abs_path}\n")
+        # Debug directory will be initialized when scan starts
+        self.debug_dir = None
     
     def set_quality_preset(self, quality: str):
         """
@@ -221,12 +214,17 @@ class StaticScanner:
         if not os.path.exists(calibration_file):
             logger.error(f"Calibration file not found: {calibration_file}")
             return False
+        
+        logger.info(f"Loading calibration from: {calibration_file}")
+        logger.info(f"Calibration file size: {os.path.getsize(calibration_file)} bytes")
             
         try:
             # Try to load as JSON first
             if calibration_file.endswith('.json'):
+                logger.debug("Loading calibration as JSON file")
                 with open(calibration_file, 'r') as f:
                     calibration = json.load(f)
+                logger.debug(f"Loaded calibration with keys: {list(calibration.keys())}")
                     
                 # Extract projection matrices
                 if 'P1' in calibration and 'P2' in calibration:
@@ -235,10 +233,13 @@ class StaticScanner:
                     self.P2 = np.array(calibration['P2'], dtype=np.float32).reshape(3, 4)
                     
                     logger.info(f"Loaded projection matrices from {calibration_file}")
-                    logger.info(f"P1: {self.P1}")
-                    logger.info(f"P2: {self.P2}")
+                    logger.debug(f"P1 shape: {self.P1.shape}")
+                    logger.debug(f"P2 shape: {self.P2.shape}")
+                    logger.debug(f"P1:\n{self.P1}")
+                    logger.debug(f"P2:\n{self.P2}")
                 else:
                     logger.error("Calibration file does not contain P1 and P2 matrices")
+                    logger.error(f"Available keys: {list(calibration.keys())}")
                     return False
                     
                 # Extract rectification matrices if available
@@ -484,7 +485,10 @@ class StaticScanner:
             'color': [],  # Store original color images of the object
             'multi_scale': [],  # New enhanced pattern types
             'multi_frequency': [],
-            'variable_width': []
+            'variable_width': [],
+            'maze': [],  # Maze patterns
+            'voronoi': [],  # Voronoi patterns
+            'hybrid_aruco': []  # Hybrid ArUco patterns
         }
         
         # Log the patterns for debugging
@@ -738,6 +742,12 @@ class StaticScanner:
                             captured_images['multi_frequency'].append((left_img_gray, right_img_gray))
                         elif pattern_type == "variable_width":
                             captured_images['variable_width'].append((left_img_gray, right_img_gray))
+                        elif pattern_type == "maze":
+                            captured_images['maze'].append((left_img_gray, right_img_gray))
+                        elif pattern_type == "voronoi":
+                            captured_images['voronoi'].append((left_img_gray, right_img_gray))
+                        elif pattern_type == "hybrid_aruco":
+                            captured_images['hybrid_aruco'].append((left_img_gray, right_img_gray))
                         
                         # Save raw captures if debug enabled
                         if debug_dir:
@@ -748,7 +758,8 @@ class StaticScanner:
                         # Save additional data for debugging
                         try:
                             if self.config.save_raw_images:
-                                raw_dir = os.path.join(self.config.output_directory, "raw_captures")
+                                # Use the proper folder structure
+                                raw_dir = os.path.join(self.debug_dir, "01_patterns", "raw")
                                 os.makedirs(raw_dir, exist_ok=True)
                                 
                                 # Save both original and grayscale versions
@@ -793,9 +804,13 @@ class StaticScanner:
         start_time = time.time()
         
         # Initialize debug output
-        if self.debug_enabled:
+        if self.debug_enabled or self.config.save_intermediate_images or self.config.save_raw_images:
             self._initialize_debug()
             self._save_calibration_data()
+            logger.info(f"Debug output initialized at: {self.debug_dir}")
+            # Print absolute path for easier access
+            abs_path = os.path.abspath(self.debug_dir)
+            print(f"\nDEBUG INFO: Scan data will be saved to:\n{abs_path}\n")
         
         # Configure camera
         self._configure_camera()
@@ -1053,6 +1068,124 @@ class StaticScanner:
                 max_bits=self.config.num_gray_codes if hasattr(self.config, 'num_gray_codes') else 10,
                 orientation="both"
             )
+            
+        elif pattern_type == 'maze':
+            # Generate maze patterns
+            logger.info("Generating maze patterns")
+            from ..patterns.maze_pattern import MazePatternGenerator
+            
+            maze_gen = MazePatternGenerator(pattern_width, pattern_height)
+            
+            # Generate multiple maze patterns
+            patterns = []
+            
+            # Add white and black reference patterns
+            patterns.append({
+                "pattern_type": "solid_field",
+                "name": "white_reference",
+                "color": "White",
+                "image": np.ones((pattern_height, pattern_width), dtype=np.uint8) * 255
+            })
+            
+            patterns.append({
+                "pattern_type": "solid_field",
+                "name": "black_reference",
+                "color": "Black",
+                "image": np.zeros((pattern_height, pattern_width), dtype=np.uint8)
+            })
+            
+            # Generate maze patterns with different algorithms
+            algorithms = ["recursive_backtrack", "prims", "dfs"]
+            for i, algo in enumerate(algorithms):
+                pattern_img = maze_gen.generate(algorithm=algo)
+                patterns.append({
+                    "pattern_type": "maze",
+                    "name": f"maze_{algo}_{i}",
+                    "image": pattern_img
+                })
+            
+            return patterns
+            
+        elif pattern_type == 'voronoi':
+            # Generate Voronoi patterns
+            logger.info("Generating Voronoi patterns")
+            from ..patterns.voronoi_pattern import VoronoiPatternGenerator
+            
+            voronoi_gen = VoronoiPatternGenerator(pattern_width, pattern_height)
+            
+            # Generate multiple Voronoi patterns
+            patterns = []
+            
+            # Add reference patterns
+            patterns.append({
+                "pattern_type": "solid_field",
+                "name": "white_reference",
+                "color": "White",
+                "image": np.ones((pattern_height, pattern_width), dtype=np.uint8) * 255
+            })
+            
+            patterns.append({
+                "pattern_type": "solid_field",
+                "name": "black_reference",
+                "color": "Black",
+                "image": np.zeros((pattern_height, pattern_width), dtype=np.uint8)
+            })
+            
+            # Generate Voronoi patterns with different configurations
+            num_points_list = [50, 100, 150]
+            color_schemes = ["grayscale", "binary", "colored"]
+            
+            for num_points in num_points_list:
+                for scheme in color_schemes:
+                    pattern_img = voronoi_gen.generate(num_points=num_points, color_scheme=scheme)
+                    patterns.append({
+                        "pattern_type": "voronoi",
+                        "name": f"voronoi_{num_points}pts_{scheme}",
+                        "image": pattern_img
+                    })
+            
+            return patterns
+            
+        elif pattern_type == 'hybrid_aruco':
+            # Generate hybrid ArUco patterns
+            logger.info("Generating hybrid ArUco patterns")
+            from ..patterns.hybrid_aruco_pattern import HybridArUcoPatternGenerator
+            
+            hybrid_gen = HybridArUcoPatternGenerator(pattern_width, pattern_height)
+            
+            # Generate patterns
+            patterns = []
+            
+            # Add reference patterns
+            patterns.append({
+                "pattern_type": "solid_field",
+                "name": "white_reference",
+                "color": "White",
+                "image": np.ones((pattern_height, pattern_width), dtype=np.uint8) * 255
+            })
+            
+            patterns.append({
+                "pattern_type": "solid_field",
+                "name": "black_reference",
+                "color": "Black",
+                "image": np.zeros((pattern_height, pattern_width), dtype=np.uint8)
+            })
+            
+            # Generate hybrid patterns with different base patterns
+            base_patterns = ["gray_code", "phase_shift", "checkerboard"]
+            num_markers_list = [4, 9, 16]
+            
+            for base in base_patterns:
+                for num_markers in num_markers_list:
+                    pattern_img, markers_info = hybrid_gen.generate(base_pattern=base, num_markers=num_markers)
+                    patterns.append({
+                        "pattern_type": "hybrid_aruco",
+                        "name": f"hybrid_{base}_{num_markers}markers",
+                        "image": pattern_img,
+                        "markers_info": markers_info
+                    })
+            
+            return patterns
             
         else:
             # Default to combined Gray code and phase shift patterns
@@ -1762,6 +1895,7 @@ class StaticScanner:
         # Create debug path 
         debug_root = Path(self.config.output_directory) / "unlook_debug" / base_name
         self.debug_path = debug_root
+        self.debug_dir = str(debug_root)  # Sync with legacy debug_dir variable
         
         # Create directory structure
         dirs = [

@@ -26,7 +26,12 @@ def analyze_pattern_quality(image_dir):
     if not pattern_dir.exists():
         pattern_dir = Path(image_dir)
     
+    # Create diagnostics directory
+    diag_dir = Path(image_dir) / "diagnostics"
+    diag_dir.mkdir(exist_ok=True)
+    
     print(f"\nAnalyzing patterns in: {pattern_dir}")
+    print(f"Saving diagnostics to: {diag_dir}")
     
     # Load reference images - using actual filenames
     black_left = cv2.imread(str(pattern_dir / "black_reference_left.png"), cv2.IMREAD_GRAYSCALE)
@@ -110,8 +115,8 @@ def analyze_pattern_quality(image_dir):
         
         # Save comparison
         comparison = np.hstack([all_h_patterns[0], enhanced[0]])
-        cv2.imwrite("pattern_comparison.png", comparison)
-        print("Saved pattern comparison to pattern_comparison.png")
+        cv2.imwrite(str(diag_dir / "pattern_comparison.png"), comparison)
+        print(f"Saved pattern comparison to {diag_dir / 'pattern_comparison.png'}")
     
     # Try decoding
     print("\nTesting Pattern Decoding:")
@@ -137,8 +142,8 @@ def analyze_pattern_quality(image_dir):
         
         # Save mask visualization
         mask_comparison = np.hstack([x_mask.astype(np.uint8)*255, x_mask_e.astype(np.uint8)*255])
-        cv2.imwrite("mask_comparison.png", mask_comparison)
-        print("Saved mask comparison to mask_comparison.png")
+        cv2.imwrite(str(diag_dir / "mask_comparison.png"), mask_comparison)
+        print(f"Saved mask comparison to {diag_dir / 'mask_comparison.png'}")
         
         # Save decoded coordinate visualization
         if valid_count_e > 0:
@@ -150,8 +155,8 @@ def analyze_pattern_quality(image_dir):
                 x_vis = np.zeros_like(x_coord_e, dtype=np.uint8)
             x_vis[~x_mask_e] = 0
             x_vis_color = cv2.applyColorMap(x_vis, cv2.COLORMAP_JET)
-            cv2.imwrite("decoded_coordinates.png", x_vis_color)
-            print("Saved decoded coordinates to decoded_coordinates.png")
+            cv2.imwrite(str(diag_dir / "decoded_coordinates.png"), x_vis_color)
+            print(f"Saved decoded coordinates to {diag_dir / 'decoded_coordinates.png'}")
             
             # Print coordinate statistics
             print(f"\nDecoded coordinate stats:")
@@ -162,8 +167,8 @@ def analyze_pattern_quality(image_dir):
     # Save sample enhanced patterns
     if enhanced_patterns:
         for i in range(min(4, len(enhanced_patterns))):
-            cv2.imwrite(f"enhanced_pattern_{i}.png", enhanced_patterns[i])
-        print(f"\nSaved {min(4, len(enhanced_patterns))} enhanced patterns for inspection")
+            cv2.imwrite(str(diag_dir / f"enhanced_pattern_{i}.png"), enhanced_patterns[i])
+        print(f"\nSaved {min(4, len(enhanced_patterns))} enhanced patterns for inspection in {diag_dir}")
 
 
 def main():

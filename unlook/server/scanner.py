@@ -8,6 +8,7 @@ import time
 import os
 import signal
 import json
+import base64
 from typing import Dict, List, Optional, Any, Callable, Tuple
 
 import zmq
@@ -160,6 +161,11 @@ class UnlookServer(EventEmitter):
             # Nuovi handler per lo streaming diretto
             MessageType.CAMERA_DIRECT_STREAM_START: self._handle_camera_direct_stream_start,
             MessageType.CAMERA_DIRECT_STREAM_STOP: self._handle_camera_direct_stream_stop,
+            
+            # Camera optimization handlers
+            MessageType.CAMERA_OPTIMIZE: self._handle_camera_optimize,
+            MessageType.CAMERA_AUTO_FOCUS: self._handle_camera_auto_focus,
+            MessageType.CAMERA_TEST_CAPTURE: self._handle_camera_test_capture,
 
             # Altri handlers...
         }
@@ -2229,3 +2235,118 @@ class UnlookServer(EventEmitter):
                 "status": "running" if self.scanning else "idle"
             }
         )
+    
+    def _handle_camera_optimize(self, message: Message) -> Message:
+        """
+        Handle camera optimization request.
+        
+        Expects payload:
+        {
+            "camera_id": str,
+            "target_brightness": float (optional, default 0.5),
+            "target_contrast": float (optional, default 0.3)
+        }
+        """
+        try:
+            camera_id = message.payload.get("camera_id")
+            if not camera_id:
+                return Message.create_error(message, "camera_id is required")
+            
+            target_brightness = message.payload.get("target_brightness", 0.5)
+            target_contrast = message.payload.get("target_contrast", 0.3)
+            
+            # Perform optimization
+            optimized_settings = self.camera_manager.optimize_camera_settings(
+                camera_id, target_brightness, target_contrast
+            )
+            
+            if optimized_settings:
+                return Message.create_reply(
+                    message,
+                    {
+                        "success": True,
+                        "optimized_settings": optimized_settings
+                    }
+                )
+            else:
+                return Message.create_error(message, "Failed to optimize camera settings")
+                
+        except Exception as e:
+            logger.error(f"Error optimizing camera: {e}")
+            return Message.create_error(message, str(e))
+    
+    def _handle_camera_auto_focus(self, message: Message) -> Message:
+        """
+        Handle auto-focus request.
+        
+        Expects payload:
+        {
+            "camera_id": str,
+            "focus_region": [x, y, width, height] (optional)
+        }
+        """
+        try:
+            camera_id = message.payload.get("camera_id")
+            if not camera_id:
+                return Message.create_error(message, "camera_id is required")
+            
+            focus_region = message.payload.get("focus_region")
+            
+            # Perform auto-focus
+            success = self.camera_manager.auto_focus(camera_id, focus_region)
+            
+            return Message.create_reply(
+                message,
+                {
+                    "success": success,
+                    "camera_id": camera_id
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"Error performing auto-focus: {e}")
+            return Message.create_error(message, str(e))
+    
+    def _handle_camera_test_capture(self, message: Message) -> Message:
+        """
+        Handle test image capture for optimization.
+        
+        Expects payload:
+        {
+            "camera_id": str,
+            "test_type": str ("underexposed", "normal", "overexposed")
+        }
+        """
+        try:
+            camera_id = message.payload.get("camera_id")
+            if not camera_id:
+                return Message.create_error(message, "camera_id is required")
+            
+            test_type = message.payload.get("test_type", "normal")
+            
+            # Capture test image
+            image = self.camera_manager.capture_test_image(camera_id, test_type)
+            
+            if image is not None:
+                # Encode to JPEG for response
+                import cv2
+                success, encoded_image = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                
+                if success:
+                    return Message.create_reply(
+                        message,
+                        {
+                            "success": True,
+                            "camera_id": camera_id,
+                            "test_type": test_type,
+                            "image": base64.b64encode(encoded_image).decode('utf-8')
+                        }
+                    )
+                else:
+                    return Message.create_error(message, "Failed to encode test image")
+            else:
+                return Message.create_error(message, "Failed to capture test image")
+                
+        except Exception as e:
+            logger.error(f"Error capturing test image: {e}")
+            return Message.create_error(message, str(e))

@@ -1218,3 +1218,87 @@ class CameraClient:
                   f"Right: {final_results[right_camera][0]:.2f} ({final_results[right_camera][1]})")
 
         return final_results, final_images
+    
+    def optimize_camera_settings(self, camera_id: str, target_brightness: float = 0.5, 
+                               target_contrast: float = 0.3) -> Dict[str, Any]:
+        """
+        Automatically optimize camera settings for pattern visibility.
+        
+        Args:
+            camera_id: Camera ID to optimize
+            target_brightness: Target mean brightness (0-1, default 0.5)
+            target_contrast: Target contrast level (0-1, default 0.3)
+            
+        Returns:
+            Dictionary with optimized settings
+        """
+        request = Message(
+            msg_type=MessageType.CAMERA_OPTIMIZE,
+            payload={
+                "camera_id": camera_id,
+                "target_brightness": target_brightness,
+                "target_contrast": target_contrast
+            }
+        )
+        
+        response = self.client.send_request(request)
+        if response.payload.get("success"):
+            return response.payload.get("optimized_settings", {})
+        else:
+            logger.error(f"Camera optimization failed: {response.payload.get('error')}")
+            return {}
+    
+    def auto_focus(self, camera_id: str, focus_region: Optional[List[int]] = None) -> bool:
+        """
+        Perform auto-focus operation.
+        
+        Args:
+            camera_id: Camera ID
+            focus_region: Optional region of interest for focus [x, y, width, height]
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        payload = {"camera_id": camera_id}
+        if focus_region:
+            payload["focus_region"] = focus_region
+            
+        request = Message(
+            msg_type=MessageType.CAMERA_AUTO_FOCUS,
+            payload=payload
+        )
+        
+        response = self.client.send_request(request)
+        return response.payload.get("success", False)
+    
+    def capture_test_image(self, camera_id: str, test_type: str = "normal") -> Optional[np.ndarray]:
+        """
+        Capture a test image for optimization.
+        
+        Args:
+            camera_id: Camera ID
+            test_type: Type of test image ("underexposed", "normal", "overexposed")
+            
+        Returns:
+            Test image as numpy array, None if error
+        """
+        request = Message(
+            msg_type=MessageType.CAMERA_TEST_CAPTURE,
+            payload={
+                "camera_id": camera_id,
+                "test_type": test_type
+            }
+        )
+        
+        response = self.client.send_request(request)
+        
+        if response.payload.get("success"):
+            # Decode base64 image
+            import base64
+            image_data = base64.b64decode(response.payload["image"])
+            nparr = np.frombuffer(image_data, np.uint8)
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            return image
+        else:
+            logger.error(f"Failed to capture test image: {response.payload.get('error')}")
+            return None

@@ -17,8 +17,13 @@ def diagnose_patterns(image_dir):
     """Diagnose why patterns aren't decoding properly."""
     pattern_dir = Path(image_dir) / "01_patterns" / "raw"
     
+    # Create diagnostics directory
+    diag_dir = Path(image_dir) / "diagnostics"
+    diag_dir.mkdir(exist_ok=True)
+    
     print(f"\nDIAGNOSTIC ANALYSIS")
     print("="*50)
+    print(f"Saving diagnostics to: {diag_dir}")
     
     # Load reference images
     black_left = cv2.imread(str(pattern_dir / "black_reference_left.png"), cv2.IMREAD_GRAYSCALE)
@@ -89,13 +94,13 @@ def diagnose_patterns(image_dir):
     # Enhanced difference image
     diff_enhanced = np.abs(diff)
     diff_enhanced = (diff_enhanced / np.max(diff_enhanced) * 255).astype(np.uint8)
-    cv2.imwrite('diagnostic_difference.png', diff_enhanced)
-    print("Saved: diagnostic_difference.png")
+    cv2.imwrite(str(diag_dir / 'diagnostic_difference.png'), diff_enhanced)
+    print(f"Saved: {diag_dir / 'diagnostic_difference.png'}")
     
     # Create side-by-side comparison
     comparison = np.hstack([bit0_normal, bit0_inv, diff_enhanced])
-    cv2.imwrite('diagnostic_comparison.png', comparison)
-    print("Saved: diagnostic_comparison.png")
+    cv2.imwrite(str(diag_dir / 'diagnostic_comparison.png'), comparison)
+    print(f"Saved: {diag_dir / 'diagnostic_comparison.png'}")
     
     # Profile plot
     import matplotlib
@@ -126,9 +131,9 @@ def diagnose_patterns(image_dir):
     plt.grid(True)
     
     plt.tight_layout()
-    plt.savefig('diagnostic_profiles.png', dpi=150)
+    plt.savefig(str(diag_dir / 'diagnostic_profiles.png'), dpi=150)
     plt.close()
-    print("Saved: diagnostic_profiles.png")
+    print(f"Saved: {diag_dir / 'diagnostic_profiles.png'}")
     
     # Test with simple threshold
     print("\n5. SIMPLE DECODING TEST:")
@@ -136,8 +141,8 @@ def diagnose_patterns(image_dir):
     # Try basic thresholding
     threshold = np.mean(bit0_normal)
     binary = (bit0_normal > threshold).astype(np.uint8) * 255
-    cv2.imwrite('diagnostic_threshold.png', binary)
-    print("Saved: diagnostic_threshold.png")
+    cv2.imwrite(str(diag_dir / 'diagnostic_threshold.png'), binary)
+    print(f"Saved: {diag_dir / 'diagnostic_threshold.png'}")
     
     # Count unique values in each pattern
     print("\nPattern intensity distributions:")

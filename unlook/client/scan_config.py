@@ -18,6 +18,9 @@ class PatternType(Enum):
     MULTI_SCALE = "multi_scale"  # Multi-scale Gray code patterns with varying line widths
     MULTI_FREQUENCY = "multi_frequency"  # Multi-frequency phase shift patterns
     VARIABLE_WIDTH = "variable_width"  # Variable width Gray code patterns
+    MAZE = "maze"  # Maze patterns for improved correspondence matching
+    VORONOI = "voronoi"  # Voronoi patterns for dense surface reconstruction
+    HYBRID_ARUCO = "hybrid_aruco"  # Hybrid patterns with ArUco markers for registration
 
 
 class ScanningQuality(Enum):
