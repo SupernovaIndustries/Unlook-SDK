@@ -25,6 +25,16 @@ class MazeCell:
     walls: Dict[str, bool]  # 'north', 'south', 'east', 'west'
     visited: bool = False
     region_id: int = -1
+    
+    def __hash__(self):
+        """Make cell hashable based on coordinates."""
+        return hash((self.x, self.y))
+    
+    def __eq__(self, other):
+        """Cells are equal if they have the same coordinates."""
+        if isinstance(other, MazeCell):
+            return self.x == other.x and self.y == other.y
+        return False
 
 
 class MazePatternGenerator:

@@ -11,9 +11,15 @@ unique cell patterns across the projected image. This approach offers:
 import numpy as np
 import cv2
 import logging
-from scipy.spatial import Voronoi, voronoi_plot_2d
 from typing import List, Dict, Tuple, Optional, Any
 import json
+
+try:
+    from scipy.spatial import Voronoi, voronoi_plot_2d
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+    logger.warning("scipy not available. Voronoi patterns will not work.")
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +53,9 @@ class VoronoiPatternGenerator:
         Returns:
             Pattern image as numpy array
         """
+        if not SCIPY_AVAILABLE:
+            raise ImportError("scipy is required for Voronoi patterns. Install with: pip install scipy")
+            
         logger.info(f"Generating Voronoi pattern with {num_points} points and {color_scheme} color scheme")
         
         # Generate seed points

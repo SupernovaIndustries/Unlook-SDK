@@ -1009,7 +1009,15 @@ class StaticScanner:
         pattern_height = self.config.pattern_height
         
         # Generate patterns based on the specified pattern type
-        pattern_type = self.config.pattern_type if hasattr(self.config, 'pattern_type') else 'gray_code'
+        pattern_type = None
+        if hasattr(self.config, 'pattern_type'):
+            if hasattr(self.config.pattern_type, 'value'):
+                # Pattern type is an enum
+                pattern_type = self.config.pattern_type.value
+            else:
+                pattern_type = self.config.pattern_type
+        else:
+            pattern_type = 'gray_code'
         
         logger.info(f"Using pattern type: {pattern_type}")
         
@@ -1095,7 +1103,7 @@ class StaticScanner:
             })
             
             # Generate maze patterns with different algorithms
-            algorithms = ["recursive_backtrack", "prims", "dfs"]
+            algorithms = ["recursive_backtrack", "prim", "kruskal"]
             for i, algo in enumerate(algorithms):
                 pattern_img = maze_gen.generate(algorithm=algo)
                 patterns.append({
@@ -1258,7 +1266,8 @@ class StaticScanner:
             right_images.append(right)
             
         # Add enhanced pattern types
-        for pattern_type in ['multi_scale', 'multi_frequency', 'variable_width']:
+        for pattern_type in ['multi_scale', 'multi_frequency', 'variable_width', 
+                            'maze', 'voronoi', 'hybrid_aruco']:
             for left, right in captured_images.get(pattern_type, []):
                 left_images.append(left)
                 right_images.append(right)
@@ -1328,8 +1337,25 @@ class StaticScanner:
         # 22-33: phase shift patterns (12 steps)
         
         if len(left_images) < 22:
-            logger.error(f"Not enough images for Gray code decoding: {len(left_images)}")
-            return self._fallback_decode(left_images, right_images)
+            # Handle pattern-specific decoding
+            # Check pattern type from config or instance
+            pattern_type = None
+            if hasattr(self.config, 'pattern_type'):
+                if hasattr(self.config.pattern_type, 'value'):
+                    # Pattern type is an enum
+                    pattern_type = self.config.pattern_type.value
+                else:
+                    pattern_type = self.config.pattern_type
+            else:
+                pattern_type = 'gray_code'
+            
+            if pattern_type in ['maze', 'voronoi', 'hybrid_aruco']:
+                # Use pattern-specific decoder
+                logger.info(f"Using {pattern_type} pattern decoder")
+                return self._decode_special_patterns(left_images, right_images, pattern_type)
+            else:
+                logger.warning(f"Not enough images for Gray code decoding: {len(left_images)}")
+                return self._basic_stereo_matching(left_images, right_images)
         
         # Convert to grayscale if needed
         def to_gray(img):
@@ -1535,7 +1561,7 @@ class StaticScanner:
         # If too few correspondences, fall back to simple method
         if len(points_left) < 100:
             logger.warning("Too few Gray code correspondences, using fallback method")
-            return self._fallback_decode(left_images, right_images)
+            return self._basic_stereo_matching(left_images, right_images)
         
         # Create final masks
         final_mask_left = np.zeros((height, width), dtype=bool)
@@ -1571,7 +1597,120 @@ class StaticScanner:
         
         return points_left, points_right, final_mask_left, final_mask_right
     
-    def _fallback_decode(self, left_images: List[np.ndarray], right_images: List[np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def _decode_special_patterns(self, left_images: List[np.ndarray], right_images: List[np.ndarray], pattern_type: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Decode special pattern types (maze, voronoi, hybrid_aruco).
+        
+        Args:
+            left_images: List of left camera images
+            right_images: List of right camera images
+            pattern_type: Type of pattern to decode
+            
+        Returns:
+            Tuple of (left_coords, right_coords, mask_left, mask_right)
+        """
+        logger.info(f"Decoding {pattern_type} patterns")
+        
+        height, width = left_images[0].shape[:2]
+        
+        # Initialize pattern-specific decoder
+        if pattern_type == 'maze':
+            from ..patterns.maze_pattern import MazePatternDecoder
+            decoder = MazePatternDecoder({
+                'cell_size': 16,
+                'maze_width': width // 16,
+                'maze_height': height // 16
+            })
+        elif pattern_type == 'voronoi':
+            from ..patterns.voronoi_pattern import VoronoiPatternDecoder
+            decoder = VoronoiPatternDecoder({
+                'width': width,
+                'height': height
+            })
+        elif pattern_type == 'hybrid_aruco':
+            from ..patterns.hybrid_aruco_pattern import HybridArUcoPatternDecoder
+            decoder = HybridArUcoPatternDecoder({
+                'width': width,
+                'height': height
+            })
+        else:
+            logger.error(f"Unknown pattern type: {pattern_type}")
+            return self._basic_stereo_matching(left_images, right_images)
+        
+        # Find reference patterns
+        white_idx = black_idx = -1
+        pattern_indices = []
+        
+        for i in range(len(left_images)):
+            # Skip reference images
+            if i < len(left_images) and hasattr(left_images[i], 'shape') and len(left_images[i].shape) > 0:
+                # Check if it's a solid white or black image
+                if np.mean(left_images[i]) > 250:
+                    white_idx = i
+                elif np.mean(left_images[i]) < 5:
+                    black_idx = i
+                else:
+                    pattern_indices.append(i)
+        
+        # Decode each pattern
+        all_points_left = []
+        all_points_right = []
+        
+        for idx in pattern_indices:
+            try:
+                # Use the pattern decoder
+                x_coords_left, y_coords_left = decoder.decode(left_images[idx], left_images[idx])
+                x_coords_right, y_coords_right = decoder.decode(right_images[idx], right_images[idx])
+                
+                # Create masks for valid coordinates
+                mask_left = (x_coords_left >= 0) & (y_coords_left >= 0)
+                mask_right = (x_coords_right >= 0) & (y_coords_right >= 0)
+                
+                # Find correspondences between left and right
+                # Match points with similar projector coordinates
+                valid_left = np.where(mask_left)
+                valid_right = np.where(mask_right)
+                
+                for i, (y, x) in enumerate(zip(valid_left[0], valid_left[1])):
+                    proj_x_left = x_coords_left[y, x]
+                    proj_y_left = y_coords_left[y, x]
+                    
+                    # Find matching points in right image
+                    for j, (yr, xr) in enumerate(zip(valid_right[0], valid_right[1])):
+                        proj_x_right = x_coords_right[yr, xr]
+                        proj_y_right = y_coords_right[yr, xr]
+                        
+                        # Check if projector coordinates match closely
+                        if abs(proj_x_left - proj_x_right) < 5 and abs(proj_y_left - proj_y_right) < 5:
+                            all_points_left.append([x, y])
+                            all_points_right.append([xr, yr])
+                            break
+            except Exception as e:
+                logger.error(f"Error decoding pattern {idx}: {e}")
+                continue
+        
+        if len(all_points_left) == 0:
+            logger.warning(f"No correspondences found for {pattern_type} patterns")
+            return self._basic_stereo_matching(left_images, right_images)
+        
+        # Convert to numpy arrays
+        points_left = np.array(all_points_left, dtype=np.float32)
+        points_right = np.array(all_points_right, dtype=np.float32)
+        
+        # Create masks
+        mask_left = np.zeros((height, width), dtype=bool)
+        mask_right = np.zeros((height, width), dtype=bool)
+        
+        for pt in points_left.astype(int):
+            mask_left[pt[1], pt[0]] = True
+        for pt in points_right.astype(int):
+            mask_right[pt[1], pt[0]] = True
+        
+        logger.info(f"Found {len(points_left)} correspondences from {pattern_type} patterns")
+        
+        return points_left, points_right, mask_left, mask_right
+    
+    def _basic_stereo_matching(self, left_images: List[np.ndarray], right_images: List[np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Fallback decoding method using simple feature matching."""
         logger.warning("Using fallback pattern decoding")
         

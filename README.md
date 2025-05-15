@@ -107,6 +107,21 @@ pip install torch torchvision
 pip install cupy
 ```
 
+### Advanced Pattern Support (Optional)
+
+For the new advanced pattern types, install additional dependencies:
+
+```bash
+# For Voronoi patterns
+pip install scipy
+
+# For Hybrid ArUco patterns
+pip install opencv-contrib-python
+
+# Or install all pattern dependencies
+pip install -r patterns-requirements.txt
+```
+
 ### Testing Your Installation
 
 Verify your installation with the test script:
@@ -117,6 +132,9 @@ python -m unlook.utils.check_gpu
 
 # Run basic test
 python -m unlook.examples.test_client
+
+# Test advanced patterns (optional)
+python unlook/examples/test_pattern_generators.py
 ```
 
 ## 📊 Example Usage

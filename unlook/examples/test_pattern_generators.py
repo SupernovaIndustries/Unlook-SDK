@@ -23,16 +23,18 @@ import cv2
 import numpy as np
 
 
-def test_maze_patterns():
+def test_maze_patterns(output_dir="test_patterns"):
     """Test maze pattern generation."""
     print("Testing Maze Pattern Generator...")
+    
+    os.makedirs(output_dir, exist_ok=True)
     
     generator = MazePatternGenerator(1280, 720)
     algorithms = ["recursive_backtrack", "prim", "kruskal"]
     
     for i, algo in enumerate(algorithms):
         pattern = generator.generate(algorithm=algo)
-        filename = f"test_maze_{algo}.png"
+        filename = os.path.join(output_dir, f"test_maze_{algo}.png")
         cv2.imwrite(filename, pattern)
         print(f"Generated {filename} (shape: {pattern.shape}, dtype: {pattern.dtype})")
     
@@ -41,9 +43,11 @@ def test_maze_patterns():
     print(f"Generated sequence of {len(patterns)} maze patterns")
 
 
-def test_voronoi_patterns():
+def test_voronoi_patterns(output_dir="test_patterns"):
     """Test Voronoi pattern generation."""
     print("\nTesting Voronoi Pattern Generator...")
+    
+    os.makedirs(output_dir, exist_ok=True)
     
     generator = VoronoiPatternGenerator(1280, 720)
     
@@ -56,7 +60,7 @@ def test_voronoi_patterns():
     
     for num_points, color_scheme in configs:
         pattern = generator.generate(num_points=num_points, color_scheme=color_scheme)
-        filename = f"test_voronoi_{num_points}pts_{color_scheme}.png"
+        filename = os.path.join(output_dir, f"test_voronoi_{num_points}pts_{color_scheme}.png")
         cv2.imwrite(filename, pattern)
         print(f"Generated {filename} (shape: {pattern.shape}, dtype: {pattern.dtype})")
     
@@ -65,9 +69,11 @@ def test_voronoi_patterns():
     print(f"Generated sequence of {len(patterns)} Voronoi patterns")
 
 
-def test_hybrid_aruco_patterns():
+def test_hybrid_aruco_patterns(output_dir="test_patterns"):
     """Test hybrid ArUco pattern generation."""
     print("\nTesting Hybrid ArUco Pattern Generator...")
+    
+    os.makedirs(output_dir, exist_ok=True)
     
     generator = HybridArUcoPatternGenerator(1280, 720)
     
@@ -80,14 +86,15 @@ def test_hybrid_aruco_patterns():
     
     for base_pattern, num_markers in configs:
         pattern, markers_info = generator.generate(base_pattern=base_pattern, num_markers=num_markers)
-        filename = f"test_hybrid_{base_pattern}_{num_markers}markers.png"
+        filename = os.path.join(output_dir, f"test_hybrid_{base_pattern}_{num_markers}markers.png")
         cv2.imwrite(filename, pattern)
         print(f"Generated {filename} with {len(markers_info)} markers")
         print(f"  Pattern shape: {pattern.shape}, dtype: {pattern.dtype}")
     
     # Generate calibration pattern
     calib_pattern, calib_markers = generator.generate_calibration_pattern()
-    cv2.imwrite("test_hybrid_calibration.png", calib_pattern)
+    filename = os.path.join(output_dir, "test_hybrid_calibration.png")
+    cv2.imwrite(filename, calib_pattern)
     print(f"Generated calibration pattern with {len(calib_markers)} markers")
 
 
@@ -113,14 +120,16 @@ def main():
     print("Pattern Generator Test Suite")
     print("=" * 40)
     
+    output_dir = "test_patterns"
+    
     try:
-        test_maze_patterns()
-        test_voronoi_patterns()
-        test_hybrid_aruco_patterns()
+        test_maze_patterns(output_dir)
+        test_voronoi_patterns(output_dir)
+        test_hybrid_aruco_patterns(output_dir)
         test_decoders()
         
         print("\nAll tests completed successfully!")
-        print(f"Generated test patterns in: {os.getcwd()}")
+        print(f"Generated test patterns in: {os.path.abspath(output_dir)}")
         
     except Exception as e:
         print(f"\nError during testing: {e}")

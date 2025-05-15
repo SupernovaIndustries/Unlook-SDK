@@ -16,6 +16,14 @@ from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass
 import json
 
+try:
+    # Check if cv2.aruco is available
+    _ = cv2.aruco.Dictionary_get
+    ARUCO_AVAILABLE = True
+except (AttributeError, ImportError):
+    ARUCO_AVAILABLE = False
+    logging.warning("cv2.aruco not available. Install opencv-contrib-python for ArUco support.")
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,6 +47,9 @@ class HybridArUcoPatternGenerator:
             width: Pattern width in pixels
             height: Pattern height in pixels
         """
+        if not ARUCO_AVAILABLE:
+            raise ImportError("cv2.aruco is required for Hybrid ArUco patterns. Install with: pip install opencv-contrib-python")
+            
         self.width = width
         self.height = height
         self.aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_4X4_50)

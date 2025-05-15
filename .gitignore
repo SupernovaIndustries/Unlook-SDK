@@ -61,3 +61,4 @@ test_imports.py
 /unlook/client/examples/unlook_debug
 /unlook/client/patterns/__pycache__
 /unlook/examples/scanning
+/unlook/examples/test_patterns
