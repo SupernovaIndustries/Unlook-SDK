@@ -1107,14 +1107,14 @@ class StaticScanner:
                     exposure_time = int(base_exposure * (2 ** self.config.exposure))
                     logger.info(f"Converted EV {self.config.exposure} to {exposure_time}μs")
                 
-                # FINAL ADJUSTMENT: Very aggressive exposure increase
-                # Still getting inverted references with dynamic range < 15
-                # Need white reference to be 200+ for proper decoding
-                exposure_time = 50000  # 50ms exposure (500x from original)
-                analog_gain = 2.0      # Increase gain as well
+                # AMBIENT LIGHT OPTIMIZED: Settings for demos in lit rooms
+                # Since we can't control lighting during investor demos
+                # Optimize for maximum pattern visibility in ambient light
+                exposure_time = 2000  # Moderate exposure for ambient conditions
+                analog_gain = 2.0    # Higher gain to see patterns better
                 
-                logger.critical(f"MAXIMUM EXPOSURE: {exposure_time}μs with gain {analog_gain}")
-                logger.critical("Using maximum exposure to overcome severe underexposure")
+                logger.critical(f"DEMO MODE: {exposure_time}μs with gain {analog_gain}")
+                logger.critical("Optimized for scanning in ambient light conditions")
                 
                 # Create optimal picamera2 configuration for patterns
                 camera_config = {
@@ -1141,13 +1141,17 @@ class StaticScanner:
                 
                 try:
                     # Apply to all cameras
-                    camera_list = self.client.camera.list()
-                    for camera_id in camera_list:
-                        success = self.client.camera.configure(camera_id, camera_config)
-                        if success:
-                            logger.info(f"Successfully configured camera {camera_id}")
-                        else:
-                            logger.warning(f"Failed to configure camera {camera_id}")
+                    camera_list = self.client.camera.get_cameras()
+                    logger.info(f"Found {len(camera_list)} cameras to configure")
+                    for camera_info in camera_list:
+                        camera_id = camera_info.get('id')
+                        if camera_id:
+                            logger.info(f"Configuring camera {camera_id} with: {camera_config}")
+                            success = self.client.camera.configure(camera_id, camera_config)
+                            if success:
+                                logger.info(f"Successfully configured camera {camera_id}")
+                            else:
+                                logger.warning(f"Failed to configure camera {camera_id}")
                             
                     # Try the old method as fallback
                     if hasattr(self.client.camera, 'set_exposure'):
