@@ -49,24 +49,77 @@ except ImportError:
     def deserialize_binary_message(data):
         """Simple fallback for deserializing binary messages."""
         import logging
+        import struct
         logger = logging.getLogger(__name__)
         
         # Check for ULMC format v1 (multi-camera format)
         if data.startswith(b'ULMC\x01'):
             logger.debug("Detected ULMC format v1")
-            # For the fallback, we'll use a simplified approach
-            # The key insight from the log is that the main deserializer already
-            # found the ULMC format, so we just need to return something compatible
-            payload = {
-                "format": "ULMC",
-                "version": 1,
-                "num_cameras": 2,  # Default for stereo
-                "cameras": {
-                    "picamera2_0": {"size": 0, "offset": 0},
-                    "picamera2_1": {"size": 0, "offset": 0}
+            
+            try:
+                # Parse ULMC header
+                # Format: 'ULMC' (4 bytes) + version (1 byte) + reserved (3 bytes) + num_cameras (4 bytes)
+                if len(data) < 12:
+                    logger.error("ULMC data too short for header")
+                    return "binary_data", {}, data
+                
+                header = data[:12]
+                num_cameras = struct.unpack(">I", header[8:12])[0]
+                logger.debug(f"ULMC header indicates {num_cameras} cameras")
+                
+                # Parse camera entries
+                offset = 12
+                cameras = {}
+                
+                for i in range(num_cameras):
+                    if offset + 4 > len(data):
+                        logger.error(f"ULMC data too short for camera {i} name length")
+                        break
+                        
+                    # Read camera name length
+                    name_len = struct.unpack(">I", data[offset:offset+4])[0]
+                    offset += 4
+                    
+                    if offset + name_len > len(data):
+                        logger.error(f"ULMC data too short for camera {i} name")
+                        break
+                        
+                    # Read camera name
+                    camera_name = data[offset:offset+name_len].decode('utf-8')
+                    offset += name_len
+                    
+                    if offset + 16 > len(data):
+                        logger.error(f"ULMC data too short for camera {i} info")
+                        break
+                        
+                    # Read camera info (timestamp + offset + size)
+                    timestamp = struct.unpack(">Q", data[offset:offset+8])[0]
+                    img_offset = struct.unpack(">I", data[offset+8:offset+12])[0]
+                    img_size = struct.unpack(">I", data[offset+12:offset+16])[0]
+                    offset += 16
+                    
+                    cameras[camera_name] = {
+                        "timestamp": timestamp,
+                        "offset": img_offset, 
+                        "size": img_size
+                    }
+                    
+                    logger.debug(f"Camera {camera_name}: offset={img_offset}, size={img_size}")
+                
+                payload = {
+                    "format": "ULMC",
+                    "version": 1,
+                    "num_cameras": num_cameras,
+                    "cameras": cameras
                 }
-            }
-            return "multi_camera_response", payload, data
+                
+                return "multi_camera_response", payload, data
+                
+            except Exception as e:
+                logger.error(f"Error parsing ULMC format: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                return "binary_data", {}, data
         
         # For other formats, return as camera frame
         return "camera_frame", {"format": "jpeg"}, data
@@ -703,26 +756,40 @@ class CameraClient:
             # ULMC FORMAT HANDLING
             if msg_type == "multi_camera_response" and payload.get("format") == "ULMC":
                 logger.info(f"Processing ULMC response with {payload.get('num_cameras', 0)} cameras")
+                logger.debug(f"Full payload: {payload}")
+                logger.debug(f"Camera info: {payload.get('cameras', {})}")
                 images = {}
 
-                # For each camera
-                for camera_id, camera_info in payload.get("cameras", {}).items():
-                    # Extract and decode image
-                    offset = camera_info.get("offset", 0)
-                    size = camera_info.get("size", 0)
+                # Check if cameras dict exists
+                cameras_dict = payload.get("cameras", {})
+                if not cameras_dict:
+                    logger.error("No cameras information in ULMC payload")
+                    # Fall through to fallback method
+                else:
+                    # For each camera
+                    for camera_id, camera_info in cameras_dict.items():
+                        logger.debug(f"Processing camera {camera_id} with info: {camera_info}")
+                        
+                        # Extract and decode image
+                        offset = camera_info.get("offset", 0)
+                        size = camera_info.get("size", 0)
 
-                    if offset > 0 and size > 0 and offset + size <= len(binary_data):
-                        jpeg_data = binary_data[offset:offset + size]
-                        image = decode_jpeg_to_image(jpeg_data)
+                        if offset >= 0 and size > 0 and offset + size <= len(binary_data):
+                            jpeg_data = binary_data[offset:offset + size]
+                            image = decode_jpeg_to_image(jpeg_data)
 
-                        if image is not None:
-                            images[camera_id] = image
-                            logger.debug(f"Decoded ULMC image for camera {camera_id}: {image.shape}")
+                            if image is not None:
+                                images[camera_id] = image
+                                logger.debug(f"Decoded ULMC image for camera {camera_id}: {image.shape}")
+                            else:
+                                logger.error(f"Unable to decode ULMC image for camera {camera_id}")
                         else:
-                            logger.error(f"Unable to decode ULMC image for camera {camera_id}")
+                            logger.error(f"Invalid offset/size for camera {camera_id}: offset={offset}, size={size}, data_len={len(binary_data)}")
 
-                if images:
-                    return images
+                    if images:
+                        return images
+                    else:
+                        logger.warning("No images decoded from ULMC format, falling through")
 
             # DIRECT JPEG HANDLING
             if msg_type == "camera_frame" and payload.get("direct_image", False):
@@ -758,39 +825,84 @@ class CameraClient:
     def _fallback_decode_multi_response(self, binary_data: bytes, camera_ids: List[str]) -> Dict[str, Optional[np.ndarray]]:
         """
         Fallback method to decode multi-camera response when format is unknown.
+        Attempts to extract actual camera data instead of generating synthetic patterns.
         """
         try:
-            # For simulation purposes, just create simulated images
             logger.info("Using fallback method to decode multi-camera response")
             images = {}
             
-            # Create simulated images for each camera
-            height, width = 720, 1280
+            # Try to extract JPEG images from the binary data
+            # Look for JPEG markers in the data
+            jpeg_starts = []
+            jpeg_ends = []
             
-            for i, camera_id in enumerate(camera_ids):
-                # Create a simple pattern
-                pattern = np.zeros((height, width), dtype=np.uint8)
-                square_size = 50
-                
-                for y in range(0, height, square_size):
-                    for x in range(0, width, square_size):
-                        if (y // square_size + x // square_size) % 2 == 0:
-                            pattern[y:y+square_size, x:x+square_size] = 255
-                
-                # Create a shift based on camera index
-                shift = i * 10
-                
-                # Apply shift and create RGB image
-                shifted_pattern = np.roll(pattern, shift, axis=1)
-                image = np.stack([shifted_pattern, shifted_pattern, shifted_pattern], axis=2)
-                
-                # Add to result
-                images[camera_id] = image
+            # JPEG SOI marker (Start of Image)
+            soi_marker = b'\xff\xd8'
+            # JPEG EOI marker (End of Image) 
+            eoi_marker = b'\xff\xd9'
             
+            # Find all JPEG images in the data
+            offset = 0
+            while offset < len(binary_data) - 1:
+                if binary_data[offset:offset+2] == soi_marker:
+                    jpeg_starts.append(offset)
+                elif binary_data[offset:offset+2] == eoi_marker:
+                    jpeg_ends.append(offset + 2)
+                offset += 1
+            
+            # Extract and decode images
+            num_images_found = min(len(jpeg_starts), len(jpeg_ends))
+            logger.info(f"Found {num_images_found} JPEG images in binary data")
+            
+            if num_images_found > 0:
+                for i in range(min(num_images_found, len(camera_ids))):
+                    try:
+                        # Extract JPEG data
+                        jpeg_data = binary_data[jpeg_starts[i]:jpeg_ends[i]]
+                        
+                        # Decode JPEG to image
+                        nparr = np.frombuffer(jpeg_data, np.uint8)
+                        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                        
+                        if image is not None:
+                            logger.info(f"Successfully decoded image {i+1} of size {image.shape}")
+                            images[camera_ids[i]] = image
+                        else:
+                            logger.warning(f"Failed to decode JPEG image {i+1}")
+                            
+                    except Exception as e:
+                        logger.error(f"Error decoding image {i+1}: {e}")
+            else:
+                logger.warning("No JPEG images found in binary data, attempting raw decode")
+                
+                # If no JPEG markers found, try to decode as raw data
+                # This could be raw RGB or other format
+                try:
+                    # Assume raw RGB data for now
+                    expected_size = 1280 * 720 * 3  # width * height * channels
+                    
+                    for i, camera_id in enumerate(camera_ids):
+                        offset = i * expected_size
+                        if offset + expected_size <= len(binary_data):
+                            raw_data = binary_data[offset:offset + expected_size]
+                            image = np.frombuffer(raw_data, dtype=np.uint8).reshape(720, 1280, 3)
+                            images[camera_id] = image
+                            logger.info(f"Decoded raw RGB image for camera {camera_id}")
+                except Exception as e:
+                    logger.error(f"Failed to decode as raw data: {e}")
+            
+            # If still no images, return empty dict rather than synthetic patterns
+            if not images:
+                logger.error("Could not extract any real camera images from binary data")
+                logger.error(f"Binary data size: {len(binary_data)} bytes")
+                logger.error(f"First 100 bytes: {binary_data[:100].hex()}")
+                
             return images
             
         except Exception as e:
             logger.error(f"Error in fallback method: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return {}
 
     def get_stereo_pair(self) -> Tuple[Optional[str], Optional[str]]:

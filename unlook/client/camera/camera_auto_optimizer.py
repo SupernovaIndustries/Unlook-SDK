@@ -140,7 +140,7 @@ class CameraAutoOptimizer:
         
         # Step 1: Capture ambient (projector off) - baseline lighting
         if projector_client:
-            projector_client.turn_off()
+            projector_client.show_solid_field('Black')
         time.sleep(0.5)
         references['ambient'] = self._capture_image()
         logger.info("Captured ambient reference image")

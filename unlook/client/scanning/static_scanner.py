@@ -591,7 +591,8 @@ class StaticScanner:
                     logger.info(f"About to project pattern: {pattern_name}, type: {pattern_type}")
                     
                     # Handle custom patterns that need special projection
-                    if pattern_type in ["maze", "voronoi", "hybrid_aruco", "enhanced_gray", "custom"]:
+                    # Remove enhanced_gray from custom patterns as it's actually a gray_code pattern
+                    if pattern_type in ["maze", "voronoi", "hybrid_aruco", "custom"]:
                         # For custom patterns, use checkerboard approximation
                         logger.info(f"Using checkerboard approximation for {pattern_type} pattern")
                         
@@ -617,7 +618,7 @@ class StaticScanner:
                             logger.warning(f"Pattern {pattern_name} has no image, using white field")
                             success = self.projector.show_solid_field("White")
                     else:
-                        # Use standard pattern projection for supported types
+                        # Use standard pattern projection for supported types (includes gray_code)
                         success = self.projector.project_pattern(pattern)
                     
                     if success:
@@ -993,44 +994,6 @@ class StaticScanner:
         if len(points_left) == 0 or len(points_right) == 0:
             logger.error("No valid correspondences found")
             
-            # Extra debugging for maze patterns
-            if self.config.pattern_type == 'maze' and self.debug_enabled:
-                logger.info("Saving debug information for maze pattern analysis...")
-                
-                # Save all captured pattern images
-                maze_debug_dir = self.debug_path / "maze_debug"
-                maze_debug_dir.mkdir(exist_ok=True, parents=True)
-                
-                # Save captured images from dictionary
-                for pattern_type, pairs in captured_images.items():
-                    for i, (left_img, right_img) in enumerate(pairs):
-                        if left_img is not None:
-                            cv2.imwrite(str(maze_debug_dir / f"captured_{pattern_type}_{i}_left.png"), left_img)
-                        if right_img is not None:
-                            cv2.imwrite(str(maze_debug_dir / f"captured_{pattern_type}_{i}_right.png"), right_img)
-                
-                # Save rectified images
-                for i, (left_img, right_img) in enumerate(zip(left_images, right_images)):
-                    cv2.imwrite(str(maze_debug_dir / f"rectified_{i}_left.png"), left_img)
-                    cv2.imwrite(str(maze_debug_dir / f"rectified_{i}_right.png"), right_img)
-                
-                # Save pattern metadata
-                pattern_info = {
-                    'num_patterns': len(patterns),
-                    'pattern_types': [p['pattern_type'] for p in patterns],
-                    'pattern_names': [p.get('name', 'unnamed') for p in patterns],
-                    'captured_types': list(captured_images.keys()),
-                    'captured_counts': {k: len(v) for k, v in captured_images.items()},
-                    'image_sizes': {
-                        'left': left_images[0].shape if left_images else None,
-                        'right': right_images[0].shape if right_images else None
-                    }
-                }
-                
-                with open(maze_debug_dir / "pattern_info.json", 'w') as f:
-                    json.dump(pattern_info, f, indent=2)
-                
-                logger.info(f"Maze pattern debug data saved to: {maze_debug_dir}")
                 
             return o3d.geometry.PointCloud()
         
@@ -1247,87 +1210,6 @@ class StaticScanner:
             
             return patterns
             
-            
-        elif pattern_type == 'voronoi':
-            # Generate Voronoi patterns
-            logger.info("Generating Voronoi patterns")
-            from ..patterns.voronoi_pattern import VoronoiPatternGenerator
-            
-            voronoi_gen = VoronoiPatternGenerator(pattern_width, pattern_height)
-            
-            # Generate multiple Voronoi patterns
-            patterns = []
-            
-            # Add reference patterns
-            patterns.append({
-                "pattern_type": "solid_field",
-                "name": "white_reference",
-                "color": "White",
-                "image": np.ones((pattern_height, pattern_width), dtype=np.uint8) * 255
-            })
-            
-            patterns.append({
-                "pattern_type": "solid_field",
-                "name": "black_reference",
-                "color": "Black",
-                "image": np.zeros((pattern_height, pattern_width), dtype=np.uint8)
-            })
-            
-            # Generate Voronoi patterns with different configurations
-            num_points_list = [50, 100, 150]
-            color_schemes = ["grayscale", "binary", "colored"]
-            
-            for num_points in num_points_list:
-                for scheme in color_schemes:
-                    pattern_img = voronoi_gen.generate(num_points=num_points, color_scheme=scheme)
-                    patterns.append({
-                        "pattern_type": "voronoi",
-                        "name": f"voronoi_{num_points}pts_{scheme}",
-                        "image": pattern_img
-                    })
-            
-            return patterns
-            
-        elif pattern_type == 'hybrid_aruco':
-            # Generate hybrid ArUco patterns
-            logger.info("Generating hybrid ArUco patterns")
-            from ..patterns.hybrid_aruco_pattern import HybridArUcoPatternGenerator
-            
-            hybrid_gen = HybridArUcoPatternGenerator(pattern_width, pattern_height)
-            
-            # Generate patterns
-            patterns = []
-            
-            # Add reference patterns
-            patterns.append({
-                "pattern_type": "solid_field",
-                "name": "white_reference",
-                "color": "White",
-                "image": np.ones((pattern_height, pattern_width), dtype=np.uint8) * 255
-            })
-            
-            patterns.append({
-                "pattern_type": "solid_field",
-                "name": "black_reference",
-                "color": "Black",
-                "image": np.zeros((pattern_height, pattern_width), dtype=np.uint8)
-            })
-            
-            # Generate hybrid patterns with different base patterns
-            base_patterns = ["gray_code", "phase_shift", "checkerboard"]
-            num_markers_list = [4, 9, 16]
-            
-            for base in base_patterns:
-                for num_markers in num_markers_list:
-                    pattern_img, markers_info = hybrid_gen.generate(base_pattern=base, num_markers=num_markers)
-                    patterns.append({
-                        "pattern_type": "hybrid_aruco",
-                        "name": f"hybrid_{base}_{num_markers}markers",
-                        "image": pattern_img,
-                        "markers_info": markers_info
-                    })
-            
-            return patterns
             
         else:
             # Default to combined Gray code and phase shift patterns

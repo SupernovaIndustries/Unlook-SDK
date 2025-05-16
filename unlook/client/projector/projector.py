@@ -1024,6 +1024,9 @@ class ProjectorClient:
         
         logger.info(f"ProjectorClient.project_pattern: type={pattern_type}, name={pattern_name}")
         
+        # Log all pattern parameters for debugging
+        logger.debug(f"Pattern details: {[k for k in pattern.keys() if k != 'image']}")
+        
         # Handle different pattern types
         try:
             if pattern_type == "solid_field":
@@ -1102,69 +1105,33 @@ class ProjectorClient:
                         background_width=width
                     )
                     
-            elif pattern_type in ["maze", "voronoi", "hybrid_aruco", "enhanced_gray", "custom"]:
+            elif pattern_type == "enhanced_gray":
+                # Enhanced gray patterns should already be processed as gray_code patterns
+                logger.warning(f"Enhanced gray pattern should have been processed as gray_code. Using fallback.")
+                # Enhanced gray patterns contain the actual pattern data
+                if "image" in pattern:
+                    # For now, project a simple checkerboard pattern as proxy
+                    return self.show_checkerboard(
+                        foreground_color="White",
+                        background_color="Black",
+                        horizontal_count=20,
+                        vertical_count=20
+                    )
+                else:
+                    return self.show_solid_field("White")
+                    
+            elif pattern_type == "custom":
                 # Handle custom pattern types
                 logger.info(f"Projecting custom pattern type: {pattern_type}")
                 
-                # For custom patterns, try to send raw image data
-                if "image" in pattern:
-                    # Convert to grayscale if needed
-                    image = pattern["image"]
-                    if len(image.shape) == 3:
-                        import cv2
-                        image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-                    
-                    # Send raw image to projector
-                    try:
-                        # Get the message type value properly
-                        if hasattr(MessageType, 'PROJECTOR_PATTERN'):
-                            msg_type = MessageType.PROJECTOR_PATTERN
-                        else:
-                            msg_type = "projector_pattern"
-                        
-                        # Handle the message type value correctly
-                        if hasattr(msg_type, 'value'):
-                            msg_type_value = msg_type.value
-                        else:
-                            msg_type_value = msg_type
-                        
-                        success, response, _ = self.client.send_message(
-                            msg_type_value,
-                            {
-                                "pattern_type": "raw_image",
-                                "binary_data": image.tobytes(),
-                                "width": image.shape[1],
-                                "height": image.shape[0],
-                                "channels": 1 if len(image.shape) == 2 else image.shape[2],
-                                "name": pattern_name
-                            }
-                        )
-                        
-                        if success and response:
-                            logger.info(f"Raw image pattern projected: {pattern_name}")
-                            return True
-                        else:
-                            logger.warning(f"Failed to project raw image: {pattern_name}. Falling back to approximation.")
-                            # Fallback to approximation
-                            h, w = image.shape[:2]
-                            mean_val = np.mean(image)
-                            
-                            if mean_val > 200:  # Mostly white
-                                return self.show_solid_field("White")
-                            elif mean_val < 50:  # Mostly black
-                                return self.show_solid_field("Black")
-                            else:
-                                # Use checkerboard pattern with size based on image content
-                                size_x = max(8, min(50, w // 20))
-                                size_y = max(8, min(50, h // 20))
-                                return self.show_checkerboard(horizontal_count=size_x, vertical_count=size_y)
-                    except Exception as e:
-                        logger.error(f"Error projecting raw image: {e}")
-                        return self.show_checkerboard()
-                else:
-                    # No image data, use white field as fallback
-                    logger.warning(f"Custom pattern {pattern_name} has no image data")
-                    return self.show_solid_field("White")
+                # For custom patterns, use checkerboard as fallback
+                logger.warning(f"Custom pattern type {pattern_type} not directly supported, using checkerboard")
+                return self.show_checkerboard(
+                    foreground_color="White",
+                    background_color="Black",
+                    horizontal_count=10,
+                    vertical_count=10
+                )
                     
             else:
                 logger.warning(f"Unsupported pattern type: {pattern_type}")
