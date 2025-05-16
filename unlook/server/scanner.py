@@ -1549,6 +1549,7 @@ class UnlookServer(EventEmitter):
             return Message.create_error(message, "Camera ID not specified")
 
         config = message.payload.get("config", {})
+        logger.info(f"Received camera config request for {camera_id}: {config}")
 
         try:
             success = self.camera_manager.configure_camera(camera_id, config)

@@ -626,13 +626,20 @@ class StaticScanner:
                     else:
                         logger.error(f"Failed to project pattern: {pattern_name}")
                         
-                    # Use a more reliable delay for pattern stabilization
-                    time.sleep(0.2)  # Always wait at least 200ms
+                    # INCREASED timing for severely overexposed camera to stabilize
+                    # Wait for projector to stabilize AND camera to adjust
+                    pattern_stabilization_delay = 0.6  # 600ms base delay (doubled)
                     
-                    # Apply a slightly longer delay for Gray code patterns
+                    # MUCH longer delay for reference patterns
+                    if pattern_type == "solid_field":
+                        pattern_stabilization_delay = 1.0  # 1000ms for white/black references
+                        logger.info("Extended delay for reference patterns due to overexposure")
+                        
+                    time.sleep(pattern_stabilization_delay)
+                    
+                    # Additional delay for complex patterns
                     if pattern_type in ["gray_code", "multi_scale", "variable_width", "multi_frequency", "phase_shift"]:
-                        delay = 0.2  # Base delay for most patterns
-                        time.sleep(delay)
+                        time.sleep(0.4)  # Extra 400ms for complex patterns (doubled)
                     
                     # Try to capture the pattern
                     try:
@@ -644,9 +651,13 @@ class StaticScanner:
                             logger.error(f"Cannot access camera for pattern {pattern_name}: {e}")
                             continue
                         
+                        # Pre-capture delay to ensure camera is ready
+                        time.sleep(0.1)  # 100ms pre-capture delay
+                        
                         # Capture images for this pattern
                         if hasattr(self.client.camera, 'capture_stereo_pair'):
                             left_img, right_img = self.client.camera.capture_stereo_pair()
+                            logger.debug(f"Captured stereo pair for {pattern_name}")
                         else:
                             # Fall back to capturing from individual cameras
                             cameras = self.client.camera.get_cameras()
@@ -1082,17 +1093,70 @@ class StaticScanner:
             # If optimization wasn't used or failed, apply default settings
             if not optimize_success:
                 # Set camera parameters for structured light scanning
-                # Turn off auto-exposure and auto-white balance for better results
-                if hasattr(self.client.camera, 'set_exposure'):
-                    logger.info(f"Setting exposure to {self.config.exposure}")
-                    left_camera, right_camera = self.client.camera.get_stereo_pair()
-                    if left_camera and right_camera:
-                        self.client.camera.set_exposure(left_camera, self.config.exposure, gain=self.config.gain)
-                        self.client.camera.set_exposure(right_camera, self.config.exposure, gain=self.config.gain)
-                else:
-                    logger.warning("Camera does not support setting exposure")
+                # For picamera2, we need to use the right configuration format
+                logger.info("Configuring cameras with picamera2 settings...")
                 
-                # Note: set_gain doesn't exist, gain is set via set_exposure method
+                # Get default exposure from config or calculate from camera settings
+                exposure_time = self.config.exposure if hasattr(self.config, 'exposure') else 10000
+                analog_gain = self.config.gain if hasattr(self.config, 'gain') else 1.0
+                
+                # Convert exposure value if it's in EV format (-2, -1, 0, 1, 2, etc)
+                if hasattr(self.config, 'exposure') and -10 <= self.config.exposure <= 10:
+                    # It's an EV value, convert to microseconds
+                    base_exposure = 10000  # 10ms base
+                    exposure_time = int(base_exposure * (2 ** self.config.exposure))
+                    logger.info(f"Converted EV {self.config.exposure} to {exposure_time}μs")
+                
+                # FINAL ADJUSTMENT: Very aggressive exposure increase
+                # Still getting inverted references with dynamic range < 15
+                # Need white reference to be 200+ for proper decoding
+                exposure_time = 50000  # 50ms exposure (500x from original)
+                analog_gain = 2.0      # Increase gain as well
+                
+                logger.critical(f"MAXIMUM EXPOSURE: {exposure_time}μs with gain {analog_gain}")
+                logger.critical("Using maximum exposure to overcome severe underexposure")
+                
+                # Create optimal picamera2 configuration for patterns
+                camera_config = {
+                    "exposure": exposure_time,  # microseconds
+                    "gain": analog_gain,
+                    "auto_exposure": False,
+                    "auto_gain": False,
+                    # Picamera2 specific settings
+                    "AwbMode": "Manual",  # Disable auto white balance
+                    "AwbGains": (1.0, 1.0),  # Neutral white balance
+                    "AeEnable": False,  # Disable auto exposure
+                    "AeConstraintMode": "Custom",
+                    "ExposureTime": exposure_time,
+                    "AnalogueGain": analog_gain,
+                    "ColourGains": (1.0, 1.0),  # Neutral color gains
+                    "Brightness": 0.0,  # Neutral brightness
+                    "Contrast": 1.0,  # Normal contrast
+                    "Saturation": 0.0,  # Grayscale mode (0 saturation)
+                    "Sharpness": 1.0,  # Normal sharpness
+                    "NoiseReductionMode": "Off"  # Disable noise reduction for patterns
+                }
+                
+                logger.info(f"Applying camera settings: exposure={exposure_time}μs, gain={analog_gain}")
+                
+                try:
+                    # Apply to all cameras
+                    camera_list = self.client.camera.list()
+                    for camera_id in camera_list:
+                        success = self.client.camera.configure(camera_id, camera_config)
+                        if success:
+                            logger.info(f"Successfully configured camera {camera_id}")
+                        else:
+                            logger.warning(f"Failed to configure camera {camera_id}")
+                            
+                    # Try the old method as fallback
+                    if hasattr(self.client.camera, 'set_exposure'):
+                        left_camera, right_camera = self.client.camera.get_stereo_pair()
+                        if left_camera and right_camera:
+                            self.client.camera.set_exposure(left_camera, exposure_time, gain=analog_gain)
+                            self.client.camera.set_exposure(right_camera, exposure_time, gain=analog_gain)
+                except Exception as e:
+                    logger.warning(f"Error applying camera settings: {e}")
             
             # Always try to disable auto exposure for consistency
             if hasattr(self.client.camera, 'set_auto_exposure'):

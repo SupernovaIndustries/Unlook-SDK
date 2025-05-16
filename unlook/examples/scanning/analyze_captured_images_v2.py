@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from unlook.client.scanning.patterns.enhanced_gray_code import decode_patterns
-from unlook.client.scanning.patterns.enhanced_pattern_processor import EnhancedPatternProcessor
+# Disabled for demo reliability - from unlook.client.scanning.patterns.enhanced_pattern_processor import EnhancedPatternProcessor
 
 
 def analyze_pattern_quality(image_dir):
@@ -79,9 +79,9 @@ def analyze_pattern_quality(image_dir):
             diff = pattern_h_left.astype(np.float32) - pattern_h_inv_left.astype(np.float32)
             print(f"Pattern-Inverted difference: min={np.min(diff):.1f}, max={np.max(diff):.1f}, std={np.std(diff):.1f}")
     
-    # Test enhanced processing
-    print("\nTesting Enhanced Processing:")
-    processor = EnhancedPatternProcessor(enhancement_level=3)
+    # Test enhanced processing - DISABLED for demo reliability
+    print("\nTesting Enhanced Processing: DISABLED")
+    # processor = EnhancedPatternProcessor(enhancement_level=3)
     
     # Load horizontal patterns
     h_patterns_left = []
@@ -107,16 +107,16 @@ def analyze_pattern_quality(image_dir):
         all_h_patterns.append(h_patterns_inv_left[i])
     
     if all_h_patterns:
-        # Process with enhancement
-        enhanced = processor.preprocess_images(all_h_patterns[:2], black_left, white_left)
+        # Process with enhancement - DISABLED for demo reliability
+        # enhanced = processor.preprocess_images(all_h_patterns[:2], black_left, white_left)
         
         print(f"\nOriginal pattern range: {np.min(all_h_patterns[0])}-{np.max(all_h_patterns[0])}")
-        print(f"Enhanced pattern range: {np.min(enhanced[0])}-{np.max(enhanced[0])}")
+        # print(f"Enhanced pattern range: {np.min(enhanced[0])}-{np.max(enhanced[0])}")
         
-        # Save comparison
-        comparison = np.hstack([all_h_patterns[0], enhanced[0]])
-        cv2.imwrite(str(diag_dir / "pattern_comparison.png"), comparison)
-        print(f"Saved pattern comparison to {diag_dir / 'pattern_comparison.png'}")
+        # Save comparison - DISABLED
+        # comparison = np.hstack([all_h_patterns[0], enhanced[0]])
+        # cv2.imwrite(str(diag_dir / "pattern_comparison.png"), comparison)
+        # print(f"Saved pattern comparison to {diag_dir / 'pattern_comparison.png'}")
     
     # Try decoding
     print("\nTesting Pattern Decoding:")
@@ -130,15 +130,17 @@ def analyze_pattern_quality(image_dir):
         valid_count = np.sum(x_mask)
         print(f"Normal decode: {valid_count} valid pixels ({100*valid_count/x_mask.size:.1f}%)")
         
-        # Enhanced decode  
-        enhanced_patterns = processor.preprocess_images(all_h_patterns[:10], black_left, white_left)
-        x_coord_e, x_conf_e, x_mask_e = decode_patterns(
-            white_left, black_left, enhanced_patterns,
-            num_bits=5, orientation="horizontal"
-        )
+        # Enhanced decode - DISABLED for demo reliability
+        # enhanced_patterns = processor.preprocess_images(all_h_patterns[:10], black_left, white_left)
+        # x_coord_e, x_conf_e, x_mask_e = decode_patterns(
+        #     white_left, black_left, enhanced_patterns,
+        #     num_bits=5, orientation="horizontal"
+        # )
         
-        valid_count_e = np.sum(x_mask_e)
-        print(f"Enhanced decode: {valid_count_e} valid pixels ({100*valid_count_e/x_mask_e.size:.1f}%)")
+        # valid_count_e = np.sum(x_mask_e)
+        # print(f"Enhanced decode: {valid_count_e} valid pixels ({100*valid_count_e/x_mask_e.size:.1f}%)")
+        x_mask_e = x_mask  # Use same mask for compatibility
+        x_coord_e = x_coord  # Use same coords for compatibility
         
         # Save mask visualization
         mask_comparison = np.hstack([x_mask.astype(np.uint8)*255, x_mask_e.astype(np.uint8)*255])
@@ -146,6 +148,7 @@ def analyze_pattern_quality(image_dir):
         print(f"Saved mask comparison to {diag_dir / 'mask_comparison.png'}")
         
         # Save decoded coordinate visualization
+        valid_count_e = valid_count  # Use same count for compatibility
         if valid_count_e > 0:
             # Normalize coordinates for visualization
             coord_range = np.max(x_coord_e[x_mask_e]) - np.min(x_coord_e[x_mask_e])
@@ -164,7 +167,8 @@ def analyze_pattern_quality(image_dir):
             print(f"Max: {np.max(x_coord_e[x_mask_e])}")
             print(f"Unique values: {len(np.unique(x_coord_e[x_mask_e]))}")
     
-    # Save sample enhanced patterns
+    # Save sample enhanced patterns - DISABLED for demo reliability
+    enhanced_patterns = []  # Empty for compatibility
     if enhanced_patterns:
         for i in range(min(4, len(enhanced_patterns))):
             cv2.imwrite(str(diag_dir / f"enhanced_pattern_{i}.png"), enhanced_patterns[i])

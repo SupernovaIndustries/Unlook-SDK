@@ -85,40 +85,57 @@ class CameraAutoOptimizer:
         Returns:
             OptimizationResult with optimal settings
         """
-        logger.info("Starting camera optimization process")
+        logger.info("="*60)
+        logger.info("Starting camera optimization process for picamera2")
+        logger.info("="*60)
         
         # Step 1: Capture reference images
+        logger.info("\n[STEP 1] Capturing reference images...")
         references = self._capture_references(projector_client)
         
         # Step 2: Analyze ambient conditions
+        logger.info("\n[STEP 2] Analyzing ambient conditions...")
         ambient_analysis = self._analyze_ambient(references['ambient'])
+        logger.info(f"Ambient condition: {ambient_analysis['condition']}")
+        logger.info(f"Mean intensity: {ambient_analysis['mean_intensity']:.1f}")
+        logger.info(f"Dynamic range: {ambient_analysis['dynamic_range']:.1f}")
         
         # Step 3: Test exposure range
+        logger.info("\n[STEP 3] Testing exposure range...")
+        logger.info(f"Recommended exposure range: {ambient_analysis['recommended_exposure']}")
         exposure_results = self._test_exposure_range(
             references, 
             projector_client,
             ambient_analysis
         )
+        logger.info(f"Optimal exposure found: {exposure_results['optimal_exposure']}μs")
         
         # Step 4: Test gain range  
+        logger.info("\n[STEP 4] Testing gain range...")
+        logger.info(f"Recommended gain range: {ambient_analysis['recommended_gain']}")
         gain_results = self._test_gain_range(
             references,
             projector_client,
             exposure_results['optimal_exposure']
         )
+        logger.info(f"Optimal gain found: {gain_results['optimal_gain']}")
         
         # Step 5: Fine-tune contrast and brightness
+        logger.info("\n[STEP 5] Fine-tuning contrast and brightness...")
         final_settings = self._fine_tune_settings(
             exposure_results['optimal_exposure'],
             gain_results['optimal_gain'],
             references,
             projector_client
         )
+        logger.info(f"Final settings: exposure={final_settings.exposure_time}μs, gain={final_settings.analog_gain}")
         
         # Step 6: Validate results
+        logger.info("\n[STEP 6] Validating final settings...")
         validation = self._validate_settings(final_settings, projector_client)
+        logger.info(f"Validation score: {validation['overall_score']:.2f}/1.0")
         
-        return OptimizationResult(
+        result = OptimizationResult(
             settings=final_settings,
             quality_score=validation['overall_score'],
             pattern_visibility=validation['pattern_visibility'],
@@ -132,6 +149,24 @@ class CameraAutoOptimizer:
                 'validation': validation
             }
         )
+        
+        logger.info("\n" + "="*60)
+        logger.info("OPTIMIZATION COMPLETE")
+        logger.info(f"Final settings chosen:")
+        logger.info(f"  - Exposure: {final_settings.exposure_time}μs")
+        logger.info(f"  - Analog gain: {final_settings.analog_gain}")
+        logger.info(f"  - Digital gain: {final_settings.digital_gain}")
+        logger.info(f"  - Contrast: {final_settings.contrast}")
+        logger.info(f"  - Brightness: {final_settings.brightness}")
+        logger.info(f"Quality scores:")
+        logger.info(f"  - Overall: {validation['overall_score']:.2f}/1.0")
+        logger.info(f"  - Pattern visibility: {validation['pattern_visibility']:.2f}/1.0")
+        logger.info(f"  - Object clarity: {validation['object_clarity']:.2f}/1.0")
+        logger.info(f"  - Dynamic range: {validation['dynamic_range']:.2f}/1.0")
+        logger.info(f"  - Noise level: {validation['noise_level']:.2f}/1.0")
+        logger.info("="*60 + "\n")
+        
+        return result
     
     def _capture_references(self, projector_client) -> Dict[str, np.ndarray]:
         """Capture reference images for analysis."""
@@ -209,9 +244,23 @@ class CameraAutoOptimizer:
                 'green_bias': np.mean(g) - np.mean(gray),
                 'blue_bias': np.mean(b) - np.mean(gray)
             }
-            
+        
+        # Special handling for dark environments or inverted images
+        # This happens when the camera is overexposed or settings are wrong
+        # Be VERY aggressive with dark images - they indicate severe overexposure
+        if analysis['mean_intensity'] < 50:  # Much more aggressive threshold
+            logger.critical(f"SEVERE OVEREXPOSURE DETECTED! Mean intensity only {analysis['mean_intensity']:.1f}")
+            analysis['condition'] = 'severely_overexposed'
+            analysis['recommended_exposure'] = (100, 1000)  # EXTREMELY short exposure
+            analysis['recommended_gain'] = (0.1, 0.5)  # VERY low gain
+            analysis['start_exposure'] = 100  # Start at absolute minimum
+        elif analysis['mean_intensity'] > 80:
+            logger.warning("Ambient seems bright - camera may be overexposed")
+            analysis['condition'] = 'overexposed'
+            analysis['recommended_exposure'] = (1000, 5000)  # Very short exposure
+            analysis['recommended_gain'] = (0.5, 1.0)  # Low gain
         # Classify lighting conditions
-        if analysis['mean_intensity'] < 30:
+        elif analysis['mean_intensity'] < 30:
             analysis['condition'] = 'dark'
             analysis['recommended_exposure'] = (20000, 100000)  # High exposure for dark conditions
             analysis['recommended_gain'] = (2.0, 8.0)  # Higher gain for dark conditions
@@ -233,19 +282,29 @@ class CameraAutoOptimizer:
     def _test_exposure_range(self, references: Dict, projector_client, 
                            ambient_analysis: Dict) -> Dict:
         """Test different exposure values to find optimal."""
-        logger.info("Testing exposure range")
+        logger.info("Testing exposure range for picamera2")
         
         # Define exposure range based on ambient conditions
-        if ambient_analysis['condition'] == 'dark':
-            exposure_range = np.logspace(3, 5, 10)  # 1ms to 100ms
+        # Picamera2 has a different range than typical cameras
+        if ambient_analysis['condition'] == 'severely_overexposed':
+            # Start with EXTREMELY short exposures for severe overexposure
+            exposure_range = np.logspace(1.5, 2.5, 10)  # 0.03ms to 0.3ms
+            logger.critical("Using MINIMUM exposure range due to SEVERE overexposure")
+        elif ambient_analysis['condition'] == 'overexposed':
+            # Start with very short exposures for overexposed conditions
+            exposure_range = np.logspace(2, 3.5, 8)  # 0.1ms to 3ms
+            logger.critical("Using very short exposure range due to overexposure")
+        elif ambient_analysis['condition'] == 'dark':
+            exposure_range = np.logspace(3.5, 5, 8)  # 3ms to 100ms
         elif ambient_analysis['condition'] == 'bright':
-            exposure_range = np.logspace(2, 4, 10)  # 0.1ms to 10ms
+            exposure_range = np.logspace(2.5, 4, 8)  # 0.3ms to 10ms
         else:
-            exposure_range = np.logspace(2.5, 4.5, 10)  # 0.3ms to 30ms
+            exposure_range = np.logspace(3, 4.5, 8)  # 1ms to 30ms
             
         results = []
+        logger.info(f"Testing {len(exposure_range)} exposure values...")
         
-        for exposure in exposure_range:
+        for i, exposure in enumerate(exposure_range):
             # Set exposure
             self._set_exposure(int(exposure))
             time.sleep(0.1)
@@ -253,7 +312,7 @@ class CameraAutoOptimizer:
             # Capture test image
             if projector_client:
                 projector_client.show_horizontal_lines()
-                time.sleep(0.1)
+                time.sleep(0.2)
                 
             test_image = self._capture_image()
             
@@ -266,15 +325,26 @@ class CameraAutoOptimizer:
             # Check for saturation
             saturation = self._check_saturation(test_image)
             
+            # Calculate mean intensity for debugging
+            mean_intensity = np.mean(test_image)
+            
+            score = visibility * (1 - saturation)
+            
             results.append({
                 'exposure': exposure,
                 'visibility': visibility,
                 'saturation': saturation,
-                'score': visibility * (1 - saturation)
+                'score': score,
+                'mean_intensity': mean_intensity
             })
+            
+            logger.info(f"Exposure {i+1}/{len(exposure_range)}: {exposure:.0f}μs, visibility: {visibility:.2f}, "
+                       f"saturation: {saturation:.2f}, mean: {mean_intensity:.1f}, score: {score:.2f}")
             
         # Find optimal exposure
         best_result = max(results, key=lambda x: x['score'])
+        
+        logger.info(f"Best exposure: {best_result['exposure']:.0f}μs with score: {best_result['score']:.2f}")
         
         return {
             'optimal_exposure': best_result['exposure'],
@@ -429,7 +499,28 @@ class CameraAutoOptimizer:
     
     def _set_exposure(self, exposure_time: int):
         """Set camera exposure time."""
-        self.camera.set_exposure(exposure_time)
+        # Set exposure for both cameras in stereo pair
+        try:
+            if hasattr(self.camera, 'get_stereo_pair'):
+                left_camera, right_camera = self.camera.get_stereo_pair()
+                if left_camera and right_camera:
+                    # Set exposure with minimum gain
+                    self.camera.set_exposure(left_camera, exposure_time, gain=0.1)
+                    self.camera.set_exposure(right_camera, exposure_time, gain=0.1)
+                    logger.info(f"Set exposure {exposure_time}μs for both cameras with gain 0.1")
+                else:
+                    # Fallback to single camera
+                    self.camera.set_exposure(exposure_time, gain=0.1)
+            else:
+                # Simple exposure setting
+                self.camera.set_exposure(exposure_time, gain=0.1)
+        except Exception as e:
+            logger.error(f"Error setting exposure: {e}")
+            # Try simple fallback
+            try:
+                self.camera.set_exposure(exposure_time)
+            except:
+                pass
     
     def _set_gain(self, gain: float):
         """Set camera gain."""

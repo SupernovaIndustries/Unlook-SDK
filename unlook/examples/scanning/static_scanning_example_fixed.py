@@ -166,10 +166,14 @@ def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Simple Calibration-Based 3D Scanner")
     
+    # Connection options
+    parser.add_argument("--scanner-uuid", type=str, default=None,
+                       help="Connect to scanner with specific UUID (bypasses auto-discovery)")
+    
     # Scanning options
     parser.add_argument("--pattern", choices=["enhanced_gray", "multi_scale", "multi_frequency", "variable_width"],
-                       default="enhanced_gray",
-                       help="Pattern type to use for scanning (default: enhanced_gray)")
+                       default="multi_scale",
+                       help="Pattern type to use for scanning (default: multi_scale)")
     
     parser.add_argument("--enhancement-level", type=int, default=3, choices=[0, 1, 2, 3],
                        help="Enhancement level for pattern processing (0-3, default: 3)")
@@ -186,6 +190,13 @@ def main():
     
     parser.add_argument("--no-auto-optimize", dest="auto_optimize", action="store_false",
                        help="Disable automatic camera settings optimization")
+    
+    # Camera settings for manual control
+    parser.add_argument("--exposure", type=float, default=None,
+                       help="Manual exposure setting (e.g., -2 for reduced exposure)")
+    
+    parser.add_argument("--gain", type=float, default=None,
+                       help="Manual gain setting (e.g., 1.5 for slightly increased gain)")
     
     # Output options
     parser.add_argument("--output", type=str, default=None,
@@ -231,16 +242,16 @@ def main():
     logger.info(f"Using baseline: {baseline_mm}mm")
     
     # Create scanner configuration with direct pattern selection
-    # Enhanced processor is now enabled by default
+    # Enhanced processor is ENABLED to handle low contrast patterns
     config = StaticScanConfig(
         quality=args.quality,
-        use_enhanced_processor=True,  # Always use enhanced processor
-        enhancement_level=args.enhancement_level,
-        enable_auto_optimization=args.auto_optimize
+        use_enhanced_processor=True,  # ENABLED to handle low contrast
+        enhancement_level=3,  # Maximum enhancement for poor dynamic range
+        enable_auto_optimization=False  # Disable auto optimization since it's not working
     )
     logger.info(f"Using quality preset: {args.quality}")
-    logger.info(f"Enhanced pattern processor enabled with level {args.enhancement_level}")
-    logger.info(f"Camera auto-optimization: {'enabled' if args.auto_optimize else 'disabled'}")
+    logger.info(f"Enhanced pattern processor ENABLED at level {config.enhancement_level}")
+    logger.info(f"Camera auto-optimization: {'enabled' if config.enable_auto_optimization else 'disabled'}")
     
     # Then override with pattern type if specified
     if args.pattern:
@@ -283,30 +294,48 @@ def main():
     # Initialize client
     client = None
     try:
-        # Create client and discover scanners
-        logger.info("Creating client and discovering scanners...")
-        client = UnlookClient(auto_discover=True)
+        # Create client
+        logger.info("Creating client...")
+        client = UnlookClient(auto_discover=False)
         
-        # Start discovery
-        client.start_discovery()
-        logger.info(f"Discovering scanners for {args.timeout} seconds...")
-        time.sleep(args.timeout)
-        
-        # Get discovered scanners
-        scanners = client.get_discovered_scanners()
-        if not scanners:
-            logger.error("No scanners found. Check that your hardware is connected and powered on.")
-            return 1
-        
-        # Connect to the first scanner
-        scanner_info = scanners[0]
-        logger.info(f"Connecting to scanner: {scanner_info.name} ({scanner_info.uuid})")
-        
-        if not client.connect(scanner_info):
-            logger.error("Failed to connect to scanner.")
-            return 1
-        
-        logger.info(f"Successfully connected to scanner: {scanner_info.name}")
+        if args.scanner_uuid:
+            # Connect directly using UUID - requires discovery first
+            logger.info(f"Searching for scanner with UUID: {args.scanner_uuid}")
+            
+            # Start discovery to find the scanner
+            client.start_discovery()
+            logger.info(f"Discovering scanners for {args.timeout} seconds...")
+            time.sleep(args.timeout)
+            
+            # Try to connect using UUID directly
+            logger.info(f"Connecting to scanner with UUID: {args.scanner_uuid}")
+            if not client.connect(args.scanner_uuid):
+                logger.error(f"Failed to connect to scanner with UUID: {args.scanner_uuid}")
+                logger.info("Make sure the scanner is powered on and connected to the network.")
+                return 1
+            
+            logger.info(f"Successfully connected to scanner with UUID: {args.scanner_uuid}")
+        else:
+            # Use auto-discovery
+            client.start_discovery()
+            logger.info(f"Discovering scanners for {args.timeout} seconds...")
+            time.sleep(args.timeout)
+            
+            # Get discovered scanners
+            scanners = client.get_discovered_scanners()
+            if not scanners:
+                logger.error("No scanners found. Check that your hardware is connected and powered on.")
+                return 1
+            
+            # Connect to the first scanner
+            scanner_info = scanners[0]
+            logger.info(f"Connecting to scanner: {scanner_info.name} ({scanner_info.uuid})")
+            
+            if not client.connect(scanner_info):
+                logger.error("Failed to connect to scanner.")
+                return 1
+            
+            logger.info(f"Successfully connected to scanner: {scanner_info.name}")
         
         # Print scanning instructions
         print("\nPreparing to scan. Please ensure:")
@@ -327,6 +356,32 @@ def main():
             client=client, 
             config=config
         )
+        
+        # Apply manual camera settings if provided
+        if args.exposure is not None or args.gain is not None:
+            logger.info("Applying manual camera settings...")
+            camera_settings = {}
+            
+            if args.exposure is not None:
+                # Convert exposure value to microseconds if needed
+                if args.exposure < 0:
+                    # Negative values are exposure compensation
+                    base_exposure = 10000  # 10ms base
+                    camera_settings['ExposureTime'] = int(base_exposure * (2 ** args.exposure))
+                else:
+                    # Positive values are direct microsecond values
+                    camera_settings['ExposureTime'] = int(args.exposure * 1000) if args.exposure < 100 else int(args.exposure)
+                logger.info(f"Setting exposure to {camera_settings['ExposureTime']}μs")
+            
+            if args.gain is not None:
+                camera_settings['AnalogueGain'] = args.gain
+                logger.info(f"Setting gain to {args.gain}")
+            
+            try:
+                scanner.set_camera_settings(camera_settings)
+                logger.info("Manual camera settings applied successfully")
+            except Exception as e:
+                logger.warning(f"Could not apply manual camera settings: {e}")
         
         # Manually create and load the calibration file
         # This works around the issues in the calibration loading process

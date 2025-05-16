@@ -232,7 +232,7 @@ class PiCamera2Manager:
 
             try:
                 # Log configuration for debugging
-                logger.debug(f"Configuring camera {camera_id} with settings: {config}")
+                logger.info(f"Configuring camera {camera_id} with settings: {config}")
                 
                 # Handle configuration requiring camera restart
                 needs_reconfigure = any(key in config for key in [
@@ -377,8 +377,13 @@ class PiCamera2Manager:
 
                 # Apply all controls
                 if controls:
-                    logger.debug(f"Setting camera controls: {controls}")
-                    camera.set_controls(controls)
+                    logger.info(f"Setting camera controls: {controls}")
+                    try:
+                        camera.set_controls(controls)
+                        logger.info(f"Successfully applied controls to camera {camera_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to apply controls to camera {camera_id}: {e}")
+                        raise
 
                 # Start camera if it was stopped
                 if needs_reconfigure:
