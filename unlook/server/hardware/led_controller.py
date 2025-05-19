@@ -10,18 +10,22 @@ I2C_BUS = 4  # I2C bus number
 STROBE_PIN = 27  # GPIO pin for strobe
 
 # LED control is only available on Raspberry Pi
+LED_AVAILABLE = False
+led = None
+
 try:
+    logger.info("Attempting to import AS1170 library...")
     from as1170 import led
-    # Initialize with specific bus and strobe pin
-    led.init(i2c_bus=I2C_BUS, strobe_pin=STROBE_PIN)
     LED_AVAILABLE = True
-    logger.info(f"AS1170 LED controller initialized on I2C bus {I2C_BUS}, strobe pin {STROBE_PIN}")
-except ImportError:
-    LED_AVAILABLE = False
-    logger.warning("AS1170 LED control not available. Install with: pip install AS1170-Python")
+    logger.info(f"AS1170 library imported successfully. LED_AVAILABLE = {LED_AVAILABLE}")
+except ImportError as e:
+    logger.error(f"AS1170 LED control not available. Install with: pip install AS1170-Python. Error: {e}")
+    logger.error(f"LED_AVAILABLE = {LED_AVAILABLE}")
 except Exception as e:
-    LED_AVAILABLE = False
-    logger.error(f"Failed to initialize AS1170: {e}")
+    logger.error(f"Failed to import AS1170: {e}")
+    import traceback
+    logger.error(f"Traceback: {traceback.format_exc()}")
+    logger.error(f"LED_AVAILABLE = {LED_AVAILABLE}")
 
 
 class LEDController:
@@ -35,14 +39,37 @@ class LEDController:
     
     def __init__(self):
         """Initialize LED controller."""
+        logger.info(f"Initializing LED controller. LED_AVAILABLE = {LED_AVAILABLE}")
         self.led_active = False
         self.current_led1 = 0
         self.current_led2 = 0
         self.i2c_bus = I2C_BUS
         self.strobe_pin = STROBE_PIN
+        self.initialized = False
         
-        if not LED_AVAILABLE:
+        if LED_AVAILABLE:
+            logger.info("LED is available, initializing hardware...")
+            # Initialize hardware on controller creation
+            self._init_hardware()
+        else:
             logger.warning("LED controller initialized but AS1170 library not available")
+    
+    def _init_hardware(self):
+        """Initialize the LED hardware."""
+        if self.initialized:
+            logger.info("Hardware already initialized, skipping.")
+            return
+            
+        try:
+            logger.info(f"Initializing AS1170 hardware with i2c_bus={self.i2c_bus}, strobe_pin={self.strobe_pin}")
+            led.init(i2c_bus=self.i2c_bus, strobe_pin=self.strobe_pin)
+            self.initialized = True
+            logger.info(f"AS1170 hardware initialized successfully on I2C bus {self.i2c_bus}, strobe pin {self.strobe_pin}")
+        except Exception as e:
+            logger.error(f"Failed to initialize AS1170 hardware: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            self.initialized = False
     
     def set_intensity(self, led1: int = 450, led2: int = 450) -> Dict[str, Any]:
         """
@@ -60,6 +87,10 @@ class LEDController:
                 'status': 'error',
                 'message': 'LED control not available'
             }
+            
+        # Ensure hardware is initialized
+        if not self.initialized:
+            self._init_hardware()
         
         try:
             # Clamp values
@@ -97,6 +128,10 @@ class LEDController:
                 'status': 'error',
                 'message': 'LED control not available'
             }
+            
+        # Ensure hardware is initialized
+        if not self.initialized:
+            self._init_hardware()
         
         try:
             led.on()
@@ -117,6 +152,10 @@ class LEDController:
                 'status': 'error',
                 'message': 'LED control not available'
             }
+            
+        # Ensure hardware is initialized
+        if not self.initialized:
+            self._init_hardware()
         
         try:
             led.off()
@@ -149,4 +188,6 @@ class LEDController:
 
 
 # Global LED controller instance
+logger.info("Creating global LED controller instance...")
 led_controller = LEDController()
+logger.info(f"Global LED controller created: {led_controller}")

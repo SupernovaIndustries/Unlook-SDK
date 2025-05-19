@@ -81,11 +81,11 @@ def run_unlook_hand_tracking_demo(calibration_file=None, output_file=None, visua
             try:
                 # Send LED control command to server
                 from unlook.core import MessageType
-                response = client.send_message(MessageType.LED_SET_INTENSITY, {
+                success, response, _ = client.send_message(MessageType.LED_SET_INTENSITY, {
                     'led1': led1_intensity,
                     'led2': led2_intensity
                 })
-                if response and response.payload.get('status') == 'success':
+                if success and response and response.payload.get('status') == 'success':
                     logger.info("LED flood illuminator activated on server")
                 else:
                     logger.warning("Failed to activate LED on server")
@@ -359,8 +359,8 @@ def run_unlook_hand_tracking_demo(calibration_file=None, output_file=None, visua
         if use_led:
             try:
                 from unlook.core import MessageType
-                response = client.send_message(MessageType.LED_OFF, {})
-                if response and response.payload.get('status') == 'success':
+                success, response, _ = client.send_message(MessageType.LED_OFF, {})
+                if success and response and response.payload.get('status') == 'success':
                     logger.info("LED flood illuminator deactivated on server")
             except Exception as e:
                 logger.error(f"Failed to turn off LED on server: {e}")

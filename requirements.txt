@@ -1,14 +1,36 @@
+# Core requirements for basic functionality
 numpy>=1.19.0
 opencv-python>=4.5.0
+pyzmq>=22.0.0
+pillow>=8.0
+matplotlib>=3.3.0
+scipy>=1.5.0
+zeroconf>=0.38.0
+netifaces>=0.11.0
+msgpack>=1.0.2
+pyyaml>=6.0
+tqdm>=4.60.0
 
-# Optional dependencies
-# For structured light pattern generation and decoding (recommended for 3D scanning)
-# Install ONE of the following:
-# opencv-contrib-python>=4.5.0      # For regular systems
-# opencv-contrib-python-headless>=4.5.0  # For headless systems (no GUI)
-
-# For point cloud processing, visualization and mesh generation
-# open3d>=0.15.0; platform_system!="Windows" or python_version>="3.8"  
-
-# For saving point clouds in HDF5 format
-# h5py>=3.1.0
+# Optional dependencies - install as needed:
+# 
+# For enhanced OpenCV functionality (structured light patterns):
+# pip install opencv-contrib-python>=4.5.0
+#
+# For 3D point cloud processing and visualization:
+# pip install open3d>=0.15.0 trimesh>=3.9.0 pymeshlab>=2021.7 h5py>=3.1.0
+#
+# For GPU acceleration (install appropriate CUDA version):
+# pip install cupy-cuda11x  # For CUDA 11.x
+# pip install cupy-cuda12x  # For CUDA 12.x
+#
+# For neural network enhancement:
+# pip install tensorflow>=2.11.0 torch>=2.0.0 torchvision>=0.16.0 tensorboard>=2.11.0
+#
+# For server-side functionality (Raspberry Pi):
+# pip install smbus2>=0.4.1 RPi.GPIO>=0.7.0 picamera2>=0.3.0 AS1170-Python>=0.1.0
+#
+# For hand/body pose tracking:
+# pip install mediapipe>=0.10.0
+#
+# For development:
+# pip install pytest>=6.0 pytest-cov>=2.0 black>=20.8b1 flake8>=3.8 mypy>=0.782

@@ -23,7 +23,6 @@ from ..core import (
     generate_uuid, get_machine_info,
     encode_image_to_jpeg, serialize_binary_message
 )
-from .hardware.led_controller import led_controller
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +89,7 @@ class UnlookServer(EventEmitter):
         # Hardware - Lazy loading
         self._projector = None
         self._camera_manager = None
+        self._led_controller = None
 
         # Streaming
         self.streaming_active = False
@@ -1328,6 +1328,24 @@ class UnlookServer(EventEmitter):
                 logger.error(f"Errore durante l'inizializzazione del manager telecamere: {e}")
                 self._camera_manager = None
         return self._camera_manager
+    
+    @property
+    def led_controller(self):
+        """Lazy-loading del controller LED."""
+        if self._led_controller is None:
+            try:
+                logger.info("Lazy loading LED controller...")
+                # Import ritardato per evitare importazioni circolari
+                from .hardware.led_controller import led_controller
+                logger.info(f"Imported led_controller: {led_controller}")
+                self._led_controller = led_controller
+                logger.info(f"LED controller assigned: {self._led_controller}")
+            except Exception as e:
+                logger.error(f"Errore durante l'inizializzazione del controller LED: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                self._led_controller = None
+        return self._led_controller
 
     # Duplicate method removed to fix issue with direct streaming handlers
     # The actual handler initialization is at the beginning of the class
@@ -2363,10 +2381,15 @@ class UnlookServer(EventEmitter):
     
     def _handle_led_set_intensity(self, message: Message) -> Message:
         """Handle LED_SET_INTENSITY messages."""
+        logger.info(f"LED controller status: {self.led_controller}")
+        if not self.led_controller:
+            logger.error("LED controller is None or False")
+            return Message.create_error(message, "LED controller not available")
+            
         led1 = message.payload.get("led1", 450)
         led2 = message.payload.get("led2", 450)
         
-        result = led_controller.set_intensity(led1=led1, led2=led2)
+        result = self.led_controller.set_intensity(led1=led1, led2=led2)
         
         if result["status"] == "success":
             return Message.create_reply(message, result)
@@ -2375,7 +2398,10 @@ class UnlookServer(EventEmitter):
     
     def _handle_led_on(self, message: Message) -> Message:
         """Handle LED_ON messages."""
-        result = led_controller.turn_on()
+        if not self.led_controller:
+            return Message.create_error(message, "LED controller not available")
+            
+        result = self.led_controller.turn_on()
         
         if result["status"] == "success":
             return Message.create_reply(message, result)
@@ -2384,7 +2410,10 @@ class UnlookServer(EventEmitter):
     
     def _handle_led_off(self, message: Message) -> Message:
         """Handle LED_OFF messages."""
-        result = led_controller.turn_off()
+        if not self.led_controller:
+            return Message.create_error(message, "LED controller not available")
+            
+        result = self.led_controller.turn_off()
         
         if result["status"] == "success":
             return Message.create_reply(message, result)
@@ -2393,5 +2422,8 @@ class UnlookServer(EventEmitter):
     
     def _handle_led_status(self, message: Message) -> Message:
         """Handle LED_STATUS messages."""
-        result = led_controller.get_status()
+        if not self.led_controller:
+            return Message.create_error(message, "LED controller not available")
+            
+        result = self.led_controller.get_status()
         return Message.create_reply(message, result)

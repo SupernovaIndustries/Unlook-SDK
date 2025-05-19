@@ -261,6 +261,21 @@ python unlook/examples/handpose_demo_unlook_fixed.py --calibration /path/to/cali
 - `unlook/core/protocol.py` (added LED message types)
 - `unlock/server/scanner.py` (added LED handlers)
 - `server-requirements.txt` (added AS1170-Python dependency)
+- `unlook/client/scanning/handpose/demo.py` (fixed tuple unpacking)
+
+## Bug Fixes
+
+### Fixed send_message Tuple Unpacking
+- **Problem**: `send_message()` returns a tuple (success, response, binary_data) but code expected just response
+- **Solution**: Updated all LED control calls to properly unpack the tuple
+- **Affected files**:
+  - `unlook/examples/handpose_demo_unlook_fixed.py`
+  - `unlook/client/scanning/handpose/demo.py`
+
+### Fixed LED Hardware Initialization 
+- **Problem**: LED hardware init was happening too early before AS1170 library import
+- **Solution**: Moved hardware initialization to a separate method called when needed
+- **Updates**: `unlook/server/hardware/led_controller.py`
 
 ## Files Created
 - `unlook/server/hardware/led_controller.py`

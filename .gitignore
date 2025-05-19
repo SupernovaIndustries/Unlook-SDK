@@ -78,3 +78,6 @@ QUICKSTART.md
 debug_simple.py
 debug_correspondence_issue.py
 CLEANUP_COMPLETE.md
+CLAUDE_SESSION_NOTES_20250519.md
+MANIFEST.in
+/unlook/server/hardware/__pycache__

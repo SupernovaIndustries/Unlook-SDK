@@ -55,11 +55,11 @@ class HandTrackingDemo:
         try:
             from ....core import MessageType
             logger.info(f"Initializing LED control (LED1={self.led1_intensity}mA, LED2={self.led2_intensity}mA)")
-            response = self.client.send_message(MessageType.LED_SET_INTENSITY, {
+            success, response, _ = self.client.send_message(MessageType.LED_SET_INTENSITY, {
                 'led1': self.led1_intensity,
                 'led2': self.led2_intensity
             })
-            if response and response.payload.get('status') == 'success':
+            if success and response and response.payload.get('status') == 'success':
                 self.led_active = True
                 logger.info("LED flood illuminator activated on server")
             else:
@@ -75,8 +75,8 @@ class HandTrackingDemo:
         if self.led_active and self.client:
             try:
                 from ....core import MessageType
-                response = self.client.send_message(MessageType.LED_OFF, {})
-                if response and response.payload.get('status') == 'success':
+                success, response, _ = self.client.send_message(MessageType.LED_OFF, {})
+                if success and response and response.payload.get('status') == 'success':
                     self.led_active = False
                     logger.info("LED flood illuminator deactivated on server")
             except Exception as e:
@@ -230,7 +230,7 @@ class HandTrackingDemo:
                     # Increase LED intensity if no hands detected
                     try:
                         from ....core import MessageType
-                        response = self.client.send_message(MessageType.LED_SET_INTENSITY, {
+                        success, response, _ = self.client.send_message(MessageType.LED_SET_INTENSITY, {
                             'led1': 450,
                             'led2': 450
                         })
@@ -241,7 +241,7 @@ class HandTrackingDemo:
                     # Decrease LED intensity if hands detected well
                     try:
                         from ....core import MessageType
-                        response = self.client.send_message(MessageType.LED_SET_INTENSITY, {
+                        success, response, _ = self.client.send_message(MessageType.LED_SET_INTENSITY, {
                             'led1': 300,
                             'led2': 300
                         })
@@ -273,11 +273,11 @@ class HandTrackingDemo:
                 intensity = 450 if led_high else 300
                 try:
                     from ....core import MessageType
-                    response = self.client.send_message(MessageType.LED_SET_INTENSITY, {
+                    success, response, _ = self.client.send_message(MessageType.LED_SET_INTENSITY, {
                         'led1': intensity,
                         'led2': intensity
                     })
-                    if response and response.payload.get('status') == 'success':
+                    if success and response and response.payload.get('status') == 'success':
                         logger.info(f"LED intensity: {intensity}mA")
                 except:
                     pass
