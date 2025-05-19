@@ -15,11 +15,14 @@ led = None
 
 try:
     logger.info("Attempting to import AS1170 library...")
-    # Import AS1170 class and create an instance
-    from as1170 import AS1170
-    led = AS1170()
+    # Import the module itself
+    import as1170
+    logger.info(f"AS1170 module imported. Module contents: {dir(as1170)}")
+    
+    # The module might be used directly or have a different interface
+    led = as1170  # Use the module directly
     LED_AVAILABLE = True
-    logger.info(f"AS1170 library imported and instance created successfully. LED_AVAILABLE = {LED_AVAILABLE}")
+    logger.info(f"AS1170 library imported successfully. LED_AVAILABLE = {LED_AVAILABLE}")
 except ImportError as e:
     logger.error(f"AS1170 LED control not available. Install with: pip install AS1170-Python. Error: {e}")
     logger.error(f"LED_AVAILABLE = {LED_AVAILABLE}")
@@ -64,15 +67,32 @@ class LEDController:
             
         try:
             logger.info(f"Initializing AS1170 hardware with i2c_bus={self.i2c_bus}, strobe_pin={self.strobe_pin}")
-            # AS1170 might already be initialized on import/instantiation
-            # Try to set up I2C and GPIO if methods exist
-            if hasattr(led, 'setup') or hasattr(led, 'init'):
-                if hasattr(led, 'init'):
-                    led.init(i2c_bus=self.i2c_bus, strobe_pin=self.strobe_pin)
-                elif hasattr(led, 'setup'):
-                    led.setup(i2c_bus=self.i2c_bus, strobe_pin=self.strobe_pin)
-            else:
-                logger.info("AS1170 does not have init/setup method, assuming auto-initialization")
+            # Try different initialization methods
+            init_methods = ['init', 'initialize', 'setup', 'Init', 'Initialize', 'Setup']
+            initialized = False
+            
+            for method_name in init_methods:
+                if hasattr(led, method_name):
+                    method = getattr(led, method_name)
+                    try:
+                        method(i2c_bus=self.i2c_bus, strobe_pin=self.strobe_pin)
+                        logger.info(f"Successfully called {method_name} method")
+                        initialized = True
+                        break
+                    except TypeError:
+                        # Method might not accept keyword arguments
+                        try:
+                            method(self.i2c_bus, self.strobe_pin)
+                            logger.info(f"Successfully called {method_name} method with positional args")
+                            initialized = True
+                            break
+                        except Exception:
+                            pass
+                    except Exception as e:
+                        logger.debug(f"Failed to call {method_name}: {e}")
+            
+            if not initialized:
+                logger.info("No initialization method found, assuming auto-initialization")
             
             self.initialized = True
             logger.info(f"AS1170 hardware initialized successfully")
@@ -109,7 +129,31 @@ class LEDController:
             led2 = max(0, min(450, led2))
             
             logger.info(f"Setting LED intensity: LED1={led1}mA, LED2={led2}mA")
-            led.set_intensity(led1=led1, led2=led2)
+            
+            # Try different method names for setting intensity
+            intensity_methods = ['set_intensity', 'setIntensity', 'set_current', 'setCurrent', 'SetIntensity']
+            success = False
+            
+            for method_name in intensity_methods:
+                if hasattr(led, method_name):
+                    method = getattr(led, method_name)
+                    try:
+                        method(led1=led1, led2=led2)
+                        success = True
+                        break
+                    except TypeError:
+                        # Try with positional arguments
+                        try:
+                            method(led1, led2)
+                            success = True
+                            break
+                        except Exception:
+                            pass
+                    except Exception as e:
+                        logger.debug(f"Failed {method_name}: {e}")
+            
+            if not success:
+                raise Exception("No suitable method found for setting LED intensity")
             
             self.current_led1 = led1
             self.current_led2 = led2
@@ -145,7 +189,23 @@ class LEDController:
             self._init_hardware()
         
         try:
-            led.on()
+            # Try different method names for turning on
+            on_methods = ['on', 'On', 'turn_on', 'turnOn', 'enable', 'Enable']
+            success = False
+            
+            for method_name in on_methods:
+                if hasattr(led, method_name):
+                    method = getattr(led, method_name)
+                    try:
+                        method()
+                        success = True
+                        break
+                    except Exception as e:
+                        logger.debug(f"Failed {method_name}: {e}")
+            
+            if not success:
+                raise Exception("No suitable method found for turning LED on")
+                
             self.led_active = True
             logger.info("LED turned on")
             return {'status': 'success'}
@@ -169,7 +229,23 @@ class LEDController:
             self._init_hardware()
         
         try:
-            led.off()
+            # Try different method names for turning off
+            off_methods = ['off', 'Off', 'turn_off', 'turnOff', 'disable', 'Disable']
+            success = False
+            
+            for method_name in off_methods:
+                if hasattr(led, method_name):
+                    method = getattr(led, method_name)
+                    try:
+                        method()
+                        success = True
+                        break
+                    except Exception as e:
+                        logger.debug(f"Failed {method_name}: {e}")
+            
+            if not success:
+                raise Exception("No suitable method found for turning LED off")
+                
             self.led_active = False
             logger.info("LED turned off")
             return {'status': 'success'}
