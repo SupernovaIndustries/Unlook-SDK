@@ -15,14 +15,12 @@ led = None
 
 try:
     logger.info("Attempting to import AS1170 library...")
-    # Import the module itself
-    import as1170
-    logger.info(f"AS1170 module imported. Module contents: {dir(as1170)}")
+    # Import the led object from as1170.driver
+    from as1170.driver import led
+    logger.info(f"AS1170 LED object imported: {led}")
     
-    # The module might be used directly 
-    led = as1170  # Use the module directly
-    
-    # Check if module has the expected methods
+    # Check if led object has the expected methods
+    logger.info(f"Has init: {hasattr(led, 'init')}")
     logger.info(f"Has set_intensity: {hasattr(led, 'set_intensity')}")
     logger.info(f"Has on: {hasattr(led, 'on')}") 
     logger.info(f"Has off: {hasattr(led, 'off')}")
@@ -72,16 +70,8 @@ class LEDController:
             
         try:
             logger.info(f"Initializing AS1170 hardware with i2c_bus={self.i2c_bus}, strobe_pin={self.strobe_pin}")
-            # Check which init method is available
-            if hasattr(led, 'init'):
-                led.init(self.i2c_bus, self.strobe_pin)
-                logger.info("Successfully initialized with init method")
-            elif hasattr(led, 'initialize'):
-                led.initialize(self.i2c_bus, self.strobe_pin)
-                logger.info("Successfully initialized with initialize method")
-            else:
-                logger.info("No initialization method found, assuming auto-initialization")
-            
+            # Use the init method on the led object
+            led.init(i2c_bus=self.i2c_bus, strobe_pin=self.strobe_pin)
             self.initialized = True
             logger.info(f"AS1170 hardware initialized successfully")
         except Exception as e:
