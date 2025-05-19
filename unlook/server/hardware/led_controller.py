@@ -15,9 +15,11 @@ led = None
 
 try:
     logger.info("Attempting to import AS1170 library...")
-    from as1170 import led
+    # Import AS1170 class and create an instance
+    from as1170 import AS1170
+    led = AS1170()
     LED_AVAILABLE = True
-    logger.info(f"AS1170 library imported successfully. LED_AVAILABLE = {LED_AVAILABLE}")
+    logger.info(f"AS1170 library imported and instance created successfully. LED_AVAILABLE = {LED_AVAILABLE}")
 except ImportError as e:
     logger.error(f"AS1170 LED control not available. Install with: pip install AS1170-Python. Error: {e}")
     logger.error(f"LED_AVAILABLE = {LED_AVAILABLE}")
@@ -62,9 +64,18 @@ class LEDController:
             
         try:
             logger.info(f"Initializing AS1170 hardware with i2c_bus={self.i2c_bus}, strobe_pin={self.strobe_pin}")
-            led.init(i2c_bus=self.i2c_bus, strobe_pin=self.strobe_pin)
+            # AS1170 might already be initialized on import/instantiation
+            # Try to set up I2C and GPIO if methods exist
+            if hasattr(led, 'setup') or hasattr(led, 'init'):
+                if hasattr(led, 'init'):
+                    led.init(i2c_bus=self.i2c_bus, strobe_pin=self.strobe_pin)
+                elif hasattr(led, 'setup'):
+                    led.setup(i2c_bus=self.i2c_bus, strobe_pin=self.strobe_pin)
+            else:
+                logger.info("AS1170 does not have init/setup method, assuming auto-initialization")
+            
             self.initialized = True
-            logger.info(f"AS1170 hardware initialized successfully on I2C bus {self.i2c_bus}, strobe pin {self.strobe_pin}")
+            logger.info(f"AS1170 hardware initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize AS1170 hardware: {e}")
             import traceback
