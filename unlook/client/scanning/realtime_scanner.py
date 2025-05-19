@@ -55,7 +55,7 @@ except ImportError as e:
 
 # Import structured light modules - basic pattern generation and processing
 from .patterns.structured_light import Pattern, SolidPattern, GrayCodePattern, generate_patterns
-from ..scanner3d import ScanConfig
+from ..scanner.scanner3d import ScanConfig
 
 class RealTimeScanConfig:
     """Configuration for real-time 3D scanning with CPU-optimized settings."""

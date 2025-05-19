@@ -6,6 +6,8 @@ import logging
 import time
 import numpy as np
 import cv2
+import json
+from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any, Union, Callable
 
 try:
@@ -253,7 +255,8 @@ class CameraClient:
         """
         self.client = parent_client
         self.cameras = {}  # Cache of available cameras
-
+        self.calibration_data = None  # Store loaded calibration
+        
         # Define focus quality thresholds
         self.focus_thresholds = {
             'poor': 50,
@@ -261,6 +264,9 @@ class CameraClient:
             'good': 300,
             'excellent': 500
         }
+        
+        # Auto-load default calibration
+        self._load_default_calibration()
 
     def get_cameras(self) -> List[Dict[str, Any]]:
         """
@@ -1449,3 +1455,64 @@ class CameraClient:
         else:
             logger.error(f"Failed to capture test image: {response.payload.get('error')}")
             return None
+    
+    def _load_default_calibration(self):
+        """
+        Load default calibration file automatically on initialization.
+        """
+        try:
+            # Get the path to the default calibration file
+            module_dir = Path(__file__).parent.parent.parent  # unlook/
+            calibration_file = module_dir / "calibration" / "default" / "default_stereo.json"
+            
+            if calibration_file.exists():
+                logger.info(f"Loading default calibration from {calibration_file}")
+                self.load_calibration(str(calibration_file))
+            else:
+                logger.warning(f"Default calibration file not found at {calibration_file}")
+        except Exception as e:
+            logger.error(f"Error loading default calibration: {e}")
+    
+    def load_calibration(self, calibration_file: str) -> bool:
+        """
+        Load calibration data from file.
+        
+        Args:
+            calibration_file: Path to calibration JSON file
+            
+        Returns:
+            True if successfully loaded, False otherwise
+        """
+        try:
+            with open(calibration_file, 'r') as f:
+                self.calibration_data = json.load(f)
+            
+            logger.info(f"Successfully loaded calibration from {calibration_file}")
+            logger.info(f"Calibration contains: {list(self.calibration_data.keys())}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to load calibration from {calibration_file}: {e}")
+            return False
+    
+    def get_calibration(self) -> Optional[Dict[str, Any]]:
+        """
+        Get the loaded calibration data.
+        
+        Returns:
+            Calibration data dictionary or None if not loaded
+        """
+        return self.calibration_data
+    
+    def get_calibration_file_path(self) -> Optional[str]:
+        """
+        Get the path to the default calibration file.
+        
+        Returns:
+            Path to the default calibration file or None if not found
+        """
+        module_dir = Path(__file__).parent.parent.parent  # unlook/
+        calibration_file = module_dir / "calibration" / "default" / "default_stereo.json"
+        
+        if calibration_file.exists():
+            return str(calibration_file)
+        return None

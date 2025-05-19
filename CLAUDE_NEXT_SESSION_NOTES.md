@@ -68,6 +68,10 @@ Key areas to examine:
   - 05_triangulation (missing)
   - 06_point_cloud (missing)
 
+### Extra - urgently needed for another investor demo:
+- Analyze this repo https://github.com/TemugeB/handpose3d and integrate realtime handpose detection / gestures, as a module in client/scanning/handpose
+- Analyze this repo https://github.com/TemugeB/bodypose3d and integrate realtime bodypose detection / gestures, as a module in client/scanning/bodypose
+
 ### 2. Rewrite Triangulation Pipeline
 Based on reference repos, implement proper:
 - Gray code decoding with ambient light tolerance

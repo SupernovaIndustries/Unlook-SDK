@@ -23,6 +23,7 @@ from ..core import (
     generate_uuid, get_machine_info,
     encode_image_to_jpeg, serialize_binary_message
 )
+from .hardware.led_controller import led_controller
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +167,12 @@ class UnlookServer(EventEmitter):
             MessageType.CAMERA_OPTIMIZE: self._handle_camera_optimize,
             MessageType.CAMERA_AUTO_FOCUS: self._handle_camera_auto_focus,
             MessageType.CAMERA_TEST_CAPTURE: self._handle_camera_test_capture,
+            
+            # LED control handlers
+            MessageType.LED_SET_INTENSITY: self._handle_led_set_intensity,
+            MessageType.LED_ON: self._handle_led_on,
+            MessageType.LED_OFF: self._handle_led_off,
+            MessageType.LED_STATUS: self._handle_led_status,
 
             # Altri handlers...
         }
@@ -2351,3 +2358,40 @@ class UnlookServer(EventEmitter):
         except Exception as e:
             logger.error(f"Error capturing test image: {e}")
             return Message.create_error(message, str(e))
+    
+    # LED CONTROL HANDLERS
+    
+    def _handle_led_set_intensity(self, message: Message) -> Message:
+        """Handle LED_SET_INTENSITY messages."""
+        led1 = message.payload.get("led1", 450)
+        led2 = message.payload.get("led2", 450)
+        
+        result = led_controller.set_intensity(led1=led1, led2=led2)
+        
+        if result["status"] == "success":
+            return Message.create_reply(message, result)
+        else:
+            return Message.create_error(message, result.get("message", "Failed to set LED intensity"))
+    
+    def _handle_led_on(self, message: Message) -> Message:
+        """Handle LED_ON messages."""
+        result = led_controller.turn_on()
+        
+        if result["status"] == "success":
+            return Message.create_reply(message, result)
+        else:
+            return Message.create_error(message, result.get("message", "Failed to turn on LED"))
+    
+    def _handle_led_off(self, message: Message) -> Message:
+        """Handle LED_OFF messages."""
+        result = led_controller.turn_off()
+        
+        if result["status"] == "success":
+            return Message.create_reply(message, result)
+        else:
+            return Message.create_error(message, result.get("message", "Failed to turn off LED"))
+    
+    def _handle_led_status(self, message: Message) -> Message:
+        """Handle LED_STATUS messages."""
+        result = led_controller.get_status()
+        return Message.create_reply(message, result)

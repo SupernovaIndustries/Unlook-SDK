@@ -78,6 +78,12 @@ class MessageType(enum.Enum):
     SYSTEM_STATUS = "system_status"  # System status
     SYSTEM_RESET = "system_reset"  # System reset
     SYSTEM_SHUTDOWN = "system_shutdown"  # System shutdown
+    
+    # LED control
+    LED_SET_INTENSITY = "led_set_intensity"  # Set LED intensity
+    LED_ON = "led_on"  # Turn LED on
+    LED_OFF = "led_off"  # Turn LED off
+    LED_STATUS = "led_status"  # Get LED status
 
 
 class Message:

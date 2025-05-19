@@ -10,11 +10,11 @@ from typing import Dict, List, Optional, Any, Callable, Tuple
 
 import zmq
 
-from ..core.events import EventType, EventEmitter
-from ..core.protocol import Message, MessageType
-from ..core.discovery import DiscoveryService, ScannerInfo
-from ..core.constants import DEFAULT_CONTROL_PORT, DEFAULT_TIMEOUT, MAX_RETRIES
-from ..core.utils import generate_uuid, get_machine_info, deserialize_binary_message
+from ...core.events import EventType, EventEmitter
+from ...core.protocol import Message, MessageType
+from ...core.discovery import DiscoveryService, ScannerInfo
+from ...core.constants import DEFAULT_CONTROL_PORT, DEFAULT_TIMEOUT, MAX_RETRIES
+from ...core.utils import generate_uuid, get_machine_info, deserialize_binary_message
 
 logger = logging.getLogger(__name__)
 
@@ -75,14 +75,9 @@ class UnlookClient(EventEmitter):
     def camera(self):
         """Lazy-loading of the camera client."""
         if self._camera is None:
-            # Use importlib to directly import from camera.py file
-            import importlib.util
-            import os
-            camera_file = os.path.join(os.path.dirname(__file__), 'camera.py')
-            spec = importlib.util.spec_from_file_location("camera_module", camera_file)
-            camera_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(camera_module)
-            self._camera = camera_module.CameraClient(self)
+            # Import from reorganized structure
+            from ..camera import CameraClient
+            self._camera = CameraClient(self)
         return self._camera
 
     @property
@@ -90,7 +85,7 @@ class UnlookClient(EventEmitter):
         """Lazy-loading of the projector client."""
         if self._projector is None:
             # Delayed import to avoid circular imports
-            from .projector import ProjectorClient
+            from ..projector import ProjectorClient
             self._projector = ProjectorClient(self)
         return self._projector
 
@@ -99,7 +94,7 @@ class UnlookClient(EventEmitter):
         """Lazy-loading of the streaming client."""
         if self._stream is None:
             # Delayed import to avoid circular imports
-            from .streaming import StreamClient
+            from ..streaming import StreamClient
             self._stream = StreamClient(self)
         return self._stream
 

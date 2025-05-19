@@ -68,3 +68,13 @@ CLAUDE_NEXT_SESSION_NOTES.md
 unlook/client/camera/__pycache__/camera_auto_optimizer.cpython-312.pyc
 /.venv2
 CLAUDE_NEXT_SESSION_NOTES.md
+/unlook/client/scanning/handpose/__pycache__
+/unlook/client/scanner/__pycache__
+/unlook/client/camera/__pycache__
+TODO_AND_VCSEL_UPDATE.md
+SESSION_SUMMARY_20250517.md
+README_SIMPLE.md
+QUICKSTART.md
+debug_simple.py
+debug_correspondence_issue.py
+CLEANUP_COMPLETE.md

@@ -6,6 +6,7 @@ This directory contains hardware-specific drivers and interfaces for the Unlook 
 
 - **camera.py** - Camera hardware abstraction layer
 - **projector.py** - Projector hardware abstraction layer
+- **led_controller.py** - AS1170 LED flood illuminator controller
 - **dlp342x/** - Texas Instruments DLP342X projector drivers:
   - **dlpc342x_i2c.py** - I2C communication with DLP controller
   - **packer.py** - Data packing/unpacking for DLP commands
@@ -69,12 +70,23 @@ camera_manager.capture_image("camera1")
 projector_manager.show_pattern("solid_white")
 ```
 
+## LED Controller
+
+The AS1170 LED flood illuminator provides:
+
+- Dual-channel LED control (0-450mA per channel)
+- I2C control interface (Bus 4)
+- Hardware strobe control (GPIO 27)
+- Automatic intensity adjustment
+- Server-side control via client commands
+
 ## Hardware Configuration
 
 Hardware configuration is loaded from configuration files or command-line arguments:
 
 - **Camera configuration**: Resolution, formats, synchronization options
 - **Projector configuration**: Connection type, resolution, synchronization options
+- **LED configuration**: I2C bus 4, strobe pin GPIO 27, intensity 0-450mA
 
 ## Extension
 

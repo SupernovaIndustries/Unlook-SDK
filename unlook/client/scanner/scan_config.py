@@ -4,7 +4,7 @@ Configuration classes for 3D scanning.
 
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 from enum import Enum
-from .camera_config import ColorMode, CompressionFormat, ImageQualityPreset
+from ..camera.camera_config import ColorMode, CompressionFormat, ImageQualityPreset
 
 
 class PatternType(Enum):

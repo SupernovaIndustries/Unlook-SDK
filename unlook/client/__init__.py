@@ -2,10 +2,9 @@
 Client module for connecting to UnLook scanners.
 """
 
-# Import only the main client class directly
-from .scanner import UnlookClient
-from .scan_config import ScanConfig
-from .scanner3d import Scanner3D, create_scanner, ScanResult, ScanConfig as Scanner3DConfig
+# Import from new structure
+from .scanner import UnlookClient, Scanner3D, ScanConfig
+from .scanner.scanner3d import create_scanner, ScanResult, ScanConfig as Scanner3DConfig
 
 # Import from new structure
 from .scanning import (

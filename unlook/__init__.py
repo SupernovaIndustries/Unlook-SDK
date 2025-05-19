@@ -1,18 +1,14 @@
 """
-UnLook SDK for communication and control of structured light 3D scanners.
+UnLook SDK - The Arduino of Computer Vision.
+Simple 3D scanning and depth sensing for everyone.
 
-This SDK provides a complete interface for working with UnLook scanners,
-allowing to control cameras, projectors, acquire images, perform
-3D scans and reconstruct 3D models.
-
-The architecture is divided into two main parts:
-- Client: for connecting to and controlling the scanner
-- Server: for implementing the scanner server
-
-See the documentation and examples to start using the SDK.
+Quick start:
+    from unlook import quick_capture, quick_scan
+    quick_capture('photo.jpg')  # Capture image
+    quick_scan('object.ply')   # 3D scan
 """
 
-__version__ = "0.1.0"
+__version__ = "2.0.0"
 __author__ = "UnLook Team"
 
 # Core components
@@ -23,8 +19,15 @@ from .core.discovery import ScannerInfo, DiscoveryService
 import builtins
 import logging
 
-# Client API - For applications that need to connect to a scanner
-# Import client modules conditionally to prevent circular imports in server-only mode
+# Simple API - For most users (NEW!)
+try:
+    from .simple import UnlookSimple, quick_capture, quick_scan
+except ImportError:
+    UnlookSimple = None
+    quick_capture = None
+    quick_scan = None
+
+# Client API - For advanced users
 _client_imported = False
 try:
     # Check if we're in server-only mode (set in server_bootstrap.py)
@@ -48,7 +51,7 @@ except (ImportError, NameError) as e:
 UnlookScanner = None
 if _client_imported:
     try:
-        from .client.scanner3d import UnlookScanner
+        from .client.scanner import UnlookScanner
     except ImportError:
         # Optional dependencies might not be available
         UnlookScanner = None
@@ -60,7 +63,6 @@ import sys
 if 'arm' in platform.machine():
     try:
         from .server import UnlookServer
-
 
         # Convenience function to get projector classes without direct imports
         def get_projector_classes():
@@ -91,7 +93,6 @@ else:
     # Not running on a Raspberry Pi, provide dummy implementations
     UnlookServer = None
 
-
     def get_projector_classes():
         raise ImportError("Server components are only available on Raspberry Pi")
 
@@ -101,12 +102,17 @@ __all__ = [
     '__version__',
     '__author__',
 
+    # Simple API (RECOMMENDED!)
+    'UnlookSimple',
+    'quick_capture',
+    'quick_scan',
+
     # Core types
     'EventType',
     'ScannerInfo',
     'DiscoveryService',
 
-    # Main classes
+    # Advanced API
     'UnlookClient',
     'UnlookServer',
     'UnlookScanner',
@@ -114,3 +120,35 @@ __all__ = [
     # Utility functions
     'get_projector_classes'
 ]
+
+# Quick help function
+def hello():
+    """Print quick start guide."""
+    print("Welcome to UnLook - The Arduino of Computer Vision!")
+    print("\nQuick start:")
+    print("  from unlook import quick_capture, quick_scan")
+    print("  quick_capture('photo.jpg')  # Capture image")
+    print("  quick_scan('object.ply')    # 3D scan")
+    print("\nSimple usage:")
+    print("  from unlook import UnlookSimple")
+    print("  scanner = UnlookSimple()")
+    print("  scanner.connect()")
+    print("  image = scanner.capture()")
+    print("\nExamples:")
+    print("  python -m unlook.examples.basic.hello_unlook")
+    print("\nDocumentation: https://docs.unlook.io")
+
+# Auto-connect for interactive use
+def connect():
+    """Quick connect for interactive Python sessions."""
+    if UnlookSimple:
+        scanner = UnlookSimple(debug=True)
+        if scanner.connect():
+            print("Connected! Use 'scanner' variable.")
+            return scanner
+        else:
+            print("No scanner found. Check connection.")
+            return None
+    else:
+        print("Simple API not available. Check installation.")
+        return None

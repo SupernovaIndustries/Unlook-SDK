@@ -20,3 +20,6 @@ zeroconf>=0.38.0   # For service discovery
 pillow>=8.0.0      # Image processing
 scipy>=1.7.0       # Scientific computing
 netifaces>=0.11.0  # Network interface discovery
+
+# LED flood illuminator control
+AS1170-Python>=0.1.0  # AS1170 LED driver control

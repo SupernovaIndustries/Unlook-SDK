@@ -1489,24 +1489,24 @@ class StaticScanner:
         
         # Decode horizontal patterns (for X coordinates)
         logger.info("Decoding horizontal Gray code patterns...")
-        x_coord_left, x_conf_left, x_mask_left = decode_patterns(
+        x_coord_left, x_conf_left, x_mask_left = decode_gray_code_patterns(
             white_left, black_left, h_patterns_left, 
             num_bits=5, orientation="horizontal"
         )
         
-        x_coord_right, x_conf_right, x_mask_right = decode_patterns(
+        x_coord_right, x_conf_right, x_mask_right = decode_gray_code_patterns(
             white_right, black_right, h_patterns_right,
             num_bits=5, orientation="horizontal"
         )
         
         # Decode vertical patterns (for Y coordinates)
         logger.info("Decoding vertical Gray code patterns...")
-        y_coord_left, y_conf_left, y_mask_left = decode_patterns(
+        y_coord_left, y_conf_left, y_mask_left = decode_gray_code_patterns(
             white_left, black_left, v_patterns_left,
             num_bits=5, orientation="vertical"
         )
         
-        y_coord_right, y_conf_right, y_mask_right = decode_patterns(
+        y_coord_right, y_conf_right, y_mask_right = decode_gray_code_patterns(
             white_right, black_right, v_patterns_right,
             num_bits=5, orientation="vertical"
         )
@@ -2304,10 +2304,22 @@ class StaticScanner:
         if not self.debug_enabled or self.debug_path is None:
             return
             
+        # Convert enum values to strings for JSON serialization
+        serializable_metadata = self.debug_metadata.copy()
+        if "config" in serializable_metadata:
+            config_copy = {}
+            for key, value in serializable_metadata["config"].items():
+                # Convert enum to string if it has a value attribute
+                if hasattr(value, "value"):
+                    config_copy[key] = value.value
+                else:
+                    config_copy[key] = value
+            serializable_metadata["config"] = config_copy
+        
         # Save configuration
         config_path = self.debug_path / "08_metadata" / "scan_config.json"
         with open(config_path, 'w') as f:
-            json.dump(self.debug_metadata, f, indent=2)
+            json.dump(serializable_metadata, f, indent=2)
     
     def _save_point_cloud_debug(self, points_3d: np.ndarray, stage: str = "raw"):
         """Save point cloud data for debugging."""
