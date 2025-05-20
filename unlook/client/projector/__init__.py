@@ -2,8 +2,10 @@
 
 from .projector import ProjectorClient
 from .projector_adapter import ProjectorAdapter
+from .led_controller import LEDController
 
 __all__ = [
     "ProjectorClient",
-    "ProjectorAdapter"
+    "ProjectorAdapter",
+    "LEDController"
 ]

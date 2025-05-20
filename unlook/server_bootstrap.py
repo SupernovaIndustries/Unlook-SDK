@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Script di bootstrap per il server UnLook.
-Questo script evita problemi di importazione circolare avviando il server
-in un modo completamente indipendente.
+Bootstrap script for the UnLook server.
+This script avoids circular import issues by starting the server
+in a completely independent way, suitable for use with systemd.
 """
 
 import os
@@ -12,20 +12,19 @@ import json
 import signal
 import logging
 import argparse
+import socket
 from pathlib import Path
 
-# Configura il logging di base
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Configure basic logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger("ServerBoot")
 
 # Fix: Add the root directory (Unlook-SDK) to the Python path for proper import resolution
 root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, root_dir)
-
-# Print for debugging
-print(f"Adding to path: {root_dir}")
-print(f"Full sys.path: {sys.path}")
 
 # Set a flag in the global namespace to inform the unlook module
 # that we're running in server-only mode and should not import client modules
@@ -33,65 +32,138 @@ import builtins
 builtins._SERVER_ONLY_MODE = True
 
 
+def get_local_ip():
+    """Get the local IP address the server will be running on."""
+    try:
+        # Create a temporary socket to discover our IP address
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # We don't need to actually connect to Google DNS, just use it to determine interface
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except Exception as e:
+        logger.warning(f"Could not determine local IP: {e}")
+        return "127.0.0.1"  # Default to localhost
+
+
+def setup_logging(log_file=None, log_level=logging.INFO):
+    """Set up logging configuration."""
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
+    
+    # Set up console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    root_logger.addHandler(console_handler)
+    
+    # Set up file handler if log file is specified
+    if log_file:
+        try:
+            # Ensure log directory exists
+            log_dir = os.path.dirname(log_file)
+            if log_dir and not os.path.exists(log_dir):
+                os.makedirs(log_dir)
+                
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            root_logger.addHandler(file_handler)
+            logger.info(f"Logging to file: {log_file}")
+        except Exception as e:
+            logger.error(f"Failed to set up log file {log_file}: {e}")
+
+
 def main():
-    """Funzione principale per l'avvio del server."""
-    parser = argparse.ArgumentParser(description="Server UnLook per scanner 3D")
-    parser.add_argument("--config", help="Percorso del file di configurazione JSON")
+    """Main function for starting the server."""
+    parser = argparse.ArgumentParser(description="UnLook 3D Scanner Server")
+    parser.add_argument("--config", help="Path to JSON configuration file")
+    parser.add_argument("--log-file", help="Path to log file")
+    parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+                      default="INFO", help="Set the logging level")
+    parser.add_argument("--daemon", action="store_true", help="Run as a daemon process")
     args = parser.parse_args()
+    
+    # Set up logging
+    log_level = getattr(logging, args.log_level)
+    setup_logging(args.log_file, log_level)
+    
+    # Print system info
+    local_ip = get_local_ip()
+    logger.info(f"Starting UnLook server on {local_ip}")
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Working directory: {os.getcwd()}")
+    logger.info(f"Root directory: {root_dir}")
 
     try:
         # Using server-only mode (set earlier), we can directly import just the server module
         # without the risk of circular imports with client modules
         from unlook.server.scanner import UnlookServer
 
-        # Carica la configurazione
+        # Load configuration
         config_path = args.config or os.path.join(os.path.dirname(__file__), "unlook_config.json")
 
         if os.path.exists(config_path):
             with open(config_path, 'r') as f:
                 config = json.load(f)
-            logger.info(f"Configurazione caricata da {config_path}")
+            logger.info(f"Configuration loaded from {config_path}")
         else:
-            logger.warning(f"File di configurazione {config_path} non trovato, utilizzo configurazione predefinita")
+            logger.warning(f"Configuration file {config_path} not found, using default configuration")
             config = {
                 "server": {
                     "name": "UnLookScanner",
                     "control_port": 5555,
                     "stream_port": 5556,
-                    "direct_stream_port": 5557  # Added default for direct streaming
+                    "direct_stream_port": 5557  # Default for direct streaming
                 }
             }
 
-        # Estrai le configurazioni del server
+        # Extract server configuration
         server_config = config.get("server", {})
+        
+        # Display server config for debugging
+        logger.info(f"Server name: {server_config.get('name', 'UnLookScanner')}")
+        logger.info(f"Control port: {server_config.get('control_port', 5555)}")
+        logger.info(f"Stream port: {server_config.get('stream_port', 5556)}")
+        logger.info(f"Direct stream port: {server_config.get('direct_stream_port', 5557)}")
 
-        # Crea e avvia il server
+        # Create and start the server
         server = UnlookServer(
             name=server_config.get("name", "UnLookScanner"),
             control_port=server_config.get("control_port", 5555),
             stream_port=server_config.get("stream_port", 5556),
-            direct_stream_port=server_config.get("direct_stream_port", 5557),  # Added direct stream port
+            direct_stream_port=server_config.get("direct_stream_port", 5557),
             scanner_uuid=server_config.get("scanner_uuid"),
             auto_start=True
         )
 
-        logger.info("Server avviato con successo")
+        logger.info("Server started successfully")
 
-        # Configura il gestore di segnali per l'arresto pulito
+        # Set up signal handler for clean shutdown
         def signal_handler(sig, frame):
-            logger.info("Segnale di arresto ricevuto, terminazione del server...")
+            logger.info("Shutdown signal received, terminating server...")
             server.stop()
             sys.exit(0)
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
-        # Mantieni il processo in esecuzione
+        # If running as a daemon, notify systemd
+        if args.daemon and os.environ.get('NOTIFY_SOCKET'):
+            try:
+                import systemd.daemon
+                systemd.daemon.notify('READY=1')
+                logger.info("Notified systemd that service is ready")
+            except ImportError:
+                logger.warning("systemd module not available, cannot notify")
+
+        # Keep the process running
         while True:
             time.sleep(1)
 
     except Exception as e:
-        logger.error(f"Errore durante l'avvio del server: {e}")
+        logger.error(f"Error during server startup: {e}")
         import traceback
         logger.error(traceback.format_exc())
         sys.exit(1)

@@ -1,0 +1,40 @@
+{
+  "server": {
+    "name": "UnLookScanner",
+    "control_port": 5555,
+    "stream_port": 5556,
+    "direct_stream_port": 5557,
+    "scanner_uuid": null
+  },
+  "hardware": {
+    "projector": {
+      "type": "DLP342X",
+      "i2c_bus": 3,
+      "i2c_address": "0x1B",
+      "default_mode": "pattern"
+    },
+    "cameras": {
+      "default_resolution": [1920, 1080],
+      "default_fps": 30,
+      "auto_exposure": true
+    },
+    "led_controller": {
+      "enabled": true,
+      "default_intensity": 50
+    }
+  },
+  "streaming": {
+    "default_fps": 30,
+    "jpeg_quality": 85,
+    "direct_streaming_fps": 60,
+    "direct_jpeg_quality": 90,
+    "enable_camera_sync": true
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "/var/log/unlook/server.log",
+    "console": true,
+    "rotate_size_mb": 10,
+    "keep_logs": 5
+  }
+}

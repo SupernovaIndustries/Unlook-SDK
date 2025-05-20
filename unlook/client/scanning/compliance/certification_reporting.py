@@ -14,6 +14,9 @@ import json
 import os
 from pathlib import Path
 
+# Setup logger
+logger = logging.getLogger(__name__)
+
 # For PDF generation (optional dependency)
 try:
     from reportlab.lib import colors
@@ -26,8 +29,6 @@ try:
 except ImportError:
     REPORTLAB_AVAILABLE = False
     logger.warning("reportlab not available. PDF reports will not be generated.")
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass

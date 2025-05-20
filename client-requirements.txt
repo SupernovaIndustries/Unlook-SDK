@@ -38,3 +38,5 @@ mypy>=1.0.0        # For type checking
 # Instead of python-pcl, we use Open3D for all point cloud processing
 
 mediapipe>=0.10.0  # For image processing and visualization
+reportlab>=3.6.0  # For PDF generation
+ultralytics>=8.0.0  # For YOLO model inference and hand detection

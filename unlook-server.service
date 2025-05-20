@@ -1,0 +1,30 @@
+[Unit]
+Description=UnLook 3D Scanner Server
+After=network.target
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/Unlook-SDK
+ExecStart=/home/pi/Unlook-SDK/.venv/bin/python3 -m unlook.server_bootstrap --daemon --log-file=/var/log/unlook/server.log
+Restart=on-failure
+RestartSec=5s
+# Give the server up to 60 seconds to start
+TimeoutStartSec=60
+# Give a reasonable amount of time for the server to stop
+TimeoutStopSec=30
+
+# Security hardening measures
+PrivateTmp=true
+ProtectSystem=full
+NoNewPrivileges=true
+ProtectHome=read-only
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

@@ -16,6 +16,7 @@ class MessageType(enum.Enum):
     INFO = "info"  # Scanner information
     ERROR = "error"  # General error
     PING = "ping"  # Keep-alive/connection test
+    PONG = "pong"  # Response to ping
 
     # Projector control
     PROJECTOR_MODE = "projector_mode"  # Set projector mode

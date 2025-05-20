@@ -33,9 +33,20 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinx.ext.todo',
     'sphinx.ext.mathjax',
+    'sphinx.ext.graphviz',
+    'sphinx.ext.githubpages',
+    'sphinx.ext.coverage',
+    'sphinx.ext.ifconfig',
+    'sphinx.ext.inheritance_diagram',
     'sphinx_rtd_theme',
+    'sphinx_copybutton',
+    'sphinx_tabs.tabs',
+    'sphinx_design',
+    'sphinx_inline_tabs',
+    'sphinx_gallery.gen_gallery',
     'myst_parser',
     'nbsphinx',
+    'sphinx_notfound_page',
 ]
 
 # Configure napoleon for parsing Google style docstrings
@@ -53,6 +64,20 @@ napoleon_use_rtype = True
 napoleon_preprocess_types = False
 napoleon_type_aliases = None
 napoleon_attr_annotations = True
+
+# Configure sphinx-copybutton
+copybutton_prompt_text = ">>> |\\\\$ |\\\\[\\\\d*\\\\]: |In \\\\[\\\\d*\\\\]: "
+copybutton_prompt_is_regexp = True
+copybutton_remove_prompts = True
+copybutton_line_continuation_character = "\\"
+
+# Configure sphinx-gallery
+sphinx_gallery_conf = {
+    'examples_dirs': '../examples',  # path to example scripts
+    'gallery_dirs': 'auto_examples',  # path to gallery generated output
+    'filename_pattern': '/example_',  # Include only example files with this pattern
+    'ignore_pattern': '/figure_',  # Exclude files with this pattern
+}
 
 templates_path = ['_templates']
 exclude_patterns = []
@@ -95,6 +120,8 @@ intersphinx_mapping = {
     'numpy': ('https://numpy.org/doc/stable/', None),
     'open3d': ('http://www.open3d.org/docs/', None),
     'opencv': ('https://docs.opencv.org/4.x/', None),
+    'pytorch': ('https://pytorch.org/docs/stable/', None),
+    'matplotlib': ('https://matplotlib.org/stable/', None),
 }
 
 # -- Options for todo extension ----------------------------------------------
@@ -114,6 +141,16 @@ autoclass_content = 'both'
 
 # -- nbsphinx configuration --------------------------------------------------
 nbsphinx_execute = 'never'  # Do not execute notebooks during the build
+
+# -- notfound configuration -------------------------------------------------
+notfound_context = {
+    'title': 'Page Not Found',
+    'body': '''
+    <h1>Page Not Found</h1>
+    <p>Sorry, we couldn't find that page.</p>
+    <p>Try using the search box or go to the <a href="/">homepage</a>.</p>
+    ''',
+}
 
 # Add custom CSS
 def setup(app):

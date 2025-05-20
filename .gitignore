@@ -81,3 +81,11 @@ CLEANUP_COMPLETE.md
 CLAUDE_SESSION_NOTES_20250519.md
 MANIFEST.in
 /unlook/server/hardware/__pycache__
+/.md
+/temp_dynamic_gestures
+/unlook/client/projector/__pycache__
+/unlook/client/scanning/compliance/__pycache__
+/unlook/models/__pycache__
+unlook/models/YOLOv10x_gestures.pt
+unlook/models/YOLOv10x_hands.pt
+unlook/models/Non confermato 536239.crdownload

@@ -5,6 +5,7 @@
 [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/SupernovaIndustries/unlook)
 [![Python](https://img.shields.io/badge/python-3.7%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Documentation Status](https://readthedocs.org/projects/unlook/badge/?version=latest)](https://unlook.readthedocs.io/en/latest/?badge=latest)
 
 **Unlook SDK** is a powerful and flexible Python framework designed to control Unlook - a modular open-source 3D scanning system that supports interchangeable optics and sensors, similar to how cameras support different lenses. This SDK provides a complete solution for managing various scanning modules, from structured light systems to depth sensors, point projectors, and more.
 
@@ -20,22 +21,22 @@
   - Point projector management
 - **Advanced Video Streaming**:
   - Standard streams for visualization and monitoring
-  - **✨ NEW! Low-latency direct streams** for real-time applications
-  - **✨ NEW! Automated pattern sequences** for structured light scanning
+  - Low-latency direct streams for real-time applications
+  - Automated pattern sequences for structured light scanning
   - Precise projector-camera synchronization
 - **3D Scanning**:
-  - **✨ NEW! Simplified 3D scanning API** - create a 3D scan in just a few lines of code
-  - **✨ NEW! Real-time scanning mode** - for handheld applications with GPU acceleration
-  - **✨ NEW! Advanced pattern types** - maze, Voronoi, and hybrid ArUco patterns
-  - **✨ NEW! Camera auto-optimization** - automatic exposure and gain adjustment
-  - **✨ NEW! ISO/ASTM 52902 compliance** - certification-ready with uncertainty quantification
+  - Simplified 3D scanning API - create a 3D scan in just a few lines of code
+  - Real-time scanning mode - for handheld applications with GPU acceleration
+  - Advanced pattern types - maze, Voronoi, and hybrid ArUco patterns
+  - Camera auto-optimization - automatic exposure and gain adjustment
+  - ISO/ASTM 52902 compliance - certification-ready with uncertainty quantification
   - Stereo camera calibration and rectification
   - Point cloud generation and filtering
   - Mesh creation and export to multiple formats
 - **ISO/ASTM 52902 Certification Support**:
-  - **✨ NEW! Uncertainty measurement** - quantify accuracy for each pattern type
-  - **✨ NEW! Calibration validation** - using standardized test objects
-  - **✨ NEW! Certification reporting** - automated compliance documentation
+  - Uncertainty measurement - quantify accuracy for each pattern type
+  - Calibration validation - using standardized test objects
+  - Certification reporting - automated compliance documentation
   - Meets requirements for additive manufacturing geometric capability assessment
 - **GPU Acceleration**: Optimized processing using GPU when available
 - **Neural Network Enhancement**: Point cloud filtering and enhancement using machine learning
@@ -58,7 +59,17 @@ Unlook is designed as a modular platform with interchangeable scanning modules, 
 | Point Projector | Laser/IR dot pattern | 🔜 Coming soon |
 | Custom Modules | User-created scanning solutions | 📝 Supported |
 
-## 🚀 Getting Started
+## 📚 Documentation
+
+Complete documentation is available at [unlook.readthedocs.io](https://unlook.readthedocs.io/):
+
+- Comprehensive [Installation Guide](https://unlook.readthedocs.io/en/latest/installation.html)
+- Detailed [API Reference](https://unlook.readthedocs.io/en/latest/api_reference/index.html)
+- Step-by-step [Tutorials](https://unlook.readthedocs.io/en/latest/examples/index.html)
+- In-depth [User Guides](https://unlook.readthedocs.io/en/latest/user_guide/index.html)
+- [Troubleshooting](https://unlook.readthedocs.io/en/latest/troubleshooting.html) section
+
+## 🚀 Quick Start
 
 ### Prerequisites
 
@@ -77,481 +88,104 @@ cd unlook
 pip install -r client-requirements.txt
 ```
 
-### GPU Acceleration Setup
+### Simple Example
+
+```python
+from unlook import UnlookClient
+import time
+
+# Create client and auto-discover scanners
+client = UnlookClient(auto_discover=True)
+client.start_discovery()
+time.sleep(5)  # Wait for discovery
+
+# Connect to first available scanner
+scanners = client.get_discovered_scanners()
+if scanners:
+    client.connect(scanners[0])
+    
+    # Capture an image
+    image = client.camera.capture("camera_0")
+    
+    # Perform a 3D scan
+    from unlook.client.scanning import StaticScanner
+    scanner = StaticScanner(client=client)
+    point_cloud = scanner.perform_scan()
+    
+    # Display the point cloud
+    scanner.visualize_point_cloud(point_cloud)
+```
+
+## 🛠️ Advanced Configuration
+
+### GPU Acceleration
 
 For optimal performance, we recommend setting up GPU acceleration:
-
-#### NVIDIA GPUs
 
 ```bash
 # Install CUDA Toolkit from NVIDIA's website first
 # https://developer.nvidia.com/cuda-downloads
 
 # Install PyTorch with CUDA support
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu117
-
-# Install CuPy (match with your CUDA version)
-pip install cupy-cuda11x  # For CUDA 11.x
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
 ```
 
-#### AMD GPUs
+### Advanced Pattern Support
+
+For the advanced pattern types, install additional dependencies:
 
 ```bash
-# AMD GPU support via ROCm
-pip install torch torchvision --index-url https://download.pytorch.org/whl/rocm5.4.2
+# For all pattern types
+pip install scipy opencv-contrib-python
 ```
 
-#### CPU-only Fallback
+## 📊 Example Projects
 
-```bash
-# CPU-only versions
-pip install torch torchvision
-pip install cupy
-```
+Check the `unlook/examples/` directory for comprehensive examples:
 
-### Advanced Pattern Support (Optional)
+- **Basic Examples**: Simple client connections, camera capture, and LED control
+- **3D Scanning**: Real-time scanning, static scanning with different pattern types
+- **Advanced Features**: Camera calibration, gesture recognition, pattern optimization
+- **Integration Tests**: Verify functionality across different components
 
-For the new advanced pattern types, install additional dependencies:
+## 🏗️ Architecture
 
-```bash
-# For Voronoi patterns
-pip install scipy
+The SDK is structured into three main modules:
 
-# For Hybrid ArUco patterns
-pip install opencv-contrib-python
-
-# Or install all pattern dependencies
-pip install -r patterns-requirements.txt
-```
-
-### Testing Your Installation
-
-Verify your installation with the test script:
-
-```bash
-# Check GPU acceleration
-python -m unlook.utils.check_gpu
-
-# Run basic test
-python -m unlook.examples.test_client
-
-# Test advanced patterns (optional)
-python unlook/examples/test_pattern_generators.py
-```
-
-## 📊 Example Usage
-
-### Basic Client Connection
-
-```python
-from unlook import UnlookClient, EventType
-
-# Create client
-client = UnlookClient(client_name="ExampleApp")
-
-# Register callback for events
-def on_connected(scanner):
-    print(f"Connected to: {scanner.name} ({scanner.uuid})")
-
-client.on(EventType.CONNECTED, on_connected)
-
-# Discover available scanners
-client.start_discovery()
-
-# Connect to the first available scanner
-scanners = client.get_discovered_scanners()
-if scanners:
-    client.connect(scanners[0])
-    
-    # Capture image using structured light module
-    image = client.camera.capture("camera_id")
-```
-
-### Real-Time Scanning
-
-```python
-from unlook import UnlookClient
-from unlook.client.realtime_scanner import create_realtime_scanner
-import time
-
-# Create client and connect to scanner
-client = UnlookClient(auto_discover=True)
-client.start_discovery()
-time.sleep(5)  # Wait for discovery
-
-scanners = client.get_discovered_scanners()
-if scanners:
-    client.connect(scanners[0])
-    
-    # Create real-time scanner with desired quality
-    scanner = create_realtime_scanner(
-        client=client,
-        quality="medium",  # Options: "fast", "medium", "high", "ultra"
-        calibration_file="calibration/stereo_calib.json"  # Optional
-    )
-    
-    # Start continuous scanning
-    scanner.start()
-    
-    # Show visualization (press ESC to exit)
-    from unlook.client.visualization import ScanVisualizer
-    visualizer = ScanVisualizer()
-    
-    try:
-        while True:
-            # Get latest point cloud
-            if scanner.has_new_cloud():
-                cloud = scanner.get_latest_cloud()
-                visualizer.update(cloud)
-                
-            # Check for ESC key
-            if visualizer.check_exit():
-                break
-                
-            time.sleep(0.01)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        scanner.stop()
-        visualizer.close()
-```
-
-### Camera Configuration
-
-```python
-from unlook.client.camera_config import CameraConfig, ColorMode, CompressionFormat
-
-# Create a new camera configuration
-config = CameraConfig()
-
-# Configure basic settings
-config.exposure_time = 20000  # in microseconds (20ms)
-config.gain = 1.5
-config.jpeg_quality = 90
-config.color_mode = ColorMode.COLOR
-
-# Apply configuration to a camera
-client.camera.apply_camera_config("camera_1", config)
-```
-
-### Pattern Sequences for Structured Light Scanning
-
-```python
-# Define a sequence of patterns
-patterns = [
-    {"pattern_type": "solid_field", "color": "White"},
-    {"pattern_type": "horizontal_lines", "foreground_color": "White", 
-     "background_color": "Black", "foreground_width": 4, "background_width": 20},
-    {"pattern_type": "vertical_lines", "foreground_color": "White", 
-     "background_color": "Black", "foreground_width": 4, "background_width": 20},
-    {"pattern_type": "grid", "foreground_color": "White", "background_color": "Black"}
-]
-
-# Start the sequence with 1s interval, looping
-result = client.projector.start_pattern_sequence(
-    patterns=patterns,
-    interval=1.0,      # 1 second between patterns
-    loop=True,         # Loop continuously
-    sync_with_camera=True  # Enable projector-camera synchronization
-)
-```
-
-### Camera Auto-Optimization
-
-```python
-from unlook.client.camera import CameraAutoOptimizer
-
-# Create auto-optimizer
-optimizer = CameraAutoOptimizer(client)
-
-# Optimize camera settings automatically
-result = optimizer.optimize_camera_settings(
-    camera_id="camera_0",
-    use_projector=True,  # Use projector patterns for optimization
-    target_brightness=0.5,  # Target mean brightness
-    target_contrast=0.3     # Target contrast level
-)
-
-if result:
-    print(f"Optimal exposure: {result.exposure_time}μs")
-    print(f"Optimal gain: {result.gain}")
-```
-
-### Advanced Pattern Types
-
-```python
-from unlook.client.scanning import StaticScanner, StaticScanConfig
-from unlook.client.scan_config import PatternType
-
-# Create scanner with advanced patterns
-config = StaticScanConfig(
-    quality="high",
-    pattern_type=PatternType.MAZE,  # Options: MAZE, VORONOI, HYBRID_ARUCO
-    debug=True
-)
-
-scanner = StaticScanner(client=client, config=config)
-
-# Perform scan with advanced patterns
-point_cloud = scanner.perform_scan()
-```
-
-### Pattern Examples
-
-```python
-# Generate individual pattern examples
-from unlook.client.patterns import MazePatternGenerator, VoronoiPatternGenerator
-
-# Create maze pattern for robust correspondence
-maze_gen = MazePatternGenerator(1920, 1080)
-maze_pattern = maze_gen.generate(algorithm="recursive_backtrack")
-
-# Create Voronoi pattern for dense reconstruction
-voronoi_gen = VoronoiPatternGenerator(1920, 1080)
-voronoi_pattern = voronoi_gen.generate(num_points=100, color_scheme="grayscale")
-```
-
-### ISO/ASTM 52902 Compliance and Certification
-
-```python
-from unlook.client.scanning.compliance import (
-    MazeUncertaintyMeasurement,
-    CalibrationValidator, 
-    CertificationReporter
-)
-
-# Create scanner with calibration validation
-scanner_specs = {
-    'name': 'UnLook Scanner',
-    'model': 'UL-1000',
-    'accuracy': 0.1,  # mm
-    'resolution': (1280, 720)
-}
-
-# 1. Measure uncertainty for pattern correspondences
-uncertainty_measure = MazeUncertaintyMeasurement((1280, 720))
-uncertainty_data = uncertainty_measure.compute_uncertainty(
-    correspondences,  # From pattern matching
-    {'pixel_to_mm': 0.1}
-)
-print(f"Mean uncertainty: {uncertainty_data.mean_uncertainty:.3f}mm")
-
-# 2. Validate calibration with test objects
-validator = CalibrationValidator(scanner_specs)
-validation_result = validator.validate_with_test_object(
-    point_cloud,  # Scanned test object
-    'sphere_25mm'  # Standard test object ID
-)
-print(f"Calibration validation: {'PASSED' if validation_result.passed else 'FAILED'}")
-
-# 3. Generate certification report
-reporter = CertificationReporter(scanner_specs)
-certification = reporter.generate_report(
-    calibration_results,
-    uncertainty_measurements,
-    pattern_test_results,
-    save_pdf=True
-)
-print(f"Compliance status: {'COMPLIANT' if certification.overall_compliance else 'NON-COMPLIANT'}")
-```
-
-## 🧩 Architecture
-
-The SDK is structured into several main modules:
-
-### Core Module
-
-The `unlook.core` module contains shared utilities and protocols:
+### Core Module (`unlook.core`)
 - Communication protocol definitions
-- Discovery service
-- Event management
-- Shared utilities
+- Service discovery
+- Event management system
 
-### Client Module
-
-The `unlook.client` module provides client-side control:
+### Client Module (`unlook.client`)
 - Scanner client and connection management
-- Camera control and configuration
-- Projector control
+- Camera and projector control
 - 3D scanning algorithms
-- Real-time scanning
-- Pattern generation (maze, Voronoi, hybrid ArUco)
-- ISO/ASTM 52902 compliance features
+- Pattern generation and processing
+- ISO compliance features
 
-### Server Module
-
-The `unlook.server` module runs on the hardware:
-- Hardware control interfaces
-- Acquisition and streaming
-- Protocol implementation
+### Server Module (`unlook.server`)
+- Hardware interfaces
 - Device management
+- Acquisition and streaming
 
-## 🏗️ Module Structure
+## 🔧 Troubleshooting
 
-```
-unlook/
-├── core/              # Core functionality
-│   ├── protocol.py    # Communication protocol
-│   ├── discovery.py   # Service discovery
-│   └── events.py      # Event system
-├── client/            # Client-side control
-│   ├── scanner.py     # Main scanner client
-│   ├── camera.py      # Camera control
-│   ├── projector.py   # Projector control
-│   ├── patterns/      # Pattern generators
-│   │   ├── maze_pattern.py
-│   │   ├── voronoi_pattern.py
-│   │   └── hybrid_aruco_pattern.py
-│   ├── scanning/      # Scanning algorithms
-│   │   ├── static_scanner.py
-│   │   ├── realtime_scanner.py
-│   │   └── compliance/  # ISO compliance
-│   └── visualization/ # Visualization tools
-├── server/            # Server-side control
-│   ├── scanner.py     # Scanner service
-│   └── hardware/      # Hardware interfaces
-└── examples/          # Example code
-    ├── patterns_with_compliance_example.py
-    └── testing/       # Organized test files
-```
+If you encounter issues:
 
-## 🚀 Installation Options
+1. Ensure your virtual environment is activated
+2. Verify hardware connections and permissions
+3. Check for proper dependency installation
+4. Enable debug logging for detailed information:
+   ```python
+   import logging
+   logging.basicConfig(level=logging.DEBUG)
+   ```
+5. Consult the [Troubleshooting Guide](https://unlook.readthedocs.io/en/latest/troubleshooting.html)
 
-### Basic Installation
-For basic client functionality:
-```bash
-pip install -e .
-```
+## 🤝 Contributing
 
-### Advanced Installation
-
-#### GPU Acceleration (Optional)
-For real-time scanning with GPU support:
-```bash
-# Install CUDA Toolkit first
-pip install -r gpu-requirements.txt
-```
-
-#### Pattern Dependencies (Optional)
-For advanced pattern types:
-```bash
-pip install -r patterns-requirements.txt
-```
-
-### Server Installation
-For the Raspberry Pi server component:
-```bash
-pip install -r server-requirements.txt
-```
-
-### Platform-Specific Notes
-
-#### Windows
-- Use Python 3.9 or 3.10 for best compatibility
-- Install Visual Studio Build Tools for compiling extensions
-- GPU acceleration requires NVIDIA GPU with CUDA support
-
-#### Linux
-- Most distributions work out of the box
-- GPU acceleration supports both NVIDIA (CUDA) and AMD (ROCm)
-- May need to install additional system packages for OpenCV
-
-#### macOS
-- Limited GPU acceleration support (CPU fallback works well)
-- May need to install Xcode Command Line Tools
-- ARM-based Macs (M1/M2) have experimental support
-
-## 📖 Technical Fixes and Solutions
-
-### Camera Import Fix
-The SDK includes a solution for Python's module resolution when both a file and directory have the same name. The camera module uses `importlib.util` to explicitly load the correct module.
-
-### Enum/String Compatibility
-All communication modules handle both enum and string types for maximum compatibility:
-- CompressionFormat can be passed as enum or string
-- MessageType handles automatic conversion
-- Pattern types support both formats
-
-### Binary Message Handling
-Robust deserialization for multi-camera ULMC format with fallback support for different data structures.
-
-## 🏭 Real-Time Scanning
-
-Real-time 3D scanning functionality enables handheld operation with:
-- GPU acceleration for fast processing
-- Neural network point cloud enhancement
-- Optimized pattern sequences
-- Live visualization
-- Recording capabilities
-
-### Performance Optimization
-- Hardware: Dedicated GPU with CUDA support recommended
-- Software: Use lower quality presets for higher frame rates
-- Network: Gigabit Ethernet connection to scanner
-- Storage: Fast SSD for recording sessions
-
-## 🔮 Future Roadmap
-
-Planned enhancements include:
-- Advanced neural network models for point cloud processing
-- Support for more scanning technologies
-- Improved calibration procedures
-- Mobile app development
-- Cloud-based processing options
-
-For detailed roadmap, see [ROADMAP.md](ROADMAP.md)
-
-## 🧪 Testing
-
-The SDK includes comprehensive test scripts organized by category:
-- Import tests: Verify module dependencies
-- Camera tests: Camera functionality validation
-- Pattern tests: Pattern generation validation
-- Integration tests: End-to-end functionality
-
-See `unlook/examples/testing/` for test scripts.
-
-## 📺 Visualization
-
-The SDK includes visualization components for:
-- Real-time point cloud display
-- Pattern visualization
-- Calibration verification
-- Scan quality assessment
-
-## 🏥 Troubleshooting
-
-### Common Issues
-1. **Module Import Errors**: Ensure virtual environment is activated
-2. **Camera Access Issues**: Check hardware connections and permissions
-3. **GPU Not Detected**: Verify CUDA installation and compatibility
-4. **Pattern Generation Fails**: Install required dependencies (scipy, opencv-contrib)
-
-### Debug Mode
-Enable debug logging for detailed troubleshooting:
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
-```
-
-## 🛠️ Customization and Extensions
-
-The SDK is designed to be easily extended:
-- **New hardware modules**: Add support for your own scanning devices
-- **Reconstruction algorithms**: Implement custom 3D scanning algorithms
-- **Custom protocols**: Extend the protocol for your specific needs
-- **Pattern types**: Create new structured light patterns
-
-## 📚 Additional Documentation
-
-- [Camera Configuration Guide](docs/camera_configuration.md)
-- [Optimal Camera Spacing](docs/optimal_camera_spacing.md)
-- [Pattern Sequences](docs/pattern_sequences.md)
-- [Examples](unlook/examples/)
-
-## 💡 Contributing
-
-Contributions are welcome! Please refer to `CONTRIBUTING.md` for guidelines.
+Contributions are welcome! Please refer to our contribution guidelines in `CONTRIBUTING.md`.
 
 ## 📄 License
 
@@ -559,8 +193,8 @@ This project is released under the MIT License. See the `LICENSE` file for more 
 
 ## 📞 Support
 
-For support or questions:
-- GitHub Issues: [https://github.com/SupernovaIndustries/unlook/issues](https://github.com/SupernovaIndustries/unlook/issues)
+- Documentation: [unlook.readthedocs.io](https://unlook.readthedocs.io/)
+- GitHub Issues: [github.com/SupernovaIndustries/unlook/issues](https://github.com/SupernovaIndustries/unlook/issues)
 - Email: [info@supernovaindustries.it](mailto:info@supernovaindustries.it)
 
 ---
