@@ -970,7 +970,7 @@ class DynamicGestureRecognizer:
                  maxlen=30,
                  min_frames=15,
                  model_kwargs=None,
-                 parallel_inference=True):
+                 parallel_inference=False):  # Fixed: Set parallel_inference default to False
         """
         Initialize dynamic gesture recognizer.
         
@@ -993,7 +993,8 @@ class DynamicGestureRecognizer:
             "conf": gesture_threshold,  # Use gesture_threshold as confidence threshold
             "device": self._get_optimal_device(),  # Auto-select best device
             "half": True,  # Use FP16 for faster inference
-            "memory_efficient": True  # Use less memory (important for systems with limited RAM)
+            "max_det": 4,  # Limit to 4 detections maximum
+            "vid_stride": 3  # Process only every 3rd frame for video
         }
         
         # Update with user-provided kwargs if any
@@ -1015,6 +1016,11 @@ class DynamicGestureRecognizer:
             os.path.join(Path.home(), ".unlook", "models")
         ]
         
+        # Initialize empty model placeholders
+        self.model = None
+        self.hands_model = None
+        self.loading_complete = threading.Event()
+        
         # Try to find YOLOv10x gesture model if PyTorch is available
         if TORCH_AVAILABLE and yolo_model_path is None:
             for model_dir in possible_model_dirs:
@@ -1032,82 +1038,86 @@ class DynamicGestureRecognizer:
                     yolo_hands_model_path = path
                     logger.info(f"Found YOLOv10x hands model at: {yolo_hands_model_path}")
                     break
-        
-        # Try to load YOLOv10x models in parallel threads for faster startup
-        self.model = None
-        self.hands_model = None
-        self.loading_complete = threading.Event()
-        
-        # Start model loading in separate threads
+                    
+        # Handle YOLO model initialization
         if TORCH_AVAILABLE:
-            load_threads = []
-            
-            # Function to load gesture model
-            def load_gesture_model():
-                if yolo_model_path and os.path.exists(yolo_model_path):
-                    try:
-                        from ultralytics import YOLO
-                        model = YOLO(yolo_model_path)
-                        self.model = model
-                        self.models_available = True
-                        self.using_yolo = True
-                        logger.info(f"YOLOv10x gesture model loaded successfully from {yolo_model_path}")
-                        # Set model parameters for best performance
-                        if hasattr(model, 'overrides'):
-                            model.overrides.update(self.model_kwargs)
-                            
-                        # Warmup the model with a dummy inference for faster first detection
-                        try:
-                            dummy_img = np.zeros((320, 320, 3), dtype=np.uint8)
-                            model(dummy_img, **self.model_kwargs)
-                        except Exception as e:
-                            logger.warning(f"Model warmup failed (this is not critical): {e}")
-                    except Exception as e:
-                        logger.error(f"Failed to initialize YOLOv10x gesture model: {e}")
-                        self.models_available = False
-            
-            # Function to load hands model
-            def load_hands_model():
-                if yolo_hands_model_path and os.path.exists(yolo_hands_model_path):
-                    try:
-                        from ultralytics import YOLO
-                        hands_model = YOLO(yolo_hands_model_path)
-                        self.hands_model = hands_model
-                        self.using_yolo_hands = True
-                        logger.info(f"YOLOv10x hands model loaded successfully from {yolo_hands_model_path}")
-                        # Set model parameters for best performance
-                        if hasattr(hands_model, 'overrides'):
-                            hands_model.overrides.update(self.model_kwargs)
-                            
-                        # Warmup the model with a dummy inference for faster first detection
-                        try:
-                            dummy_img = np.zeros((320, 320, 3), dtype=np.uint8)
-                            hands_model(dummy_img, **self.model_kwargs)
-                        except Exception as e:
-                            logger.warning(f"Hands model warmup failed (this is not critical): {e}")
-                    except Exception as e:
-                        logger.error(f"Failed to initialize YOLOv10x hands model: {e}")
-                        self.using_yolo_hands = False
-            
-            # Start loading threads
-            if self.parallel_inference and yolo_model_path and yolo_hands_model_path:
-                # Load both models in parallel
-                gesture_thread = threading.Thread(target=load_gesture_model)
-                hands_thread = threading.Thread(target=load_hands_model)
-                load_threads.extend([gesture_thread, hands_thread])
-                gesture_thread.start()
-                hands_thread.start()
-            else:
-                # Load sequentially
-                load_gesture_model()
-                load_hands_model()
+            # First check if models exist
+            if yolo_model_path and not os.path.exists(yolo_model_path):
+                logger.warning(f"YOLOv10x gesture model not found at: {yolo_model_path}")
+                yolo_model_path = None
                 
-            # Wait for all loading threads to complete if using parallel loading
-            for thread in load_threads:
-                thread.join()
+            if yolo_hands_model_path and not os.path.exists(yolo_hands_model_path):
+                logger.warning(f"YOLOv10x hands model not found at: {yolo_hands_model_path}")
+                yolo_hands_model_path = None
                 
+            # Sequential loading is more stable than parallel loading
+            try:
+                # Import YOLO only if needed
+                if yolo_model_path or yolo_hands_model_path:
+                    # Import here to avoid unnecessary dependency if not using YOLO
+                    from ultralytics import YOLO
+                    
+                    # Load gesture model first if available
+                    if yolo_model_path:
+                        try:
+                            logger.info(f"Loading YOLOv10x gesture model from {yolo_model_path}")
+                            self.model = YOLO(yolo_model_path)
+                            self.models_available = True
+                            self.using_yolo = True
+                            logger.info(f"YOLOv10x gesture model loaded successfully")
+                            
+                            # Set model parameters for best performance
+                            if hasattr(self.model, 'overrides'):
+                                self.model.overrides.update(self.model_kwargs)
+                            
+                        except Exception as e:
+                            logger.error(f"Failed to load YOLOv10x gesture model: {e}")
+                            self.model = None
+                            self.using_yolo = False
+                    
+                    # Then load hands model if available
+                    if yolo_hands_model_path:
+                        try:
+                            logger.info(f"Loading YOLOv10x hands model from {yolo_hands_model_path}")
+                            self.hands_model = YOLO(yolo_hands_model_path)
+                            self.models_available = True
+                            self.using_yolo_hands = True
+                            logger.info(f"YOLOv10x hands model loaded successfully")
+                            
+                            # Set model parameters for best performance
+                            if hasattr(self.hands_model, 'overrides'):
+                                self.hands_model.overrides.update(self.model_kwargs)
+                            
+                        except Exception as e:
+                            logger.error(f"Failed to load YOLOv10x hands model: {e}")
+                            self.hands_model = None
+                            self.using_yolo_hands = False
+                    
+                    # Warm up models with dummy inference (one at a time to prevent CUDA errors)
+                    try:
+                        dummy_img = np.zeros((320, 320, 3), dtype=np.uint8)
+                        if self.model is not None:
+                            logger.info("Warming up gesture model...")
+                            _ = self.model(dummy_img, **{k: v for k, v in self.model_kwargs.items() 
+                                                 if k in ['imgsz', 'verbose', 'conf', 'half']})
+                            
+                        if self.hands_model is not None:
+                            logger.info("Warming up hands model...")
+                            _ = self.hands_model(dummy_img, **{k: v for k, v in self.model_kwargs.items() 
+                                                     if k in ['imgsz', 'verbose', 'conf', 'half']})
+                    except Exception as e:
+                        logger.warning(f"Model warmup failed (this is not critical): {e}")
+                        
+            except Exception as e:
+                logger.error(f"Error initializing YOLO models: {e}")
+                self.using_yolo = False
+                self.using_yolo_hands = False
+                self.model = None
+                self.hands_model = None
+            
+            # Signal loading is complete
             self.loading_complete.set()
-        
+                    
         # Fall back to ONNX models if YOLO is not available
         elif ONNX_AVAILABLE:
             # Find model paths if not provided
@@ -1174,8 +1184,9 @@ class DynamicGestureRecognizer:
             - actions: Dynamic actions detected
             - keypoints: Hand keypoints if detected by YOLOv10x_hands model
         """
-        if not self.models_available and not self.using_yolo_hands:
-            return {'bboxes': [], 'labels': [], 'actions': [], 'keypoints': []}
+        # Return empty results if no models are available
+        if not self.models_available and not self.using_yolo_hands and not self.using_yolo:
+            return {'bboxes': [], 'labels': [], 'actions': [], 'keypoints': [], 'handedness': []}
             
         # Use provided parameters or fall back to instance variables
         fast_mode = self.fast_mode if fast_mode is None else fast_mode
@@ -1192,9 +1203,13 @@ class DynamicGestureRecognizer:
             'handedness': []  # Add handedness field
         }
         
+        # Check for null or invalid frame
+        if frame is None or frame.size == 0 or frame.shape[0] == 0 or frame.shape[1] == 0:
+            return result
+        
         # Apply downsampling if requested (improves performance significantly)
         try:
-            if downsample_factor > 1 and frame is not None and frame.size > 0:
+            if downsample_factor > 1:
                 h, w = frame.shape[:2]
                 if h > 0 and w > 0:
                     new_h = max(1, h // downsample_factor)
@@ -1208,194 +1223,222 @@ class DynamicGestureRecognizer:
             logger.warning(f"Error in downsampling, using original frame: {e}")
             resized_frame = frame
         
-        # Step 1: Process using YOLOv10x hands model if available
+        # Process using YOLOv10x models if available
         if self.using_yolo_hands:
             try:
-                # Run inference with YOLOv10x hands model with specified parameters
-                inference_frame = resized_frame
-                hands_results = self.hands_model(inference_frame, **self.model_kwargs)
+                # Wait for model loading to complete
+                if not self.loading_complete.is_set():
+                    logger.warning("Models still loading, skipping frame")
+                    return result
                 
-                # Process results
-                for r in hands_results:
-                    boxes = r.boxes
-                    keypoints = r.keypoints
-                    
-                    if len(boxes) == 0:
-                        continue
-                    
-                    # Process each detected hand
-                    for i, box in enumerate(boxes):
-                        # Get box coordinates
-                        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                        # Scale coordinates back to original size if downsampled
-                        if downsample_factor > 1:
-                            x1 *= downsample_factor
-                            y1 *= downsample_factor
-                            x2 *= downsample_factor
-                            y2 *= downsample_factor
-                        bbox = np.array([x1, y1, x2, y2])
-                        
-                        # Get confidence
-                        conf = float(box.conf[0].item())
-                        
-                        # Get class (hand type) if available
-                        if hasattr(box, 'cls') and len(box.cls) > 0:
-                            cls = int(box.cls[0].item())
-                            # Determine handedness (0=Left, 1=Right usually)
-                            handedness = "Left" if cls == 0 else "Right" if cls == 1 else "Unknown"
-                        else:
-                            cls = 0
-                            handedness = "Unknown"
-                        
-                        if conf > self.gesture_threshold:
-                            result['bboxes'].append(bbox)
-                            result['labels'].append(cls)
-                            result['handedness'].append(handedness)
-                            
-                            # Get keypoints if available
-                            if keypoints is not None and i < len(keypoints):
-                                # Convert to numpy and reshape to match expected format
-                                hand_kps = keypoints[i].data[0].cpu().numpy()
-                                # YOLOv10x typically uses 21 keypoints for hands
-                                if len(hand_kps) == 21:
-                                    # Scale keypoints back to original size if downsampled
-                                    if downsample_factor > 1:
-                                        hand_kps[:, 0] *= downsample_factor
-                                        hand_kps[:, 1] *= downsample_factor
-                                        
-                                    # Convert to normalized coordinates (0-1)
-                                    h, w = frame.shape[:2]
-                                    norm_kps = hand_kps.copy()
-                                    norm_kps[:, 0] /= w
-                                    norm_kps[:, 1] /= h
-                                    # Add visibility channel if needed
-                                    if norm_kps.shape[1] < 3:
-                                        vis = np.ones((len(norm_kps), 1))
-                                        norm_kps = np.hstack([norm_kps, vis])
-                                    result['keypoints'].append(norm_kps)
+                # Run inference with limited set of kwargs to prevent errors
+                safe_kwargs = {k: v for k, v in self.model_kwargs.items() 
+                              if k in ['imgsz', 'verbose', 'conf', 'half', 'max_det']}
                 
-            except Exception as e:
-                logger.error(f"Error processing frame with YOLOv10x hands model: {e}")
-        
-        # Step 2: Process using YOLOv10x gestures model if available
-        if self.using_yolo:
-            try:
-                # Run inference with YOLOv10x gestures model with specified parameters
-                inference_frame = resized_frame
-                yolo_results = self.model(inference_frame, **self.model_kwargs)
+                # Additional safeguards
+                inference_frame = resized_frame.copy()  # Make a copy to prevent race conditions
                 
-                # Process results
-                for r in yolo_results:
-                    boxes = r.boxes
-                    if len(boxes) == 0:
-                        continue
+                # Process with hands model first if available
+                if self.hands_model is not None:
+                    try:
+                        hands_results = self.hands_model(inference_frame, **safe_kwargs)
                         
-                    # Get bounding boxes
-                    for box in boxes:
-                        # Get box coordinates
-                        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                        # Scale coordinates back to original size if downsampled
-                        if downsample_factor > 1:
-                            x1 *= downsample_factor
-                            y1 *= downsample_factor
-                            x2 *= downsample_factor
-                            y2 *= downsample_factor
-                        bbox = np.array([x1, y1, x2, y2])
-                        
-                        # Get class and confidence
-                        cls = int(box.cls[0].item())
-                        conf = float(box.conf[0].item())
-                        
-                        if conf > self.gesture_threshold:
-                            # Check if this bbox overlaps significantly with any hand bbox
-                            # If not already in bboxes, add it
-                            is_new_box = True
-                            for existing_bbox in result['bboxes']:
-                                iou = self._bbox_iou(tuple(bbox), tuple(existing_bbox))
-                                if iou > 0.7:  # High overlap
-                                    is_new_box = False
-                                    break
-                            
-                            if is_new_box:
-                                result['bboxes'].append(bbox)
-                                result['labels'].append(cls)
-                            
-                            # Map YOLO class to dynamic gesture if confidence is high
-                            if conf > 0.7:
-                                # Map the YOLO class to a dynamic event
-                                # This mapping will depend on your specific YOLO model training
-                                # Here's a placeholder mapping based on common gestures
-                                event_mapping = {
-                                    0: DynamicEvent.SWIPE_RIGHT,
-                                    1: DynamicEvent.SWIPE_LEFT, 
-                                    2: DynamicEvent.SWIPE_UP,
-                                    3: DynamicEvent.SWIPE_DOWN,
-                                    4: DynamicEvent.CIRCLE_CW,
-                                    5: DynamicEvent.CIRCLE_CCW,
-                                    6: DynamicEvent.ZOOM_IN,
-                                    7: DynamicEvent.ZOOM_OUT,
-                                    8: DynamicEvent.TAP,
-                                    9: DynamicEvent.DOUBLE_TAP
-                                    # Add more mappings as needed
-                                }
+                        # Process hands detection results
+                        if len(hands_results) > 0:
+                            for r in hands_results:
+                                boxes = r.boxes
+                                keypoints = r.keypoints if hasattr(r, 'keypoints') else None
                                 
-                                if cls in event_mapping:
-                                    result['actions'].append({
-                                        'type': event_mapping[cls],
-                                        'bbox': bbox,
-                                        'confidence': conf
-                                    })
+                                # Process each detected hand
+                                for i, box in enumerate(boxes):
+                                    try:
+                                        # Get box coordinates
+                                        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                                        # Scale coordinates back to original size if downsampled
+                                        if downsample_factor > 1:
+                                            x1 *= downsample_factor
+                                            y1 *= downsample_factor
+                                            x2 *= downsample_factor
+                                            y2 *= downsample_factor
+                                        bbox = np.array([x1, y1, x2, y2])
+                                        
+                                        # Get confidence
+                                        conf = float(box.conf[0].item())
+                                        
+                                        # Get class (hand type) if available
+                                        if hasattr(box, 'cls') and len(box.cls) > 0:
+                                            cls = int(box.cls[0].item())
+                                            # Determine handedness (0=Left, 1=Right usually)
+                                            handedness = "Left" if cls == 0 else "Right" if cls == 1 else "Unknown"
+                                        else:
+                                            cls = 0
+                                            handedness = "Unknown"
+                                        
+                                        if conf > self.gesture_threshold:
+                                            result['bboxes'].append(bbox)
+                                            result['labels'].append(cls)
+                                            result['handedness'].append(handedness)
+                                            
+                                            # Get keypoints if available
+                                            if keypoints is not None and i < len(keypoints):
+                                                try:
+                                                    # Convert to numpy and reshape to match expected format
+                                                    hand_kps = keypoints[i].data[0].cpu().numpy()
+                                                    # YOLOv10x typically uses 21 keypoints for hands
+                                                    if len(hand_kps) == 21:
+                                                        # Scale keypoints back to original size if downsampled
+                                                        if downsample_factor > 1:
+                                                            hand_kps[:, 0] *= downsample_factor
+                                                            hand_kps[:, 1] *= downsample_factor
+                                                            
+                                                        # Convert to normalized coordinates (0-1)
+                                                        h, w = frame.shape[:2]
+                                                        norm_kps = hand_kps.copy()
+                                                        norm_kps[:, 0] /= w
+                                                        norm_kps[:, 1] /= h
+                                                        # Add visibility channel if needed
+                                                        if norm_kps.shape[1] < 3:
+                                                            vis = np.ones((len(norm_kps), 1))
+                                                            norm_kps = np.hstack([norm_kps, vis])
+                                                        result['keypoints'].append(norm_kps)
+                                                except Exception as e:
+                                                    logger.warning(f"Error processing keypoints: {e}")
+                                    except Exception as e:
+                                        logger.warning(f"Error processing hand box: {e}")
+                    except Exception as e:
+                        logger.error(f"Error processing frame with YOLOv10x hands model: {e}")
                 
+                # Next process with gesture model if available
+                if self.model is not None:
+                    try:
+                        yolo_results = self.model(inference_frame, **safe_kwargs)
+                        
+                        # Process results
+                        if len(yolo_results) > 0:
+                            for r in yolo_results:
+                                boxes = r.boxes
+                                if len(boxes) == 0:
+                                    continue
+                                    
+                                # Get bounding boxes
+                                for box in boxes:
+                                    try:
+                                        # Get box coordinates
+                                        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                                        # Scale coordinates back to original size if downsampled
+                                        if downsample_factor > 1:
+                                            x1 *= downsample_factor
+                                            y1 *= downsample_factor
+                                            x2 *= downsample_factor
+                                            y2 *= downsample_factor
+                                        bbox = np.array([x1, y1, x2, y2])
+                                        
+                                        # Get class and confidence
+                                        cls = int(box.cls[0].item())
+                                        conf = float(box.conf[0].item())
+                                        
+                                        if conf > self.gesture_threshold:
+                                            # Check if this bbox overlaps significantly with any hand bbox
+                                            # If not already in bboxes, add it
+                                            is_new_box = True
+                                            for existing_bbox in result['bboxes']:
+                                                iou = self._bbox_iou(tuple(bbox), tuple(existing_bbox))
+                                                if iou > 0.7:  # High overlap
+                                                    is_new_box = False
+                                                    break
+                                            
+                                            if is_new_box:
+                                                result['bboxes'].append(bbox)
+                                                result['labels'].append(cls)
+                                                result['handedness'].append("Unknown")  # No handedness info for gesture model
+                                            
+                                            # Map YOLO class to dynamic gesture if confidence is high
+                                            if conf > 0.7:
+                                                # Map the YOLO class to a dynamic event
+                                                # This mapping will depend on your specific YOLO model training
+                                                # Here's a placeholder mapping based on common gestures
+                                                event_mapping = {
+                                                    0: DynamicEvent.SWIPE_RIGHT,
+                                                    1: DynamicEvent.SWIPE_LEFT, 
+                                                    2: DynamicEvent.SWIPE_UP,
+                                                    3: DynamicEvent.SWIPE_DOWN,
+                                                    4: DynamicEvent.CIRCLE_CW,
+                                                    5: DynamicEvent.CIRCLE_CCW,
+                                                    6: DynamicEvent.ZOOM_IN,
+                                                    7: DynamicEvent.ZOOM_OUT,
+                                                    8: DynamicEvent.TAP,
+                                                    9: DynamicEvent.DOUBLE_TAP
+                                                    # Add more mappings as needed
+                                                }
+                                                
+                                                if cls in event_mapping:
+                                                    result['actions'].append({
+                                                        'type': event_mapping[cls],
+                                                        'bbox': bbox,
+                                                        'confidence': conf
+                                                    })
+                                    except Exception as e:
+                                        logger.warning(f"Error processing gesture box: {e}")
+                    except Exception as e:
+                        logger.error(f"Error processing frame with YOLOv10x gestures model: {e}")
+                
+                # If we processed with either YOLO model successfully, return results
+                if len(result['bboxes']) > 0:
+                    return result
+                        
             except Exception as e:
-                logger.error(f"Error processing frame with YOLOv10x gestures model: {e}")
+                logger.error(f"Error in YOLO processing: {e}")
+        
+        # Fall back to ONNX-based processing if not using YOLO or YOLO failed
+        if hasattr(self, 'detection_model') and hasattr(self, 'classification_model'):
+            try:
+                # Get detections
+                bboxes, probs = self.detection_model(resized_frame)
                 
-            # If we processed the frame with either YOLO model, return results
-            if self.using_yolo or self.using_yolo_hands:
-                return result
-        
-        # Fall back to ONNX-based processing if not using YOLO
-        # Get detections
-        bboxes, probs = self.detection_model(resized_frame)
-        
-        # Scale bounding boxes back to original size if downsampled
-        if downsample_factor > 1 and len(bboxes) > 0:
-            bboxes[:, 0] *= downsample_factor
-            bboxes[:, 1] *= downsample_factor
-            bboxes[:, 2] *= downsample_factor
-            bboxes[:, 3] *= downsample_factor
-        
-        if len(bboxes) == 0:
-            # Update tracks with empty detections
-            for track in self.tracks:
-                track['hands'].append(Hand(bbox=None, gesture=None))
-            return result
-        
-        # Get classifications
-        labels = self.classification_model(frame, bboxes, fast_mode=fast_mode)
-        
-        # Update tracks
-        self._update_tracks(bboxes, probs, labels)
-        
-        # Collect results from active tracks
-        for track in self.tracks:
-            # Only include active tracks
-            if track['tracker'].time_since_update < 1:
-                # Get bounding box
-                bbox = track['tracker'].get_state()[0]
-                result['bboxes'].append(bbox)
+                # Scale bounding boxes back to original size if downsampled
+                if downsample_factor > 1 and len(bboxes) > 0:
+                    bboxes[:, 0] *= downsample_factor
+                    bboxes[:, 1] *= downsample_factor
+                    bboxes[:, 2] *= downsample_factor
+                    bboxes[:, 3] *= downsample_factor
                 
-                # Get latest gesture
-                if len(track['hands']) > 0:
-                    result['labels'].append(track['hands'][-1].gesture)
-                else:
-                    result['labels'].append(None)
+                if len(bboxes) == 0:
+                    # Update tracks with empty detections
+                    for track in self.tracks:
+                        track['hands'].append(Hand(bbox=None, gesture=None))
+                    return result
                 
-                # Get dynamic action
-                if track['hands'].action is not None:
-                    result['actions'].append({
-                        'type': track['hands'].action,
-                        'bbox': bbox
-                    })
+                # Get classifications
+                labels = self.classification_model(frame, bboxes, fast_mode=fast_mode)
+                
+                # Update tracks
+                self._update_tracks(bboxes, probs, labels)
+                
+                # Collect results from active tracks
+                for track in self.tracks:
+                    # Only include active tracks
+                    if track['tracker'].time_since_update < 1:
+                        # Get bounding box
+                        bbox = track['tracker'].get_state()[0]
+                        result['bboxes'].append(bbox)
+                        
+                        # Get latest gesture
+                        if len(track['hands']) > 0:
+                            result['labels'].append(track['hands'][-1].gesture)
+                        else:
+                            result['labels'].append(None)
+                        
+                        # Default unknown handedness for ONNX models
+                        result['handedness'].append("Unknown")
+                        
+                        # Get dynamic action
+                        if track['hands'].action is not None:
+                            result['actions'].append({
+                                'type': track['hands'].action,
+                                'bbox': bbox
+                            })
+            except Exception as e:
+                logger.error(f"Error in ONNX processing: {e}")
         
         return result
     
@@ -1408,81 +1451,85 @@ class DynamicGestureRecognizer:
             probs: Detection probabilities
             labels: Gesture labels
         """
-        # Combine boxes and scores
-        dets = np.concatenate((bboxes, np.expand_dims(probs, axis=1)), axis=1)
-        
-        # For new tracks
-        unmatched_dets = list(range(len(bboxes)))
-        matched_track_indices = []
-        
-        # Match detections to existing tracks using IoU
-        for i, track in enumerate(self.tracks):
-            # Skip tracks that have been inactive for too long
-            if track['tracker'].time_since_update > 30:  # max_age
-                continue
-            
-            # Get track's current bbox
-            track_bbox = track['tracker'].get_state()[0][:4]
-            
-            # Find best matching detection
-            best_iou = 0
-            best_det_idx = -1
-            
-            for j in unmatched_dets:
-                # Calculate IoU - convert to tuples for caching
-                det_bbox = dets[j, :4]
-                track_tuple = tuple(track_bbox)
-                det_tuple = tuple(det_bbox)
-                iou = self._bbox_iou(track_tuple, det_tuple)
-                
-                # Update best match
-                if iou > best_iou and iou > 0.3:  # iou_threshold
-                    best_iou = iou
-                    best_det_idx = j
-            
-            # If match found, update track
-            if best_det_idx >= 0:
-                # Update tracker with detection
-                track['tracker'].update(dets[best_det_idx, :])
-                
-                # Add new hand to history
-                track['hands'].append(Hand(
-                    bbox=dets[best_det_idx, :4],
-                    gesture=labels[best_det_idx] if best_det_idx < len(labels) else None
-                ))
-                
-                # Mark detection and track as matched
-                unmatched_dets.remove(best_det_idx)
-                matched_track_indices.append(i)
-        
-        # Update unmatched tracks
-        for i, track in enumerate(self.tracks):
-            if i not in matched_track_indices:
-                track['tracker'].update(None)
-                track['hands'].append(Hand(bbox=None, gesture=None))
-        
-        # Create new tracks for unmatched detections
-        for i in unmatched_dets:
+        try:
+            # Import kalman tracker when needed
             from .kalman_tracker import KalmanBoxTracker
             
-            # Create new track
-            self.tracks.append({
-                'hands': ActionDeque(self.maxlen, self.min_frames),
-                'tracker': KalmanBoxTracker(dets[i, :])
-            })
+            # Combine boxes and scores
+            dets = np.concatenate((bboxes, np.expand_dims(probs, axis=1)), axis=1)
             
-            # Initialize with detection
-            self.tracks[-1]['hands'].append(Hand(
-                bbox=dets[i, :4],
-                gesture=labels[i] if i < len(labels) else None
-            ))
-        
-        # Remove dead tracks
-        i = len(self.tracks)
-        for track in reversed(self.tracks):
-            i -= 1
-            if track['tracker'].time_since_update > 30:  # max_age
-                self.tracks.pop(i)
+            # For new tracks
+            unmatched_dets = list(range(len(bboxes)))
+            matched_track_indices = []
+            
+            # Match detections to existing tracks using IoU
+            for i, track in enumerate(self.tracks):
+                # Skip tracks that have been inactive for too long
+                if track['tracker'].time_since_update > 30:  # max_age
+                    continue
+                
+                # Get track's current bbox
+                track_bbox = track['tracker'].get_state()[0][:4]
+                
+                # Find best matching detection
+                best_iou = 0
+                best_det_idx = -1
+                
+                for j in unmatched_dets:
+                    # Calculate IoU - convert to tuples for caching
+                    det_bbox = dets[j, :4]
+                    track_tuple = tuple(track_bbox)
+                    det_tuple = tuple(det_bbox)
+                    iou = self._bbox_iou(track_tuple, det_tuple)
+                    
+                    # Update best match
+                    if iou > best_iou and iou > 0.3:  # iou_threshold
+                        best_iou = iou
+                        best_det_idx = j
+                
+                # If match found, update track
+                if best_det_idx >= 0:
+                    # Update tracker with detection
+                    track['tracker'].update(dets[best_det_idx, :])
+                    
+                    # Add new hand to history
+                    track['hands'].append(Hand(
+                        bbox=dets[best_det_idx, :4],
+                        gesture=labels[best_det_idx] if best_det_idx < len(labels) else None
+                    ))
+                    
+                    # Mark detection and track as matched
+                    unmatched_dets.remove(best_det_idx)
+                    matched_track_indices.append(i)
+            
+            # Update unmatched tracks
+            for i, track in enumerate(self.tracks):
+                if i not in matched_track_indices:
+                    track['tracker'].update(None)
+                    track['hands'].append(Hand(bbox=None, gesture=None))
+            
+            # Create new tracks for unmatched detections
+            for i in unmatched_dets:
+                # Create new track
+                self.tracks.append({
+                    'hands': ActionDeque(self.maxlen, self.min_frames),
+                    'tracker': KalmanBoxTracker(dets[i, :])
+                })
+                
+                # Initialize with detection
+                self.tracks[-1]['hands'].append(Hand(
+                    bbox=dets[i, :4],
+                    gesture=labels[i] if i < len(labels) else None
+                ))
+            
+            # Remove dead tracks
+            i = len(self.tracks)
+            for track in reversed(self.tracks):
+                i -= 1
+                if track['tracker'].time_since_update > 30:  # max_age
+                    self.tracks.pop(i)
+        except Exception as e:
+            logger.error(f"Error in updating tracks: {e}")
     
     @staticmethod
     @lru_cache(maxsize=512)  # Cache for small speedup in tracking with same boxes
@@ -1570,7 +1617,7 @@ class DynamicGestureRecognizer:
                 import torch
                 if torch.cuda.is_available():
                     return 0  # First CUDA device
-                elif hasattr(torch, 'mps') and torch.backends.mps.is_available():
+                elif hasattr(torch, 'mps') and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                     return 'mps'  # Apple Metal Performance Shaders
             except Exception:
                 pass

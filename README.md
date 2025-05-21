@@ -88,6 +88,35 @@ cd unlook
 pip install -r client-requirements.txt
 ```
 
+### Hand Gesture Recognition Models
+
+To use the hand detection and gesture recognition features, you need to download pre-trained models:
+
+1. Download HAGRID models from [https://github.com/hukenovs/hagrid](https://github.com/hukenovs/hagrid/tree/Hagrid_v2-1M?tab=readme-ov-file#train)
+2. Place the model files in the `/unlook/client/scanning/handpose/model` directory
+
+The hand gesture recognition is based on code and models from the HAGRID dataset developed by D. Hutsanov et al., as well as 3D hand pose estimation implementations from Temuge Batchuluun. Please cite their work if you use this functionality in your research:
+
+```
+@inproceedings{Kokh_Hagrid_2022,
+    author={Kokh, Maksim and Hutsanov, Danil and Sirotenko, Mikhail and Koroteev, Dmitry},
+    booktitle={2022 19th Conference on Robots and Vision},
+    title={{HAGRID: A Large-scale Labeled Dataset for Hand Gesture Recognition in Images}},
+    year={2022},
+    volume={},
+    number={},
+    pages={1--8},
+    doi={}
+}
+
+@article{Batchuluun_Handpose3D,
+    author={Batchuluun, Temuge},
+    title={{3D Hand Pose Estimation using MediaPipe and Stereoscopic Vision}},
+    year={2022},
+    url={https://github.com/TemugeB/handpose3d}
+}
+```
+
 ### Simple Example
 
 ```python

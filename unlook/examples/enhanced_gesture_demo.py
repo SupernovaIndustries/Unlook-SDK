@@ -30,6 +30,11 @@ import cv2
 from typing import Dict, List, Tuple, Optional
 from enum import Enum
 import threading
+import queue
+import gc
+import psutil
+import argparse
+from concurrent.futures import ThreadPoolExecutor
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -233,7 +238,10 @@ class GestureUI:
     MAX_LED_INTENSITY = 450
     LED_STEP = 5           # Fine-grained steps for LED control
     
-    def __init__(self):
+    def __init__(self, presentation_mode=False):
+        # Store if we're in presentation mode
+        self.presentation_mode = presentation_mode
+        
         # Load gesture icons
         self.icons = {}
         self.icon_size = (100, 100)  # Default icon size
@@ -760,8 +768,17 @@ class GestureUI:
         cv2.putText(display, "RIGHT CAMERA", (10, self.bottom_y_offset + 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
         
-        # Add YOLOv10x information if dynamic gestures are present
-        if 'dynamic_gestures' in results and results['dynamic_gestures']:
+        # Add YOLOv10x or presentation mode information
+        if self.presentation_mode:
+            # Show presentation mode label in top-left corner
+            cv2.putText(display, "PRESENTATION MODE", (10, 30), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (100, 255, 100), 2)
+            
+            # Add information about basic gesture recognition
+            cv2.putText(display, "Basic Gesture Recognition Active", (10, 60), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 255, 100), 2)
+                       
+        elif 'dynamic_gestures' in results and results['dynamic_gestures']:
             # Show YOLOv10x label in top-left corner
             cv2.putText(display, "YOLOv10x ACTIVE", (10, 30), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
@@ -953,10 +970,121 @@ class GestureUI:
         self.add_notification(f"LED2 intensity: {self.led2_intensity}mA", (0, 255, 0))
 
 
+# Global processing queues for threaded operation
+frame_queue = queue.Queue(maxsize=2)  # Only keep latest frames
+result_queue = queue.Queue(maxsize=2) # Only keep latest results
+processing_active = threading.Event()  # Flag for active processing
+ui_active = threading.Event()  # Flag for active UI
+
+# Memory usage monitoring
+def get_memory_usage():
+    """Get current memory usage of the process in MB"""
+    process = psutil.Process(os.getpid())
+    return process.memory_info().rss / (1024 * 1024)
+
+# Background worker thread for model processing
+def model_worker(dynamic_recognizer, processing_active, performance_mode, downsample_factor, fast_mode):
+    """Worker thread that processes frames in the background"""
+    logger.info("Model worker thread started")
+    
+    # Set very conservative model parameters for worker thread
+    if hasattr(dynamic_recognizer, 'model_kwargs'):
+        worker_kwargs = dynamic_recognizer.model_kwargs.copy()
+        worker_kwargs.update({
+            "max_det": 1,  # Only detect one hand
+            "conf": 0.7,   # High confidence threshold
+            "iou": 0.1,    # Low IoU for faster NMS
+        })
+        dynamic_recognizer.model_kwargs = worker_kwargs
+    
+    # Select appropriate downsample based on performance mode
+    if performance_mode == "speed":
+        downsample_factor = max(4, downsample_factor)
+    elif performance_mode == "balanced":
+        downsample_factor = max(2, downsample_factor)
+        
+    logger.info(f"Model worker using downsample factor: {downsample_factor}")
+    
+    # Main processing loop
+    while processing_active.is_set():
+        try:
+            # Get frame from queue with timeout
+            try:
+                frames = frame_queue.get(timeout=0.5)
+                if frames is None:
+                    continue
+            except queue.Empty:
+                continue
+                
+            # Unpack frames
+            frame_left, frame_right = frames
+            
+            # Skip processing if frames are None
+            if frame_left is None or frame_right is None:
+                continue
+                
+            # Process frames with dynamic recognizer
+            start_time = time.time()
+            
+            try:
+                # Process with dynamic recognizer
+                results = {}
+                if dynamic_recognizer is not None:
+                    # First try left image (usually better quality/angle)
+                    detected = dynamic_recognizer.process_frame(
+                        frame_left, 
+                        fast_mode=fast_mode, 
+                        downsample_factor=downsample_factor
+                    )
+                    
+                    # Check if we got any results
+                    if detected and len(detected['bboxes']) > 0:
+                        results = detected
+                    else:
+                        # If not, try right image
+                        detected = dynamic_recognizer.process_frame(
+                            frame_right, 
+                            fast_mode=fast_mode, 
+                            downsample_factor=downsample_factor
+                        )
+                        if detected:
+                            results = detected
+                
+                # Add frames to results
+                results['frame_left'] = frame_left
+                results['frame_right'] = frame_right
+                
+                # Calculate processing time
+                processing_time = time.time() - start_time
+                results['processing_time'] = processing_time
+                
+                # Put results in the queue (non-blocking)
+                if not result_queue.full():
+                    result_queue.put(results, block=False)
+                    
+                # Throttle CPU usage in speed mode
+                if performance_mode == "speed" and processing_time < 0.05:
+                    time.sleep(0.01)  # Prevent 100% CPU usage
+                    
+            except Exception as e:
+                logger.error(f"Error in model worker: {e}")
+                # Sleep a bit to prevent CPU spinning on errors
+                time.sleep(0.1)
+                
+            # Clear any small memory leaks
+            if frame_queue.qsize() == 0:
+                gc.collect()
+                
+        except Exception as e:
+            logger.error(f"Unexpected error in model worker: {e}")
+            time.sleep(0.5)  # Prevent CPU spinning on errors
+    
+    logger.info("Model worker thread stopped")
+
 def run_gesture_demo(calibration_file=None, timeout=10, verbose=False,
                      use_led=True, led1_intensity=0, led2_intensity=200, 
-                     auto_led_adjust=True, yolo_model_path=None, yolo_hands_model_path=None,
-                     use_yolo=True, performance_mode="balanced", downsample=1, fast_mode=False):
+                     auto_led_adjust=True, auto_led_hand_control=True, yolo_model_path=None, yolo_hands_model_path=None,
+                     use_yolo=True, performance_mode="balanced", downsample=1, fast_mode=False, presentation_mode=False):
     # Note: led1_intensity parameter is kept for backward compatibility but is always set to 0
     """
     Run the enhanced gesture recognition demo with visual feedback.
@@ -1002,6 +1130,7 @@ def run_gesture_demo(calibration_file=None, timeout=10, verbose=False,
         
         # Initialize LED control through server if requested
         led_controller = None
+        led_active = False  # Initialize this variable
         if use_led:
             try:
                 # Create LED controller instance
@@ -1009,18 +1138,28 @@ def run_gesture_demo(calibration_file=None, timeout=10, verbose=False,
                 
                 # Check if LED is available
                 if led_controller.led_available:
-                    # Set initial intensity - LED1 will automatically be forced to 0 in the controller
-                    if led_controller.set_intensity(0, led2_intensity):
-                        logger.info(f"LED flood illuminator activated on server (LED1=0mA, LED2={led2_intensity}mA)")
+                    # If auto hand detection control is disabled, turn on LED immediately
+                    # Otherwise, it will be activated only when hands are detected
+                    if not auto_led_hand_control:
+                        if led_controller.set_intensity(0, led2_intensity):
+                            logger.info(f"LED flood illuminator activated on server (LED1=0mA, LED2={led2_intensity}mA)")
+                            led_active = True
+                        else:
+                            logger.warning("Failed to activate LED on server")
+                            use_led = False
                     else:
-                        logger.warning("Failed to activate LED on server")
-                        use_led = False
+                        logger.info(f"LED control initialized - will be activated only when hands are detected")
                 else:
                     logger.warning("LED control not available on this scanner")
                     use_led = False
             except Exception as e:
                 logger.error(f"Failed to initialize LED controller: {e}")
                 use_led = False
+                
+        # Variables for LED hand detection control
+        last_hand_detection_time = 0
+        no_hands_frames = 0
+        hand_detection_timeout = 1.5  # seconds without hands before turning off LED
         
         # Get auto-loaded calibration if no calibration file specified
         if not calibration_file:
@@ -1030,54 +1169,165 @@ def run_gesture_demo(calibration_file=None, timeout=10, verbose=False,
             else:
                 logger.warning("No calibration file available")
         
+        # Initialize display window FIRST before any heavy processing
+        logger.info("Creating UI window...")
+        cv2.namedWindow('UnLook Enhanced Gesture Recognition', cv2.WINDOW_NORMAL)
+        empty_display = np.zeros((720, 1280, 3), dtype=np.uint8)
+        cv2.putText(empty_display, "Initializing...", (50, 360), 
+                  cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+        cv2.imshow('UnLook Enhanced Gesture Recognition', empty_display)
+        cv2.waitKey(1)
+        ui_active.set()
+        
         # Initialize dynamic gesture recognizer with YOLOv10x models if requested
         dynamic_recognizer = None
         if use_yolo and (yolo_model_path or yolo_hands_model_path):
+            # Show status update
+            loading_display = empty_display.copy()
+            cv2.putText(loading_display, "Loading YOLOv10x models... (this may take a few moments)", 
+                      (50, 360), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+            cv2.putText(loading_display, "Please wait, initializing GPU acceleration...", 
+                      (50, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
+            cv2.imshow('UnLook Enhanced Gesture Recognition', loading_display)
+            cv2.waitKey(1)
+            
             try:
                 logger.info("Initializing dynamic gesture recognizer with YOLOv10x models")
                 
-                # Set model parameters based on performance mode
-                imgsz = 320  # Default balanced mode size
+                # Set model parameters based on performance mode (using much more conservative defaults)
+                imgsz = 224  # Smaller default size
                 if performance_mode == "speed":
-                    imgsz = 256  # Smaller size for faster processing
+                    imgsz = 160  # Tiny image size for fastest processing
                 elif performance_mode == "accuracy":
-                    imgsz = 416  # Larger size for better accuracy
+                    imgsz = 320  # Moderate size for better accuracy
                     
                 logger.info(f"Using {performance_mode} mode with image size {imgsz}px")
                 
-                # Create model config dictionary with optimized settings
-                model_kwargs = {
-                    "imgsz": imgsz,           # Image size for inference
-                    "verbose": False,         # Disable verbose output
-                    "conf": 0.65,             # Lower confidence threshold for better speed
-                    "half": True,             # Use half-precision (FP16) for faster inference
-                    "max_det": 4,             # Limit maximum detections (we only need a few hands)
-                    "vid_stride": 2,          # Process every other frame for video (speeds up processing)
-                    "iou": 0.5                # Higher IoU threshold for NMS (speeds up processing)
-                }
+                # Create model config dictionary with optimized settings based on performance mode
+                if performance_mode == "speed":
+                    # Ultra-speed-focused settings
+                    model_kwargs = {
+                        "imgsz": 160,           # Smallest image size for max speed
+                        "verbose": False,        # Disable verbose output
+                        "conf": 0.7,             # Very high confidence for minimal detections
+                        "half": True,            # Use half-precision (FP16) for faster inference
+                        "max_det": 1,            # Only detect 1 hand max
+                        "vid_stride": 16,        # Process only every 16th frame (extreme speed boost)
+                        "iou": 0.1,              # Very low IoU for fastest NMS
+                        "batch": 1,              # Use batch size 1
+                        "agnostic_nms": True,    # Class-agnostic NMS for speed
+                        "device": "cpu"          # Start with CPU for stability, will be updated based on GPU later
+                    }
+                elif performance_mode == "accuracy":
+                    # Reduced accuracy-focused settings (still more conservative than before)
+                    model_kwargs = {
+                        "imgsz": imgsz,          # Use specified image size (320)
+                        "verbose": False,        # Disable verbose output
+                        "conf": 0.5,             # Medium confidence for moderate detections
+                        "half": True,            # Still use FP16 for reasonable speed
+                        "max_det": 2,            # Detect up to 2 hands max
+                        "vid_stride": 4,         # Process every 4th frame
+                        "iou": 0.5,              # Moderate IoU
+                        "batch": 1,              # Use batch size 1
+                        "device": "cpu"          # Start with CPU for stability, will be updated based on GPU later
+                    }
+                else:  # balanced
+                    # Conservative balanced settings
+                    model_kwargs = {
+                        "imgsz": 224,           # Smaller medium image size
+                        "verbose": False,        # Disable verbose output
+                        "conf": 0.6,             # Higher confidence threshold for stability
+                        "half": True,            # Use half-precision (FP16)
+                        "max_det": 1,            # Only 1 hand for stability
+                        "vid_stride": 8,         # Process every 8th frame for better performance
+                        "iou": 0.3,              # Moderate IoU threshold
+                        "batch": 1,              # Use batch size 1 
+                        "device": "cpu"          # Start with CPU for stability, will be updated based on GPU later
+                    }
                 
-                # Create dynamic recognizer with optimized settings - with error handling
+                # Check if CUDA is available and use appropriate device
                 try:
-                    # Try to create the recognizer with optimized settings first
-                    dynamic_recognizer = DynamicGestureRecognizer(
+                    # Only import torch here to avoid initialization overhead if not using YOLO
+                    import torch
+                    
+                    # Update UI with device info
+                    device_display = loading_display.copy()
+                    
+                    if torch.cuda.is_available():
+                        # Use CUDA if available
+                        model_kwargs["device"] = 0  # First CUDA device
+                        cv2.putText(device_display, "CUDA GPU acceleration detected and enabled", 
+                                  (50, 440), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (100, 255, 100), 2)
+                        # Get GPU info
+                        gpu_name = torch.cuda.get_device_name(0)
+                        cv2.putText(device_display, f"Using GPU: {gpu_name}", 
+                                  (50, 480), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (100, 255, 100), 2)
+                    elif hasattr(torch, 'mps') and hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                        # Use MPS (Apple Metal) if available
+                        model_kwargs["device"] = 'mps'
+                        cv2.putText(device_display, "Apple MPS (Metal) acceleration detected and enabled", 
+                                  (50, 440), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (100, 255, 100), 2)
+                    else:
+                        # No GPU available
+                        cv2.putText(device_display, "No GPU acceleration available, using CPU only", 
+                                  (50, 440), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 200, 100), 2)
+                        cv2.putText(device_display, "Performance will be limited - consider enabling lightweight mode", 
+                                  (50, 480), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 200, 100), 2)
+                    
+                    # Determine memory usage limit and update UI
+                    mem_usage = get_memory_usage()
+                    cv2.putText(device_display, f"Current memory usage: {mem_usage:.0f}MB", 
+                              (50, 520), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 2)
+                    
+                    # Show updated display
+                    cv2.imshow('UnLook Enhanced Gesture Recognition', device_display)
+                    cv2.waitKey(1)
+                    
+                except Exception as e:
+                    logger.warning(f"Error checking GPU acceleration: {e}, using CPU")
+                
+                # Use ThreadPoolExecutor for loading models to prevent UI freezing
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    # Start the model loading task
+                    future = executor.submit(
+                        DynamicGestureRecognizer,
                         yolo_model_path=yolo_model_path,
                         yolo_hands_model_path=yolo_hands_model_path,
                         model_kwargs=model_kwargs,
-                        parallel_inference=True   # Enable parallel model loading
+                        parallel_inference=False  # Always use sequential loading for stability
                     )
-                except Exception as e:
-                    logger.warning(f"Failed to create dynamic recognizer with parallel loading: {e}")
-                    # Try again with more conservative settings
+                    
+                    # Show loading progress while waiting
+                    dots = 0
+                    start_time = time.time()
+                    while not future.done() and time.time() - start_time < 60:  # 60 sec timeout
+                        # Create loading animation
+                        progress = loading_display.copy()
+                        dots = (dots + 1) % 10
+                        loading_text = "Loading" + "." * dots
+                        cv2.putText(progress, loading_text, 
+                                  (50, 600), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+                        
+                        # Show time elapsed
+                        elapsed = time.time() - start_time
+                        cv2.putText(progress, f"Time elapsed: {elapsed:.1f}s", 
+                                  (50, 640), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 2)
+                        
+                        # Update UI
+                        cv2.imshow('UnLook Enhanced Gesture Recognition', progress)
+                        cv2.waitKey(100)  # Update every 100ms
+                        
+                    # Get the result or handle timeout
                     try:
-                        safer_kwargs = {"imgsz": 320, "verbose": False, "half": False}
-                        dynamic_recognizer = DynamicGestureRecognizer(
-                            yolo_model_path=yolo_model_path,
-                            yolo_hands_model_path=yolo_hands_model_path,
-                            model_kwargs=safer_kwargs,
-                            parallel_inference=False  # Disable parallel loading
-                        )
+                        dynamic_recognizer = future.result(timeout=1)
                     except Exception as e:
-                        logger.error(f"Failed to create dynamic recognizer even with safe settings: {e}")
+                        logger.error(f"Error initializing model: {e}")
+                        # Show error message
+                        error_display = loading_display.copy()
+                        cv2.putText(error_display, f"Error initializing models: {str(e)[:80]}", 
+                                  (50, 600), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (50, 50, 255), 2)
+                        cv2.imshow('UnLook Enhanced Gesture Recognition', error_display)
+                        cv2.waitKey(2000)  # Show error for 2 seconds
                         dynamic_recognizer = None
                 
                 # Check which models were loaded
@@ -1094,21 +1344,58 @@ def run_gesture_demo(calibration_file=None, timeout=10, verbose=False,
                     if not models_loaded:
                         logger.warning("Failed to load YOLOv10x models, falling back to standard recognition")
                         dynamic_recognizer = None
+                        
+                    # Show loaded models info
+                    final_loading = loading_display.copy()
+                    if models_loaded:
+                        cv2.putText(final_loading, f"Successfully loaded: {', '.join(models_loaded)}", 
+                                  (50, 600), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (100, 255, 100), 2)
+                    else:
+                        cv2.putText(final_loading, "No YOLO models were loaded successfully", 
+                                  (50, 600), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (50, 50, 255), 2)
+                    
+                    cv2.imshow('UnLook Enhanced Gesture Recognition', final_loading)
+                    cv2.waitKey(1000)  # Show for 1 second
+                    
             except Exception as e:
                 logger.error(f"Error initializing YOLOv10x models: {e}")
+                
+                # Show error message
+                error_display = empty_display.copy()
+                cv2.putText(error_display, f"Error: {str(e)[:80]}", 
+                          (50, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (50, 50, 255), 2)
+                cv2.putText(error_display, "Continuing without YOLO models...", 
+                          (50, 440), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 2)
+                cv2.imshow('UnLook Enhanced Gesture Recognition', error_display)
+                cv2.waitKey(2000)  # Show for 2 seconds
+                
                 dynamic_recognizer = None
         
         # Initialize hand tracker with improved settings for reliable detection
         # For the UnLook setup, both cameras are world-facing, so both should have mirror_mode=False
         # This ensures consistent handedness detection across cameras
-        tracker = HandTracker(
-            calibration_file=calibration_file, 
-            max_num_hands=2,  # Focus on primary hands (reduces false positives)
-            detection_confidence=0.6,  # Higher threshold for more reliable detection
-            tracking_confidence=0.6,   # Higher threshold for more stable tracking
-            left_camera_mirror_mode=False,  # Left camera is world-facing in UnLook setup
-            right_camera_mirror_mode=False  # Right camera is world-facing in UnLook setup
-        )
+        
+        # Use optimized settings for presentation mode (better detection, less stability for demos)
+        if presentation_mode:
+            tracker = HandTracker(
+                calibration_file=calibration_file, 
+                max_num_hands=1,  # Focus on a single hand for more reliable demo
+                detection_confidence=0.5,  # Lower threshold for better detection during demos
+                tracking_confidence=0.5,   # Lower threshold for better responsiveness
+                left_camera_mirror_mode=False,  # Left camera is world-facing in UnLook setup
+                right_camera_mirror_mode=False  # Right camera is world-facing in UnLook setup
+            )
+            logger.info("Using presentation-optimized hand tracking parameters")
+        else:
+            # Standard initialization for normal mode
+            tracker = HandTracker(
+                calibration_file=calibration_file, 
+                max_num_hands=2,  # Focus on primary hands (reduces false positives)
+                detection_confidence=0.6,  # Higher threshold for more reliable detection
+                tracking_confidence=0.6,   # Higher threshold for more stable tracking
+                left_camera_mirror_mode=False,  # Left camera is world-facing in UnLook setup
+                right_camera_mirror_mode=False  # Right camera is world-facing in UnLook setup
+            )
         
         # Set dynamic recognizer if YOLOv10x models were loaded
         if dynamic_recognizer is not None:
@@ -1131,8 +1418,8 @@ def run_gesture_demo(calibration_file=None, timeout=10, verbose=False,
         camera_names = [cameras[0]['name'], cameras[1]['name']]
         logger.info(f"Using cameras: {camera_names[0]} (left), {camera_names[1]} (right)")
         
-        # Initialize UI handler
-        ui = GestureUI()
+        # Initialize UI handler with presentation mode if needed
+        ui = GestureUI(presentation_mode=presentation_mode)
         
         # Give UI access to the LED controller
         if use_led:
@@ -1235,138 +1522,324 @@ def run_gesture_demo(calibration_file=None, timeout=10, verbose=False,
                     logger.error(f"LED calibration error: {e}")
                     ui.add_notification(f"Using default LED: {led1_intensity}mA", color=(255, 255, 0))
         
-        # Main loop
+        # Create processing thread pool
+        executor = ThreadPoolExecutor(max_workers=1)
+        
+        # Activate the processing thread
+        processing_active.set()
+        
+        # Create and start the background worker thread for model processing
+        if dynamic_recognizer is not None:
+            # Start the worker thread
+            worker_thread = threading.Thread(
+                target=model_worker,
+                args=(dynamic_recognizer, processing_active, performance_mode, downsample, fast_mode),
+                daemon=True
+            )
+            worker_thread.start()
+            logger.info("Started background model worker thread")
+        
+        # Show ready message
+        ready_display = empty_display.copy()
+        cv2.putText(ready_display, "Camera initialization...", (50, 360), 
+                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+        cv2.putText(ready_display, "Setting up processing pipeline", (50, 400), 
+                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
+        cv2.imshow('UnLook Enhanced Gesture Recognition', ready_display)
+        cv2.waitKey(1)
+        
+        # Main loop variables
+        frame_skip_count = 0
+        frame_skip_interval = 1  # Process every frame by default
+        last_display = None
+        
+        # Determine frame skipping based on performance mode
+        if performance_mode == "speed":
+            frame_skip_interval = 2  # Process every 2nd frame - worker thread handles the rest
+            logger.info(f"Using aggressive frame skipping (1 in {frame_skip_interval} frames)")
+        elif performance_mode == "balanced":
+            frame_skip_interval = 2  # Process every 2nd frame for balanced performance
+            logger.info(f"Using balanced frame skipping (1 in {frame_skip_interval} frames)")
+        
+        # UI handling variables
+        fps_display_count = 0
+        fps_display_sum = 0
+        fps_display_avg = 0
+        fps_processing_count = 0
+        fps_processing_sum = 0
+        fps_processing_avg = 0
+        last_memory_check = time.time()
+        memory_usage = get_memory_usage()
+        
+        # Main UI loop - this will run faster than the processing loop to keep UI responsive
         while True:
-            # Wait for both frames with timeout
-            timeout_count = 0
-            while not (frame_lock['left'] and frame_lock['right']):
-                time.sleep(0.001)
-                timeout_count += 1
-                if timeout_count > 100:  # 100ms timeout
-                    logger.debug("Frame sync timeout")
-                    frame_lock['left'] = False
-                    frame_lock['right'] = False
-                    break
+            loop_start_time = time.time()
             
-            # Get frames
-            frame_left = frame_buffer['left']
-            frame_right = frame_buffer['right']
-            
-            # Reset locks
-            frame_lock['left'] = False
-            frame_lock['right'] = False
-            
-            if frame_left is None or frame_right is None:
-                logger.warning("Failed to get frames from cameras")
-                continue
-            
-            # Preprocess images to improve hand detection in poor lighting conditions
-            frame_left_enhanced = preprocess_image(frame_left)
-            frame_right_enhanced = preprocess_image(frame_right)
-            
-            # Apply downsampling if requested - with error handling
-            try:
-                if downsample > 1:
-                    if frame_left_enhanced is not None and frame_left_enhanced.size > 0:
-                        h, w = frame_left_enhanced.shape[:2]
-                        if h > 0 and w > 0:
-                            frame_left_small = cv2.resize(frame_left_enhanced, (max(1, w//downsample), max(1, h//downsample)))
+            # Wait for both frames with minimal timeout (non-blocking)
+            if frame_lock['left'] and frame_lock['right']:
+                # Get frames
+                frame_left = frame_buffer['left'].copy() if frame_buffer['left'] is not None else None
+                frame_right = frame_buffer['right'].copy() if frame_buffer['right'] is not None else None
+                
+                # Reset locks
+                frame_lock['left'] = False
+                frame_lock['right'] = False
+                
+                # Skip frames based on interval for better performance
+                frame_skip_count += 1
+                
+                # Preprocess frames first, this is always done in UI thread
+                if frame_left is not None and frame_right is not None:
+                    # Only process on selected frames
+                    if frame_skip_count % frame_skip_interval == 0:
+                        # Put frames in processing queue for background worker (non-blocking)
+                        if dynamic_recognizer is not None and not frame_queue.full():
+                            # Only preprocess here if not using worker thread
+                            frame_left_enhanced = preprocess_image(frame_left)
+                            frame_right_enhanced = preprocess_image(frame_right)
+                            
+                            try:
+                                frame_queue.put((frame_left_enhanced, frame_right_enhanced), block=False)
+                            except queue.Full:
+                                pass
                         else:
-                            frame_left_small = frame_left_enhanced
-                    else:
-                        frame_left_small = None
+                            # Process in main thread if dynamic_recognizer is None
+                            try:
+                                # Preprocess frames for main thread processing
+                                frame_left_enhanced = preprocess_image(frame_left)
+                                frame_right_enhanced = preprocess_image(frame_right)
+                                
+                                # Apply downsampling if requested
+                                try:
+                                    if downsample > 1:
+                                        if frame_left_enhanced is not None and frame_left_enhanced.size > 0:
+                                            h, w = frame_left_enhanced.shape[:2]
+                                            if h > 0 and w > 0:
+                                                frame_left_small = cv2.resize(frame_left_enhanced, (max(1, w//downsample), max(1, h//downsample)))
+                                            else:
+                                                frame_left_small = frame_left_enhanced
+                                        else:
+                                            frame_left_small = None
+                                            
+                                        if frame_right_enhanced is not None and frame_right_enhanced.size > 0:
+                                            h, w = frame_right_enhanced.shape[:2]
+                                            if h > 0 and w > 0:
+                                                frame_right_small = cv2.resize(frame_right_enhanced, (max(1, w//downsample), max(1, h//downsample)))
+                                            else:
+                                                frame_right_small = frame_right_enhanced
+                                        else:
+                                            frame_right_small = None
+                                    else:
+                                        frame_left_small = frame_left_enhanced
+                                        frame_right_small = frame_right_enhanced
+                                except Exception as e:
+                                    logger.warning(f"Downsampling failed, using original frames: {e}")
+                                    frame_left_small = frame_left_enhanced
+                                    frame_right_small = frame_right_enhanced
+                                
+                                # Process frames in main thread if no dynamic recognizer is available
+                                # Track hands in 3D using enhanced images (direct processing, no background thread)
+                                process_start_time = time.time()
+                                results = tracker.track_hands_3d(
+                                    frame_left_small, 
+                                    frame_right_small, 
+                                    prioritize_left_camera=True,
+                                    stabilize_handedness=True  # Prevents rapid flipping between left/right hand detection
+                                )
+                                process_time = time.time() - process_start_time
+                                
+                                # Update FPS metrics for processing
+                                fps_processing_count += 1
+                                fps_processing_sum += 1.0 / max(0.001, process_time)  # Avoid division by zero
+                                if fps_processing_count >= 10:
+                                    fps_processing_avg = fps_processing_sum / fps_processing_count
+                                    fps_processing_count = 0
+                                    fps_processing_sum = 0
+                                
+                                # Update hand trajectory for visualization and swipe detection
+                                hands_detected = results['3d_keypoints'] and len(results['3d_keypoints']) > 0
+                                
+                                # Manage LED based on hand detection (only if auto LED hand control is enabled)
+                                if hands_detected:
+                                    # Get the first hand's wrist position and keypoints
+                                    hand_position = results['3d_keypoints'][0][0, :2]  # X,Y only
+                                    hand_keypoints_3d = results['3d_keypoints'][0]
+                                    
+                                    # Update trajectory with both position and orientation
+                                    ui.update_hand_trajectory(hand_position, hand_keypoints_3d)
+                                    
+                                    # Detect swipe gestures with enhanced rotation-invariant algorithm
+                                    swipe = ui.detect_swipe(hand_position)
+                                    if swipe:
+                                        logger.info(f"Swipe {swipe} detected")
+                                    
+                                    # Update hand detection time and manage LED (if auto LED hand control is enabled)
+                                    last_hand_detection_time = time.time()
+                                    no_hands_frames = 0
+                                    
+                                    # Turn on LED if it's not already on and auto LED hand control is enabled
+                                    if use_led and led_controller and not led_active and auto_led_hand_control:
+                                        if led_controller.set_intensity(0, led2_intensity):
+                                            led_active = True
+                                            logger.info(f"Hand detected: LED activated (LED1=0mA, LED2={led2_intensity}mA)")
+                                            ui.add_notification("Hand detected - LED activated", color=(0, 255, 0))
+                                elif auto_led_hand_control:
+                                    # Count frames without hands (only if auto LED hand control is enabled)
+                                    no_hands_frames += 1
+                                
+                                # Create display with gesture recognition results
+                                display = ui.create_display(
+                                    frame_left, 
+                                    frame_right, 
+                                    results,
+                                    show_skeleton=show_skeleton
+                                )
+                                
+                                # Store last valid display
+                                last_display = display.copy()
+                            except Exception as e:
+                                logger.error(f"Error processing frames in main thread: {e}")
+                                # Use last valid display if available
+                                display = last_display
+                    
+            # Check for results from background processing thread
+            if dynamic_recognizer is not None:
+                try:
+                    # Try to get results without blocking
+                    results = result_queue.get_nowait() if not result_queue.empty() else None
+                    
+                    if results is not None:
+                        # Extract processing time
+                        processing_time = results.pop('processing_time', 0)
                         
-                    if frame_right_enhanced is not None and frame_right_enhanced.size > 0:
-                        h, w = frame_right_enhanced.shape[:2]
-                        if h > 0 and w > 0:
-                            frame_right_small = cv2.resize(frame_right_enhanced, (max(1, w//downsample), max(1, h//downsample)))
-                        else:
-                            frame_right_small = frame_right_enhanced
-                    else:
-                        frame_right_small = None
-                else:
-                    frame_left_small = frame_left_enhanced
-                    frame_right_small = frame_right_enhanced
-            except Exception as e:
-                logger.warning(f"Downsampling failed, using original frames: {e}")
-                frame_left_small = frame_left_enhanced
-                frame_right_small = frame_right_enhanced
-                
-            # Track hands in 3D using enhanced images
-            # Use prioritize_left_camera=True for better single-hand gesture detection
-            # Also enable handedness stabilization to prevent rapid left/right switching
-            results = tracker.track_hands_3d(
-                frame_left_small, 
-                frame_right_small, 
-                prioritize_left_camera=True,
-                stabilize_handedness=True  # Prevents rapid flipping between left/right hand detection
-            )
+                        # Get frames from results
+                        frame_left = results.pop('frame_left', None)
+                        frame_right = results.pop('frame_right', None)
+                        
+                        # Update FPS metrics for processing
+                        fps_processing_count += 1
+                        fps_processing_sum += 1.0 / max(0.001, processing_time) 
+                        if fps_processing_count >= 10:
+                            fps_processing_avg = fps_processing_sum / fps_processing_count
+                            fps_processing_count = 0
+                            fps_processing_sum = 0
+                        
+                        # Update hand trajectory for visualization and swipe detection
+                        hands_detected = results.get('3d_keypoints') and len(results['3d_keypoints']) > 0
+                        
+                        # Manage LED based on hand detection (only if auto LED hand control is enabled)
+                        if hands_detected:
+                            # Get the first hand's wrist position and keypoints
+                            hand_position = results['3d_keypoints'][0][0, :2]  # X,Y only
+                            hand_keypoints_3d = results['3d_keypoints'][0]
+                            
+                            # Update trajectory with both position and orientation
+                            ui.update_hand_trajectory(hand_position, hand_keypoints_3d)
+                            
+                            # Detect swipe gestures with enhanced rotation-invariant algorithm
+                            swipe = ui.detect_swipe(hand_position)
+                            if swipe:
+                                logger.info(f"Swipe {swipe} detected")
+                                
+                            # Update hand detection time and manage LED (if auto LED hand control is enabled)
+                            last_hand_detection_time = time.time()
+                            no_hands_frames = 0
+                            
+                            # Turn on LED if it's not already on and auto LED hand control is enabled
+                            if use_led and led_controller and not led_active and auto_led_hand_control:
+                                if led_controller.set_intensity(0, led2_intensity):
+                                    led_active = True
+                                    logger.info(f"Hand detected: LED activated (LED1=0mA, LED2={led2_intensity}mA)")
+                                    ui.add_notification("Hand detected - LED activated", color=(0, 255, 0))
+                        elif auto_led_hand_control:
+                            # Count frames without hands (only if auto LED hand control is enabled)
+                            no_hands_frames += 1
+                        
+                        # Process any dynamic gestures detected by YOLOv10x
+                        if results.get('dynamic_gestures'):
+                            for dynamic_gesture in results['dynamic_gestures']:
+                                # Add a notification for the detected dynamic gesture
+                                gesture_name = dynamic_gesture.get('name', 'Unknown')
+                                ui.add_notification(f"Dynamic gesture: {gesture_name}", color=(0, 255, 255))
+                                logger.info(f"YOLOv10x detected: {gesture_name}")
+                        
+                        if frame_left is not None and frame_right is not None:
+                            # Create display with gesture recognition results
+                            display = ui.create_display(
+                                frame_left, 
+                                frame_right, 
+                                results,
+                                show_skeleton=show_skeleton
+                            )
+                            
+                            # Store for later use
+                            last_display = display.copy()
+                except queue.Empty:
+                    # No new results, continue with last display
+                    display = last_display
+                except Exception as e:
+                    logger.error(f"Error processing results from background thread: {e}")
+                    # Use last valid display if available
+                    display = last_display
             
-            # If the tracker has dynamic_recognizer, pass our optimization parameters
-            try:
-                if hasattr(tracker, 'dynamic_recognizer') and tracker.dynamic_recognizer is not None:
-                    # These parameters will be used in the next frame processing
-                    tracker.dynamic_recognizer.fast_mode = fast_mode
-                    tracker.dynamic_recognizer.downsample_factor = downsample
-            except Exception as e:
-                logger.warning(f"Failed to set optimization parameters: {e}")
+            # Update display if available
+            if last_display is not None:
+                try:
+                    # Add FPS display
+                    if isinstance(last_display, np.ndarray) and last_display.size > 0:
+                        display = last_display.copy()
+                        h, w = display.shape[:2]
+                        
+                        # Calculate FPS
+                        fps_display_count += 1
+                        display_time = time.time() - loop_start_time
+                        fps_display_sum += 1.0 / max(0.001, display_time)  # Avoid division by zero
+                        
+                        if fps_display_count >= 10:
+                            fps_display_avg = fps_display_sum / fps_display_count
+                            fps_display_count = 0
+                            fps_display_sum = 0
+                        
+                        # Check memory usage periodically
+                        if time.time() - last_memory_check > 5.0:  # Every 5 seconds
+                            memory_usage = get_memory_usage()
+                            last_memory_check = time.time()
+                        
+                        # Add FPS and memory info to display
+                        cv2.putText(display, f"UI FPS: {fps_display_avg:.1f}", (w - 150, 30),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                        cv2.putText(display, f"Processing FPS: {fps_processing_avg:.1f}", (w - 250, 60),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                        cv2.putText(display, f"Memory: {memory_usage:.0f}MB", (w - 200, 90),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                        
+                        # Show the display - reuse existing window
+                        cv2.setWindowProperty('UnLook Enhanced Gesture Recognition', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+                        cv2.imshow('UnLook Enhanced Gesture Recognition', display)
+                        
+                        # Set mouse callback for LED controls
+                        cv2.setMouseCallback('UnLook Enhanced Gesture Recognition', 
+                                           lambda event, x, y, flags, param: ui.handle_mouse_event(event, x, y, flags, param))
+                        
+                except Exception as e:
+                    logger.error(f"Error updating display: {e}")
             
-            # Update hand trajectory for visualization and swipe detection
-            if results['3d_keypoints'] and len(results['3d_keypoints']) > 0:
-                # Get the first hand's wrist position and keypoints
-                hand_position = results['3d_keypoints'][0][0, :2]  # X,Y only
-                hand_keypoints_3d = results['3d_keypoints'][0]
-                
-                # Update trajectory with both position and orientation
-                ui.update_hand_trajectory(hand_position, hand_keypoints_3d)
-                
-                # Detect swipe gestures with enhanced rotation-invariant algorithm
-                swipe = ui.detect_swipe(hand_position)
-                if swipe:
-                    logger.info(f"Swipe {swipe} detected")
-            
-            # Process any dynamic gestures detected by YOLOv10x
-            if 'dynamic_gestures' in results and results['dynamic_gestures']:
-                for dynamic_gesture in results['dynamic_gestures']:
-                    # Add a notification for the detected dynamic gesture
-                    gesture_name = dynamic_gesture.get('name', 'Unknown')
-                    ui.add_notification(f"Dynamic gesture: {gesture_name}", color=(0, 255, 255))
-                    logger.info(f"YOLOv10x detected: {gesture_name}")
-            
-            # Create display with gesture recognition results
-            display = ui.create_display(
-                frame_left, 
-                frame_right, 
-                results,
-                show_skeleton=show_skeleton
-            )
-            
-            # Calculate FPS
-            fps_count += 1
-            if time.time() - fps_timer > 1.0:
-                current_fps = fps_count
-                fps_count = 0
-                fps_timer = time.time()
-            
-            # Add FPS display to top-right corner of display
-            h, w = display.shape[:2]
-            cv2.putText(display, f"FPS: {current_fps}", (w - 100, 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-            
-            # Show the display in fullscreen
-            cv2.namedWindow('UnLook Enhanced Gesture Recognition', cv2.WINDOW_NORMAL)
-            cv2.setWindowProperty('UnLook Enhanced Gesture Recognition', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-            cv2.imshow('UnLook Enhanced Gesture Recognition', display)
-            
-            # Set mouse callback for LED controls
-            cv2.setMouseCallback('UnLook Enhanced Gesture Recognition', lambda event, x, y, flags, param: ui.handle_mouse_event(event, x, y, flags, param))
-            
-            # Handle key presses
+            # Handle key presses with a short timeout to keep UI responsive
             key = cv2.waitKey(1) & 0xFF
             
             # Debug key codes - useful for identifying different keyboard layouts
             if ui.show_led_controls and ui.active_control == 'led2' and key != 255:
                 logger.debug(f"Key pressed: {key}")
+                
+            # Check if we need to turn off the LED due to no hands detected
+            if use_led and led_controller and led_active and auto_led_hand_control:
+                time_since_last_detection = time.time() - last_hand_detection_time
+                if time_since_last_detection > hand_detection_timeout or no_hands_frames > 30:
+                    if led_controller.turn_off():
+                        led_active = False
+                        logger.info("No hands detected for a while: LED deactivated")
+                        ui.add_notification("No hands detected - LED turned off", color=(200, 200, 200))
+                    no_hands_frames = 0
             
             # First check if the UI is handling any LED-specific key events
             if ui.handle_key_event(key):
@@ -1424,11 +1897,19 @@ def run_gesture_demo(calibration_file=None, timeout=10, verbose=False,
         traceback.print_exc()
     
     finally:
+        # Stop processing thread first
+        processing_active.clear()
+        
+        # Wait for a bit to let threads finish
+        time.sleep(0.5)
+        
         # Cleanup LED if it was used
         if use_led and led_controller:
             try:
+                # Always try to turn off LED when exiting, regardless of current state
                 if led_controller.turn_off():
                     logger.info("LED flood illuminator deactivated on server")
+                    led_active = False
                 else:
                     logger.warning("Failed to deactivate LED flood illuminator")
             except Exception as e:
@@ -1441,10 +1922,44 @@ def run_gesture_demo(calibration_file=None, timeout=10, verbose=False,
             client.stream.stop_stream(right_camera)
         except:
             pass
-        client.disconnect()
-        client.stop_discovery()
+        
+        try:
+            client.disconnect()
+        except:
+            pass
+            
+        try:
+            client.stop_discovery()
+        except:
+            pass
+            
+        # Close UI window
         cv2.destroyAllWindows()
-        tracker.close()
+        
+        # Close resources
+        try:
+            if tracker:
+                tracker.close()
+        except:
+            pass
+            
+        # Explicitly clear queues
+        while not frame_queue.empty():
+            try:
+                frame_queue.get_nowait()
+            except:
+                pass
+                
+        while not result_queue.empty():
+            try:
+                result_queue.get_nowait()
+            except:
+                pass
+                
+        # Force garbage collection
+        gc.collect()
+        
+        logger.info("Cleanup complete")
 
 
 def main():
@@ -1464,6 +1979,8 @@ def main():
                        help='LED2 intensity in mA (0-450, default: 200)')
     parser.add_argument('--no-auto-led', action='store_true',
                        help='Disable automatic LED intensity adjustment')
+    parser.add_argument('--always-on-led', action='store_true',
+                       help='Keep LED always on (disable auto LED hand detection control)')
     # YOLOv10x model arguments
     parser.add_argument('--yolo-model', type=str, default=None,
                        help='Path to YOLOv10x_gestures.pt model for gesture recognition')
@@ -1473,10 +1990,14 @@ def main():
                        help='Disable YOLOv10x models even if available')
     parser.add_argument('--lightweight', action='store_true',
                        help='Run in lightweight mode for better performance (uses only one YOLO model)')
+    parser.add_argument('--minimal', action='store_true',
+                       help='Run in minimal mode with absolute minimum resource usage (extreme performance mode)')
+    parser.add_argument('--presentation-mode', action='store_true',
+                       help='Run in presentation mode optimized for investor demos (no ML dependencies)')
     parser.add_argument('--performance-mode', choices=['balanced', 'speed', 'accuracy'], default='balanced',
                       help='Performance mode: balanced, speed (faster), or accuracy (slower)')
-    parser.add_argument('--downsample', type=int, choices=[1, 2, 4], default=1,
-                      help='Downsample factor for processing (1=none, 2=half resolution, 4=quarter resolution)')
+    parser.add_argument('--downsample', type=int, choices=[1, 2, 4, 8], default=1,
+                      help='Downsample factor for processing (1=none, 2=half, 4=quarter, 8=eighth resolution)')
     parser.add_argument('--fast-mode', action='store_true',
                       help='Enable fast mode with simplified preprocessing for better performance')
     
@@ -1512,20 +2033,77 @@ def main():
                 print(f"Found YOLOv10x hands model at: {args.yolo_hands_model}")
                 break
     
-    # If in lightweight mode, prioritize hands model over gestures model
+    # Handle different operating modes
     yolo_model = args.yolo_model
     yolo_hands_model = args.yolo_hands_model
     
-    if args.lightweight and not args.no_yolo and YOLO_AVAILABLE:
+    # Presentation mode for investor demos - optimized for reliable operation without ML
+    if args.presentation_mode:
+        print("Running in PRESENTATION MODE optimized for investor demos")
+        # Disable all ML components but keep good performance
+        args.no_yolo = True  # Disable YOLO completely
+        yolo_model = None
+        yolo_hands_model = None
+        args.performance_mode = "balanced"  # Use balanced performance settings
+        
+        # Use moderate downsampling for good performance without sacrificing quality
+        if args.downsample == 1:
+            args.downsample = 2
+            print(f"- Using moderate downsampling (1/2 resolution) for best demo experience")
+        
+        print("- ML components disabled for reliable cross-platform operation")
+        print("- Using enhanced basic hand tracking optimized for demos")
+        print("- Visual feedback and gesture recognition still fully functional")
+    
+    # Minimal mode overrides lightweight mode for absolute minimal processing
+    elif args.minimal:
+        print("Running in MINIMAL PERFORMANCE mode with extreme resource optimization")
+        # Force CPU-only mode with absolute minimal settings
+        args.no_yolo = True  # Disable YOLO completely
+        yolo_model = None
+        yolo_hands_model = None
+        args.fast_mode = True  # Use fast mode preprocessing
+        print("- Disabled all neural network models for minimum CPU/GPU usage")
+        print("- Only using basic hand tracking (no advanced gesture recognition)")
+        print("- Using fastest possible processing settings (quality reduced)")
+        
+        # If downsampling wasn't explicitly set, set to maximum
+        if args.downsample == 1:
+            args.downsample = 8
+            print(f"- Setting maximum downsampling (1/8 resolution)")
+    
+    # Lightweight mode (if not already in minimal mode)
+    elif args.lightweight and not args.no_yolo and YOLO_AVAILABLE:
         # In lightweight mode, only use one model (prioritize hands detection)
         if yolo_hands_model:
-            print("Running in lightweight mode: Using only hand detection YOLO model for better performance")
+            print("Running in LIGHTWEIGHT mode: Using only hand detection YOLO model for better performance")
             yolo_model = None
         elif yolo_model:
-            print("Running in lightweight mode: Using only gesture recognition YOLO model for better performance")
+            print("Running in LIGHTWEIGHT mode: Using only gesture recognition YOLO model for better performance")
             # Keep yolo_model, hands_model is already None
         else:
-            print("Running in lightweight mode, but no YOLO models specified")
+            print("Running in LIGHTWEIGHT mode, but no YOLO models specified")
+            
+    # Performance mode adjustments
+    if args.performance_mode == "speed":
+        print("SPEED mode activated - prioritizing maximum performance over accuracy")
+        # If downsample is set to default, increase it for speed mode
+        if args.downsample == 1:
+            args.downsample = 4
+            print(f"- Automatically increasing downsampling to {args.downsample}x for better performance")
+        
+        # Enable fast mode if not already set
+        if not args.fast_mode:
+            args.fast_mode = True
+            print("- Automatically enabling fast mode preprocessing")
+            
+    elif args.performance_mode == "balanced":
+        # If downsample is set to default, increase it slightly for balanced
+        if args.downsample == 1:
+            args.downsample = 2
+            print(f"- Using {args.downsample}x downsampling for balanced performance")
+    
+    print(f"Final configuration: Downsampling={args.downsample}x, Fast mode={args.fast_mode}, Performance={args.performance_mode}")
     
     run_gesture_demo(
         calibration_file=args.calibration,
@@ -1535,12 +2113,14 @@ def main():
         led1_intensity=args.led1_intensity,
         led2_intensity=args.led2_intensity,
         auto_led_adjust=not args.no_auto_led,
+        auto_led_hand_control=not args.always_on_led,
         yolo_model_path=yolo_model,
         yolo_hands_model_path=yolo_hands_model,
         use_yolo=not args.no_yolo and YOLO_AVAILABLE,
         performance_mode=args.performance_mode,
         downsample=args.downsample,
-        fast_mode=args.fast_mode
+        fast_mode=args.fast_mode,
+        presentation_mode=args.presentation_mode
     )
 
 
