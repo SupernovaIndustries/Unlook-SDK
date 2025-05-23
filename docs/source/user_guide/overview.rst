@@ -33,6 +33,7 @@ Client Components
 - **Projector Module**: Controls projector patterns and sequences
 - **Scanner Modules**: High-level modules for different scanning methods
 - **Real-time Scanner**: Specialized module for continuous, high-speed scanning
+- **Hand Pose Tracking**: Advanced hand detection and gesture recognition with 3D triangulation
 
 Server Components
 ^^^^^^^^^^^^^^
@@ -48,6 +49,7 @@ The SDK supports several scanning technologies:
 
 - **Structured Light**: Uses projected patterns and stereo vision for precise 3D reconstruction
 - **Real-time Scanning**: Optimized for continuous, handheld scanning operations
+- **Hand Pose Tracking**: Real-time hand detection and gesture recognition using stereo vision with LED point projection
 - **Depth Sensor** (Coming Soon): Support for time-of-flight and structured light depth sensors
 - **Point Projector** (Coming Soon): Support for laser/IR dot pattern projectors
 
@@ -69,3 +71,4 @@ To start using the Unlook SDK, see the following sections:
 - :doc:`../installation`: Detailed installation instructions
 - :doc:`client_server_architecture`: Learn about how the client and server components work together
 - :doc:`realtime_scanning`: Guide to using the real-time scanning features
+- :doc:`handpose_setup`: Setting up and using hand pose tracking and gesture recognition

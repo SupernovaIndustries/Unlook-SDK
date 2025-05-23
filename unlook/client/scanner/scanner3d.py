@@ -18,6 +18,12 @@ from pathlib import Path
 # Configure logger
 logger = logging.getLogger(__name__)
 
+# Import local modules
+from .scan_config import ScanConfig
+from .scan_result import ScanResult
+from .pattern_decoder import PatternDecoder
+from .point_cloud_processor import PointCloudProcessor
+
 # Try to import optional dependencies
 try:
     import open3d as o3d
@@ -57,175 +63,6 @@ project_patterns = None
 # Log the issue for debugging
 import logging
 logging.getLogger(__name__).warning("Some structured light components may not be available")
-
-
-
-class ScanConfig:
-    """Configuration for 3D scanning."""
-    
-    def __init__(self):
-        """Initialize scan configuration with default values."""
-        # Pattern generation parameters
-        self.pattern_resolution = (1024, 768)  # Width x Height
-        self.num_gray_codes = 10
-        self.num_phase_shifts = 8
-        self.phase_shift_frequencies = [1, 8, 16]
-        
-        # Scanning parameters
-        self.pattern_interval = 0.5  # Time between patterns (seconds)
-        self.quality = "medium"  # Quality preset: fast, medium, high, ultra
-        
-        # Processing parameters
-        self.max_distance = 1000.0  # Maximum point distance (mm)
-        self.voxel_size = 0.5       # Voxel size for downsampling (mm)
-        self.outlier_std = 2.0      # Standard deviation for outlier removal
-        self.mesh_depth = 9         # Poisson reconstruction depth
-        self.mesh_smoothing = 5     # Mesh smoothing iterations
-    
-    def set_quality_preset(self, quality: str):
-        """Set parameters based on quality preset."""
-        if quality == "fast":
-            self.num_gray_codes = 8
-            self.num_phase_shifts = 4
-            self.phase_shift_frequencies = [1, 16]
-            self.pattern_interval = 0.3
-            self.voxel_size = 1.0
-            self.mesh_depth = 8
-            self.mesh_smoothing = 2
-        elif quality == "medium":
-            self.num_gray_codes = 10
-            self.num_phase_shifts = 6
-            self.phase_shift_frequencies = [1, 8, 16]
-            self.pattern_interval = 0.5
-            self.voxel_size = 0.5
-            self.mesh_depth = 9
-            self.mesh_smoothing = 3
-        elif quality == "high":
-            self.num_gray_codes = 10
-            self.num_phase_shifts = 8
-            self.phase_shift_frequencies = [1, 8, 16, 32]
-            self.pattern_interval = 0.75
-            self.voxel_size = 0.25
-            self.mesh_depth = 10
-            self.mesh_smoothing = 4
-        elif quality == "ultra":
-            self.num_gray_codes = 12
-            self.num_phase_shifts = 12
-            self.phase_shift_frequencies = [1, 4, 8, 16, 32]
-            self.pattern_interval = 1.0
-            self.voxel_size = 0.1
-            self.mesh_depth = 11
-            self.mesh_smoothing = 5
-        else:
-            logger.warning(f"Unknown quality preset: {quality}, using medium")
-            self.set_quality_preset("medium")
-        
-        self.quality = quality
-        logger.info(f"Set quality preset to: {quality}")
-
-
-class ScanResult:
-    """Result of a 3D scan."""
-    
-    def __init__(
-        self,
-        point_cloud: Optional[Union[o3dg.PointCloud, np.ndarray]] = None,
-        mesh: Optional[o3dg.TriangleMesh] = None,
-        images: Optional[Dict[str, List[np.ndarray]]] = None,
-        debug_info: Optional[Dict[str, Any]] = None
-    ):
-        """
-        Initialize scan result.
-        
-        Args:
-            point_cloud: 3D point cloud (Open3D or numpy array)
-            mesh: 3D mesh
-            images: Dictionary of captured images
-            debug_info: Debug information
-        """
-        self.point_cloud = point_cloud
-        self.mesh = mesh
-        self.images = images or {}
-        self.debug_info = debug_info or {}
-        
-        # Calculate statistics
-        self.num_points = len(point_cloud.points) if hasattr(point_cloud, "points") else 0
-        self.num_triangles = len(mesh.triangles) if mesh and hasattr(mesh, "triangles") else 0
-    
-    def has_point_cloud(self) -> bool:
-        """Check if result contains a point cloud."""
-        if self.point_cloud is None:
-            return False
-        if hasattr(self.point_cloud, "points"):
-            return len(self.point_cloud.points) > 0
-        return len(self.point_cloud) > 0
-    
-    def has_mesh(self) -> bool:
-        """Check if result contains a mesh."""
-        if self.mesh is None:
-            return False
-        if hasattr(self.mesh, "triangles"):
-            return len(self.mesh.triangles) > 0
-        return False
-    
-    def save(self, output_dir: str):
-        """Save scan results to output directory."""
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # Create subdirectories
-        results_dir = os.path.join(output_dir, "results")
-        debug_dir = os.path.join(output_dir, "debug")
-        captures_dir = os.path.join(output_dir, "captures")
-        
-        os.makedirs(results_dir, exist_ok=True)
-        os.makedirs(debug_dir, exist_ok=True)
-        os.makedirs(captures_dir, exist_ok=True)
-        
-        # Save point cloud
-        if self.has_point_cloud():
-            if OPEN3D_AVAILABLE and isinstance(self.point_cloud, o3d.geometry.PointCloud):
-                pc_path = os.path.join(results_dir, "point_cloud.ply")
-                o3d.io.write_point_cloud(pc_path, self.point_cloud)
-            elif isinstance(self.point_cloud, np.ndarray):
-                pc_path = os.path.join(results_dir, "point_cloud.npy")
-                np.save(pc_path, self.point_cloud)
-            logger.info(f"Saved point cloud to: {os.path.basename(pc_path)}")
-        
-        # Save mesh
-        if self.has_mesh() and OPEN3D_AVAILABLE:
-            mesh_path = os.path.join(results_dir, "mesh.ply")
-            o3d.io.write_triangle_mesh(mesh_path, self.mesh)
-            logger.info(f"Saved mesh to: {os.path.basename(mesh_path)}")
-        
-        # Only save images if debug flag is enabled
-        if os.environ.get("UNLOOK_SAVE_DEBUG_IMAGES", "0") == "1":
-            logger.debug("Saving captured images...")
-            for camera_name, image_list in self.images.items():
-                for i, img in enumerate(image_list):
-                    img_path = os.path.join(captures_dir, f"{camera_name}_{i:03d}.png")
-                    cv2.imwrite(img_path, img)
-        
-        # Save debug info
-        if self.debug_info:
-            debug_path = os.path.join(debug_dir, "debug_info.json")
-            with open(debug_path, "w") as f:
-                clean_debug = {}
-                # Convert numpy types to Python native types for JSON serialization
-                for k, v in self.debug_info.items():
-                    if isinstance(v, (np.int32, np.int64, np.uint64)):
-                        clean_debug[k] = int(v)
-                    elif isinstance(v, (np.float32, np.float64)):
-                        clean_debug[k] = float(v)
-                    elif isinstance(v, np.ndarray):
-                        clean_debug[k] = v.tolist()
-                    else:
-                        try:
-                            json.dumps({k: v})  # Test if serializable
-                            clean_debug[k] = v
-                        except TypeError:
-                            clean_debug[k] = str(v)
-                json.dump(clean_debug, f, indent=2)
-            logger.info(f"Saved debug info to: {os.path.basename(debug_path)}")
 
 
 class Scanner3D:
@@ -475,170 +312,19 @@ class Scanner3D:
         Returns:
             Tuple of (decoded_coords, mask)
         """
-        # Create Gray code generator in OpenCV
-        gray_code = cv2.structured_light.GrayCodePattern.create(width=width, height=height)
-
-        # Compute shadow mask
-        diff = cv2.absdiff(white_ref, black_ref)
-        _, mask = cv2.threshold(diff, 30, 1, cv2.THRESH_BINARY)
-
-        # Ensure mask is 2D
-        if len(mask.shape) > 2:
-            mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
-
-        # Convert images to grayscale if needed
-        gray_images = []
-        for img in images:
-            if len(img.shape) == 3:
-                gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                gray_images.append(gray_img)
-            else:
-                gray_images.append(img)
-
-        # Prepare arrays for OpenCV decoding
-        pattern_images = np.array(gray_images)
-
-        # Set defaults in case decoding fails
-        ret = False
-        decoded = None
-
-        # Try to decode with proper error handling
-        # Direct approach using low-level OpenCV functions for better compatibility
-        try:
-            # First, determine number of patterns (must be even with half for normal and half for inverted)
-            num_patterns = len(pattern_images)
-            if num_patterns % 2 != 0:
-                logger.warning(f"Odd number of Gray code patterns: {num_patterns}, expected even number")
-                # Truncate to even number if needed
-                pattern_images = pattern_images[:num_patterns-1]
-                num_patterns = len(pattern_images)
-
-            # Number of bits is half the patterns (each bit has normal + inverted pattern)
-            num_bits = num_patterns // 2
-            logger.info(f"Decoding {num_bits} bits from {num_patterns} Gray code patterns")
-
-            # Create binary representations
-            binary_codes = np.zeros((mask.shape[0], mask.shape[1], num_bits), dtype=np.uint8)
-
-            # For each bit, compute difference between normal and inverted pattern
-            for i in range(num_bits):
-                normal_idx = i * 2
-                inverted_idx = i * 2 + 1
-
-                # Normal and inverted patterns
-                normal = pattern_images[normal_idx]
-                inverted = pattern_images[inverted_idx]
-
-                # Threshold based on difference
-                diff = cv2.absdiff(normal, inverted)
-                _, thresh = cv2.threshold(diff, 20, 255, cv2.THRESH_BINARY)
-
-                # Determine bit value
-                # 1 where normal > inverted, 0 otherwise
-                bit_val = (normal > inverted).astype(np.uint8)
-
-                # Apply mask - only set bits where difference is significant
-                bit_val = bit_val & (thresh > 0)
-
-                # Store in binary_codes
-                binary_codes[:, :, i] = bit_val
-
-            # Convert binary codes to pixel coordinates
-            decoded = np.zeros(mask.shape, dtype=np.int32) - 1  # -1 for invalid pixels
-
-            # For each valid pixel
-            for y in range(mask.shape[0]):
-                for x in range(mask.shape[1]):
-                    if mask[y, x] > 0:
-                        # Extract binary code for this pixel
-                        binary_code = binary_codes[y, x, :]
-
-                        # Convert binary to gray code
-                        value = 0
-                        for j in range(num_bits):
-                            bit_val = binary_code[num_bits - j - 1]
-                            value = (value << 1) | bit_val
-
-                        # Set decoded value
-                        if value < width * height:
-                            decoded[y, x] = value
-
-            # Success
-            ret = True
-
-        except Exception as e:
-            logger.warning(f"Custom Gray code decoding failed: {e}, trying OpenCV's decoder...")
-            try:
-                # Fallback to OpenCV's decoder with various argument patterns
-
-                # Method 1: Basic decode (OpenCV 3.x style)
-                try:
-                    result = gray_code.decode(pattern_images)
-                    if isinstance(result, tuple) and len(result) >= 2:
-                        ret, decoded = result[:2]
-                    else:
-                        # Direct result
-                        decoded = result
-                        ret = True
-                except Exception as e1:
-                    logger.warning(f"OpenCV basic decode failed: {e1}")
-
-                    # Method 2: With reference images (OpenCV 4.x style)
-                    try:
-                        result = gray_code.decode(
-                            pattern_images,
-                            np.zeros_like(white_ref),  # Disparity map (not used)
-                            black_ref,
-                            white_ref
-                        )
-
-                        if isinstance(result, tuple) and len(result) >= 2:
-                            ret, decoded = result[:2]
-                        else:
-                            decoded = result
-                            ret = True
-                    except Exception as e2:
-                        logger.error(f"All decode methods failed: {e1}, {e2}")
-                        ret = False
-                        decoded = None
-            except Exception as final_e:
-                logger.error(f"All Gray code decoding approaches failed: {final_e}")
-                ret = False
-                decoded = None
+        # Prepare images list with white and black references at the beginning
+        all_images = [white_ref, black_ref] + images
         
-        # Check decoding success
-        if not ret or decoded is None:
-            logger.error("Gray code decoding failed")
-            # Return empty arrays with correct shape
-            img_height, img_width = images[0].shape[:2]
-            empty_coords = np.zeros((img_height, img_width, 2), dtype=np.float32)
-            empty_mask = np.zeros((img_height, img_width), dtype=np.uint8)
-            return empty_coords, empty_mask
+        # Use PatternDecoder for actual decoding
+        x_coords, y_coords, mask = PatternDecoder.decode_gray_code(
+            all_images, width, height, threshold=5.0,
+            debug_dir=self.debug_dir if hasattr(self, 'debug_dir') else None
+        )
         
-        # Create coordinate map
-        img_height, img_width = mask.shape
-        coord_map = np.zeros((img_height, img_width, 2), dtype=np.float32)
+        # Combine x and y coordinates into single array for compatibility
+        decoded_coords = np.stack([x_coords, y_coords], axis=-1)
         
-        # Extract coordinates
-        for y in range(img_height):
-            for x in range(img_width):
-                if mask[y, x] != 0:
-                    try:
-                        # Try to get decoded value with error handling
-                        if decoded is not None and decoded[y, x] != -1:
-                            # Convert projector coordinate to row, col
-                            proj_y = decoded[y, x] // width
-                            proj_x = decoded[y, x] % width
-                            
-                            if 0 <= proj_x < width and 0 <= proj_y < height:
-                                coord_map[y, x, 0] = proj_y  # Row (V)
-                                coord_map[y, x, 1] = proj_x  # Column (U)
-                    except Exception as e:
-                        # If error for this pixel, just skip it
-                        logger.debug(f"Error processing decoded pixel ({x},{y}): {e}")
-                        continue
-        
-        return coord_map, mask
+        return decoded_coords, mask
     
     def find_correspondences(
         self,
@@ -791,8 +477,8 @@ class Scanner3D:
             logger.warning("No points to triangulate, returning empty point cloud")
             return np.array([])
             
-        # Use the centralized triangulation implementation
-        from .scanning.reconstruction.direct_triangulator import triangulate_with_baseline_correction
+        # Use the unified triangulation implementation
+        from unlook.client.scanning.reconstruction.triangulator import Triangulator
         
         # The baseline will be extracted from calibration data
         # No need to specify baseline_mm parameter
@@ -804,14 +490,20 @@ class Scanner3D:
         # Get debug directory if available
         debug_dir = self.debug_dir if hasattr(self, 'debug_dir') else None
         
-        # Triangulate points using the robust implementation
-        points_3d = triangulate_with_baseline_correction(
-            left_points, right_points, 
+        # Create triangulator instance
+        triangulator = Triangulator(
             rectification_params,
             max_depth=max_depth,
             min_depth=min_depth,
-            debug_dir=debug_dir
+            enable_gpu=False  # GPU not implemented yet
         )
+        
+        # Triangulate points using the unified implementation
+        result = triangulator.triangulate(left_points, right_points)
+        
+        # Extract just the 3D points for backward compatibility
+        # In the future, we could also use result.uncertainties for ISO compliance
+        points_3d = result.points_3d
         
         return points_3d
     
@@ -832,41 +524,14 @@ class Scanner3D:
         Returns:
             Filtered point cloud
         """
-        # Remove invalid points
-        mask = ~np.isnan(points_3d).any(axis=1) & ~np.isinf(points_3d).any(axis=1)
-        clean_pts = points_3d[mask]
-        
-        if len(clean_pts) == 0:
-            logger.warning("No valid points after removing NaN and infinite values")
-            return np.array([]) if not OPEN3D_AVAILABLE else o3d.geometry.PointCloud()
-        
-        # Filter by distance
-        dist = np.linalg.norm(clean_pts, axis=1)
-        mask = dist < max_distance
-        clean_pts = clean_pts[mask]
-        
-        if len(clean_pts) == 0:
-            logger.warning(f"No valid points after distance filtering (max_dist={max_distance})")
-            return np.array([]) if not OPEN3D_AVAILABLE else o3d.geometry.PointCloud()
-        
-        # Use Open3D for advanced filtering if available
-        if OPEN3D_AVAILABLE and len(clean_pts) > 50:
-            pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(clean_pts)
-            
-            # Remove statistical outliers
-            pcd, _ = pcd.remove_statistical_outlier(
-                nb_neighbors=20,
-                std_ratio=self.config.outlier_std
-            )
-            
-            # Voxel downsample
-            pcd = pcd.voxel_down_sample(voxel_size=voxel_size)
-            
-            return pcd
-        
-        # If Open3D not available, just return filtered points
-        return clean_pts
+        # Delegate to PointCloudProcessor
+        return PointCloudProcessor.filter_point_cloud(
+            points_3d,
+            max_distance=max_distance,
+            voxel_size=voxel_size,
+            remove_outliers=True,
+            outlier_std_ratio=self.config.outlier_std
+        )
     
     def create_mesh(
         self,
@@ -885,42 +550,14 @@ class Scanner3D:
         Returns:
             Triangle mesh or None if failed
         """
-        if not OPEN3D_AVAILABLE:
-            logger.warning("Open3D not available, cannot create mesh")
-            return None
-        
-        if not pcd or not hasattr(pcd, 'points') or len(pcd.points) < 10:
-            logger.warning("Not enough points to create mesh")
-            return None
-        
-        try:
-            # Estimate normals
-            pcd.estimate_normals(
-                search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=10, max_nn=30)
-            )
-            
-            # Orient normals
-            pcd.orient_normals_towards_camera_location(np.array([0, 0, 0]))
-            
-            # Create mesh with Poisson reconstruction
-            mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
-                pcd, depth=depth
-            )
-            
-            # Remove low density vertices
-            vertices_to_remove = densities < np.quantile(densities, 0.01)
-            mesh.remove_vertices_by_mask(vertices_to_remove)
-            
-            # Apply smoothing
-            if smoothing > 0:
-                logger.info(f"Smoothing mesh with {smoothing} iterations")
-                mesh = mesh.filter_smooth_taubin(number_of_iterations=smoothing)
-            
-            logger.info(f"Created mesh with {len(mesh.triangles)} triangles")
-            return mesh
-        except Exception as e:
-            logger.error(f"Failed to create mesh: {e}")
-            return None
+        # Delegate to PointCloudProcessor
+        return PointCloudProcessor.create_mesh(
+            pcd,
+            method="poisson",
+            depth=depth,
+            remove_degenerate=True,
+            remove_duplicated=True
+        )
     
     def scan(
         self,

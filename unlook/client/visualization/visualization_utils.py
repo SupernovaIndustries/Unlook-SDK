@@ -22,14 +22,14 @@ from typing import List, Dict, Tuple, Optional, Any, Union
 
 # Import for uncertainty visualization
 try:
-    from .direct_triangulator import PointCloudWithUncertainty, PointUncertainty
+    from unlook.client.scanning.reconstruction.triangulator import TriangulationResult, PointUncertainty
     UNCERTAINTY_AVAILABLE = True
 except ImportError:
     UNCERTAINTY_AVAILABLE = False
     # Create fallback definitions for documentation purposes
     class PointUncertainty:
         pass
-    class PointCloudWithUncertainty:
+    class TriangulationResult:
         pass
 
 # Configure logger
@@ -445,14 +445,14 @@ class DebugVisualizer:
             return False
     
     def save_pointcloud_snapshot(self, 
-                                points: Union[np.ndarray, PointCloudWithUncertainty], 
+                                points: Union[np.ndarray, TriangulationResult], 
                                 name: str = "pointcloud",
                                 colorize_by: str = "z") -> bool:
         """
         Save a snapshot of the current point cloud.
         
         Args:
-            points: 3D points array (Nx3) or PointCloudWithUncertainty object
+            points: 3D points array (Nx3) or TriangulationResult object
             name: Base filename
             colorize_by: How to colorize the point cloud ('z', 'uncertainty', or 'confidence')
                 - 'z': Color by depth (default)
@@ -473,7 +473,7 @@ class DebugVisualizer:
             confidence_values = []
             
             # Extract points and uncertainty data based on input type
-            if isinstance(points, PointCloudWithUncertainty) and UNCERTAINTY_AVAILABLE:
+            if isinstance(points, TriangulationResult) and UNCERTAINTY_AVAILABLE:
                 has_uncertainty = True
                 points_array = points.points
                 uncertainties = [u.spatial_uncertainty for u in points.uncertainties]
@@ -573,7 +573,7 @@ class DebugVisualizer:
                 # Clean up
                 vis.destroy_window()
             
-            if isinstance(points, PointCloudWithUncertainty):
+            if isinstance(points, TriangulationResult):
                 logger.info(f"Saved point cloud snapshot with {len(points.points)} points and uncertainty data")
             else:
                 logger.info(f"Saved point cloud snapshot with {len(points)} points")
@@ -633,7 +633,7 @@ class DebugVisualizer:
             return False
     
     def create_uncertainty_visualization(self,
-                                     cloud_with_uncertainty: PointCloudWithUncertainty,
+                                     cloud_with_uncertainty: TriangulationResult,
                                      colormap_type: str = "jet") -> np.ndarray:
         """
         Create visualization of point cloud uncertainty according to ISO/ASTM 52902.
@@ -730,7 +730,7 @@ class DebugVisualizer:
             return np.zeros((100, 100, 3), dtype=np.uint8)
     
     def save_uncertainty_visualization(self,
-                                      cloud_with_uncertainty: PointCloudWithUncertainty,
+                                      cloud_with_uncertainty: TriangulationResult,
                                       name: str = "uncertainty") -> bool:
         """
         Create and save visualization of point cloud uncertainty for ISO/ASTM 52902 compliance.
@@ -833,7 +833,7 @@ class DebugVisualizer:
             return False
 
     def create_iso_astm_52902_report(self,
-                                    cloud_with_uncertainty: PointCloudWithUncertainty,
+                                    cloud_with_uncertainty: TriangulationResult,
                                     scan_params: Dict[str, Any],
                                     name: str = "iso_astm_52902_report") -> bool:
         """

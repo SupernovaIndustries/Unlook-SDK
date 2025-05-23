@@ -25,7 +25,7 @@ unlook/client/__pycache__/projector.cpython-312.pyc
 /debug_patterns
 /debug_output
 
-**/CLAUDE.local.md
+CLAUDE.local.md
 /tmp
 /unlook/core/__pycache__
 /unlook/utils/__pycache__
@@ -89,3 +89,5 @@ MANIFEST.in
 unlook/models/YOLOv10x_gestures.pt
 unlook/models/YOLOv10x_hands.pt
 unlook/models/Non confermato 536239.crdownload
+unlook_client_analysis.md
+precision_analysis.png

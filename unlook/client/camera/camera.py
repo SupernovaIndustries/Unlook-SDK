@@ -1,20 +1,56 @@
 """
-Client for managing UnLook scanner cameras.
+Camera management module for UnLook SDK.
+
+This module provides comprehensive camera control functionality including:
+- Single and multi-camera capture
+- Stereo camera synchronization
+- Configuration management
+- Image format handling (JPEG, PNG, RAW)
+- Calibration data management
+
+Classes:
+    StereoCamera: Manages synchronized stereo camera pairs
+    CameraClient: Main interface for camera control and configuration
+
+Example:
+    >>> from unlook.client import UnlookClient
+    >>> client = UnlookClient()
+    >>> client.connect(scanner)
+    >>> 
+    >>> # Capture from single camera
+    >>> image = client.camera.capture('left', jpeg_quality=90)
+    >>> 
+    >>> # Capture synchronized stereo pair
+    >>> images = client.camera.capture_stereo_pair()
 """
 
-import logging
-import time
-import numpy as np
-import cv2
+# Standard library imports
 import json
+import time
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any, Union, Callable
 
+# Third-party imports
+import numpy as np
+import cv2
+
+# Local imports
+from unlook.core.constants import (
+    DEFAULT_IMAGE_WIDTH, DEFAULT_IMAGE_HEIGHT,
+    DEFAULT_JPEG_QUALITY, DEFAULT_EXPOSURE_TIME,
+    DEFAULT_CAMERA_GAIN, ERROR_NO_CAMERA,
+    ERROR_CAPTURE_FAILED, SUCCESS_CALIBRATION_LOADED
+)
+from ..logging_config import get_logger
+from ..exceptions import (
+    CameraError, CameraNotFoundError, CameraCaptureError,
+    CalibrationError, CalibrationNotFoundError
+)
+
 try:
-    from ..core.protocol import MessageType
-    from ..core.utils import decode_jpeg_to_image, deserialize_binary_message
-    from ..core.constants import DEFAULT_JPEG_QUALITY
-    from ..core.events import EventType
+    from ...core.protocol import MessageType
+    from ...core.utils import decode_jpeg_to_image, deserialize_binary_message
+    from ...core.events import EventType
     from .camera_config import CameraConfig, ColorMode, CompressionFormat, ImageQualityPreset
 except ImportError:
     # Define fallback classes for when the core modules are not available
@@ -50,9 +86,8 @@ except ImportError:
     # Simple fallback for deserialize_binary_message
     def deserialize_binary_message(data):
         """Simple fallback for deserializing binary messages."""
-        import logging
         import struct
-        logger = logging.getLogger(__name__)
+        logger = get_logger(__name__)
         
         # Check for ULMC format v1 (multi-camera format)
         if data.startswith(b'ULMC\x01'):
@@ -126,138 +161,210 @@ except ImportError:
         # For other formats, return as camera frame
         return "camera_frame", {"format": "jpeg"}, data
     
+    def decode_jpeg_to_image(jpeg_data: bytes) -> np.ndarray:
+        """Fallback function to decode JPEG data to OpenCV image."""
+        import cv2
+        import numpy as np
+        
+        # Convert bytes to numpy array
+        nparr = np.frombuffer(jpeg_data, np.uint8)
+        
+        # Decode image
+        image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+        
+        if image is None:
+            raise ValueError("Failed to decode JPEG data")
+        
+        return image
+    
     DEFAULT_JPEG_QUALITY = 85
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class StereoCamera:
     """
-    Class for stereo camera operations in the UnLook scanner.
+    Manages synchronized stereo camera pairs for 3D scanning.
+    
+    This class provides synchronized capture from stereo camera pairs,
+    ensuring temporal alignment for accurate 3D reconstruction.
+    
+    Attributes:
+        camera_ids (List[str]): IDs of the left and right cameras
+        client (Optional[CameraClient]): Camera client for hardware control
+        image_size (Tuple[int, int]): Default image resolution (width, height)
+    
+    Example:
+        >>> stereo = StereoCamera(['cam_left', 'cam_right'])
+        >>> left_img, right_img = stereo.capture_stereo_pair()
+        >>> stereo.set_exposure(20000, gain=1.5)
     """
     
-    def __init__(self, camera_ids: List[str] = None):
+    def __init__(self, camera_ids: Optional[List[str]] = None) -> None:
         """
-        Initialize a stereo camera.
+        Initialize a stereo camera pair.
         
         Args:
-            camera_ids: Optional list of camera IDs to use (left, right)
+            camera_ids: Optional list of camera IDs [left, right].
+                       Defaults to ['left', 'right'] if not specified.
         """
         self.camera_ids = camera_ids if camera_ids else ["left", "right"]
-        self.client = None  # Will be set when connected to a real server
-
-        # Use real hardware mode by default
-        self._is_simulation = False
-        self.image_size = (1280, 720)
+        self.client: Optional['CameraClient'] = None
+        self._is_simulation = False  # Always use real hardware
+        self.image_size = (DEFAULT_IMAGE_WIDTH, DEFAULT_IMAGE_HEIGHT)
         
         logger.info(f"Initialized stereo camera with IDs: {self.camera_ids}")
     
     def capture_stereo_pair(self) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Capture a synchronized image from the stereo pair.
+        Capture synchronized images from the stereo camera pair.
+        
+        This method ensures temporal synchronization between left and right
+        cameras for accurate stereo correspondence.
 
         Returns:
-            Tuple (left_image, right_image)
+            Tuple[np.ndarray, np.ndarray]: (left_image, right_image) as numpy arrays.
+                                          Images are in BGR format for OpenCV compatibility.
+        
+        Raises:
+            RuntimeError: If no camera client is available
+            ConnectionError: If communication with cameras fails
+        
+        Example:
+            >>> left, right = stereo.capture_stereo_pair()
+            >>> print(f"Captured stereo pair: {left.shape}, {right.shape}")
         """
-        # If we have a real client, use it to capture
         if self.client:
             return self.client.capture_stereo_pair()
 
-        # If we don't have a client, this is an error - we want to use real hardware only
-        logger.error("No camera client available. Real hardware is required.")
-        # As a fallback for development, we'll still generate test images
-        # but we should treat this as an error case
-        return self._generate_simulated_images()
-    
-    def _generate_simulated_images(self) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Generate simulated stereo images for testing.
-        
-        Returns:
-            Tuple (left_image, right_image)
-        """
-        # Create a simulated checkerboard pattern
-        height, width = self.image_size[1], self.image_size[0]
-        
-        # Generate a simple pattern
-        pattern = np.zeros((height, width), dtype=np.uint8)
-        square_size = 50
-        
-        for i in range(0, height, square_size):
-            for j in range(0, width, square_size):
-                if (i // square_size + j // square_size) % 2 == 0:
-                    pattern[i:i+square_size, j:j+square_size] = 255
-        
-        # Convert to RGB
-        left_img = np.stack([pattern, pattern, pattern], axis=2)
-        
-        # Create right image with slight offset
-        offset = 10  # Simulated disparity
-        right_img = np.zeros_like(left_img)
-        right_img[:, :-offset] = left_img[:, offset:]
-        
-        return left_img, right_img
+        # Real hardware is required - no simulation
+        error_msg = "No camera client available. Real hardware is required."
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
     
     def set_resolution(self, width: int, height: int) -> bool:
         """
-        Set the resolution for both cameras.
+        Set the resolution for both cameras in the stereo pair.
+        
+        Both cameras are configured with the same resolution to ensure
+        proper stereo correspondence.
         
         Args:
-            width: Image width in pixels
-            height: Image height in pixels
+            width: Image width in pixels (e.g., 1920, 1280, 640)
+            height: Image height in pixels (e.g., 1080, 720, 480)
             
         Returns:
-            True if successful, False otherwise
+            bool: True if both cameras successfully configured, False otherwise
+        
+        Example:
+            >>> success = stereo.set_resolution(1920, 1080)
+            >>> if success:
+            ...     print("Stereo cameras set to Full HD")
         """
         self.image_size = (width, height)
         
-        # If we have a real client, configure both cameras
-        if self.client and not self._is_simulation:
+        if self.client:
             left_id, right_id = self.camera_ids
-            success_left = self.client.configure(left_id, {"resolution": (width, height)})
-            success_right = self.client.configure(right_id, {"resolution": (width, height)})
+            config = {"resolution": (width, height)}
+            success_left = self.client.configure(left_id, config)
+            success_right = self.client.configure(right_id, config)
+            
+            if success_left and success_right:
+                logger.info(f"Stereo resolution set to {width}x{height}")
+            else:
+                logger.error(f"Failed to set stereo resolution: left={success_left}, right={success_right}")
+            
             return success_left and success_right
         
-        return True  # Simulated success
+        logger.warning("No client available, resolution saved but not applied")
+        return False
     
-    def set_exposure(self, exposure_time: int, gain: float = 1.0) -> bool:
+    def set_exposure(self, exposure_time: int, gain: float = DEFAULT_CAMERA_GAIN) -> bool:
         """
-        Set exposure settings for both cameras.
+        Set identical exposure settings for both cameras.
+        
+        Synchronized exposure is critical for stereo matching algorithms
+        to work properly with consistent brightness across cameras.
         
         Args:
-            exposure_time: Exposure time in microseconds
-            gain: Camera gain value
+            exposure_time: Exposure time in microseconds (typically 100-100000)
+            gain: Analog gain multiplier (typically 1.0-16.0)
             
         Returns:
-            True if successful, False otherwise
+            bool: True if both cameras successfully configured, False otherwise
+        
+        Note:
+            Both cameras must have identical exposure settings for proper
+            stereo correspondence. Different exposures will cause matching failures.
+        
+        Example:
+            >>> # Set for indoor lighting
+            >>> stereo.set_exposure(20000, gain=2.0)
+            >>> 
+            >>> # Set for bright outdoor
+            >>> stereo.set_exposure(5000, gain=1.0)
         """
-        # If we have a real client, configure both cameras
-        if self.client and not self._is_simulation:
+        if self.client:
             left_id, right_id = self.camera_ids
             success_left = self.client.set_exposure(left_id, exposure_time, gain)
             success_right = self.client.set_exposure(right_id, exposure_time, gain)
+            
+            if success_left and success_right:
+                logger.info(f"Stereo exposure set: {exposure_time}µs, gain={gain}")
+            else:
+                logger.error(f"Failed to set stereo exposure: left={success_left}, right={success_right}")
+            
             return success_left and success_right
         
-        return True  # Simulated success
+        logger.warning("No client available, exposure settings not applied")
+        return False
 
 
 class CameraClient:
     """
-    Client for managing UnLook scanner cameras.
+    Main interface for camera control and configuration.
+    
+    This class provides comprehensive camera management including:
+    - Camera discovery and enumeration
+    - Configuration management (exposure, gain, resolution, etc.)
+    - Single and multi-camera capture
+    - Image format handling
+    - Calibration data management
+    - Focus quality assessment
+    
+    Attributes:
+        client: Parent UnlookClient instance
+        cameras: Cache of discovered cameras
+        calibration_data: Loaded stereo calibration parameters
+        focus_thresholds: Quality thresholds for focus assessment
+    
+    Example:
+        >>> client = UnlookClient()
+        >>> client.connect(scanner)
+        >>> 
+        >>> # List available cameras
+        >>> cameras = client.camera.get_cameras()
+        >>> 
+        >>> # Configure camera
+        >>> config = CameraConfig().set_exposure(20000).set_gain(1.5)
+        >>> client.camera.apply_camera_config('left', config)
+        >>> 
+        >>> # Capture image
+        >>> image = client.camera.capture('left', jpeg_quality=95)
     """
 
-    def __init__(self, parent_client):
+    def __init__(self, parent_client: 'UnlookClient') -> None:
         """
         Initialize camera client.
 
         Args:
-            parent_client: Main UnlookClient
+            parent_client: Main UnlookClient instance for communication
         """
         self.client = parent_client
-        self.cameras = {}  # Cache of available cameras
-        self.calibration_data = None  # Store loaded calibration
+        self.cameras: Dict[str, Dict[str, Any]] = {}  # Camera cache
+        self.calibration_data: Optional[Dict[str, Any]] = None
         
-        # Define focus quality thresholds
+        # Focus quality assessment thresholds (based on Laplacian variance)
         self.focus_thresholds = {
             'poor': 50,
             'moderate': 150,
@@ -265,15 +372,49 @@ class CameraClient:
             'excellent': 500
         }
         
-        # Auto-load default calibration
+        # Try to load default calibration
         self._load_default_calibration()
+    
+    def _load_default_calibration(self) -> None:
+        """Load default calibration data if available."""
+        default_paths = [
+            Path("calibration/stereo_calibration.json"),
+            Path("unlook/calibration/custom/stereo_calibration.json"),
+            Path.home() / ".unlook" / "calibration" / "stereo_calibration.json"
+        ]
+        
+        for path in default_paths:
+            if path.exists():
+                try:
+                    with open(path, 'r') as f:
+                        self.calibration_data = json.load(f)
+                    logger.info(SUCCESS_CALIBRATION_LOADED.format(path))
+                    break
+                except Exception as e:
+                    logger.warning(f"Failed to load calibration from {path}: {e}")
 
     def get_cameras(self) -> List[Dict[str, Any]]:
         """
-        Get the list of available cameras.
+        Get the list of available cameras from the scanner.
+        
+        Queries the scanner for all connected cameras and updates
+        the internal cache.
 
         Returns:
-            List of dictionaries with camera information
+            List[Dict[str, Any]]: List of camera information dictionaries.
+                Each dictionary contains:
+                - id (str): Unique camera identifier
+                - name (str): Human-readable camera name
+                - resolution (Tuple[int, int]): Native resolution
+                - fps (int): Maximum frame rate
+                - status (str): Current camera status
+        
+        Example:
+            >>> cameras = client.camera.get_cameras()
+            >>> for cam in cameras:
+            ...     print(f"{cam['id']}: {cam['name']} @ {cam['resolution']}")
+            left: Left Camera @ (1920, 1080)
+            right: Right Camera @ (1920, 1080)
         """
         success, response, _ = self.client.send_message(
             MessageType.CAMERA_LIST,
@@ -282,14 +423,15 @@ class CameraClient:
 
         if success and response:
             cameras = response.payload.get("cameras", [])
-
-            # Update cache
+            
+            # Update internal cache
             self.cameras = {cam["id"]: cam for cam in cameras}
-
+            logger.info(f"Found {len(cameras)} cameras")
+            
             return cameras
-        else:
-            logger.error("Unable to get camera list")
-            return []
+        
+        logger.error("Unable to get camera list from scanner")
+        raise CameraError("Unable to get camera list from scanner")
 
     def get_camera(self, camera_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -605,35 +747,52 @@ class CameraClient:
               camera_id: str, 
               jpeg_quality: int = DEFAULT_JPEG_QUALITY,
               format: CompressionFormat = CompressionFormat.JPEG,
-              resolution: Tuple[int, int] = None,
-              crop_region: Tuple[int, int, int, int] = None) -> Optional[np.ndarray]:
+              resolution: Optional[Tuple[int, int]] = None,
+              crop_region: Optional[Tuple[int, int, int, int]] = None) -> Optional[np.ndarray]:
         """
-        Capture an image from a camera with advanced configuration options.
+        Capture a single image from the specified camera.
+        
+        Supports various compression formats and optional image preprocessing
+        like resolution override and region of interest cropping.
 
         Args:
-            camera_id: Camera ID
-            jpeg_quality: JPEG quality (0-100)
-            format: Image compression format
-            resolution: Optional resolution override (width, height)
-            crop_region: Optional crop region (x, y, width, height)
+            camera_id: Unique identifier of the camera to capture from
+            jpeg_quality: JPEG compression quality (0-100). Higher = better quality, larger size.
+                         Ignored for PNG/RAW formats.
+            format: Image compression format (JPEG, PNG, or RAW)
+            resolution: Optional resolution override (width, height). If None, uses camera default.
+            crop_region: Optional ROI crop (x, y, width, height). If None, returns full frame.
 
         Returns:
-            Image as numpy array, None if error
+            Optional[np.ndarray]: Captured image as BGR numpy array, or None if capture failed.
+                                 Shape is (height, width, 3) for color or (height, width) for grayscale.
+        
+        Raises:
+            ValueError: If camera_id is not found
+            RuntimeError: If capture fails
+        
+        Example:
+            >>> # Basic capture
+            >>> image = client.camera.capture('left')
+            >>> 
+            >>> # High quality PNG capture
+            >>> image = client.camera.capture('left', format=CompressionFormat.PNG)
+            >>> 
+            >>> # Capture with ROI
+            >>> image = client.camera.capture('left', crop_region=(100, 100, 640, 480))
         """
+        # Validate camera exists
+        if camera_id not in self.cameras and self.cameras:
+            raise ValueError(ERROR_NO_CAMERA.format(camera_id))
+        
         # Prepare capture request parameters
-        # Handle both enum and string format types
-        if hasattr(format, 'value'):
-            format_value = format.value
-        else:
-            format_value = format
-            
         params = {
             "camera_id": camera_id,
-            "compression_format": format_value
+            "compression_format": format.value if hasattr(format, 'value') else format
         }
         
-        # Add JPEG quality if needed
-        if (hasattr(CompressionFormat, 'JPEG') and format == CompressionFormat.JPEG) or format == "jpeg":
+        # Add JPEG quality for JPEG format
+        if format == CompressionFormat.JPEG:
             params["jpeg_quality"] = jpeg_quality
         
         # Add resolution if specified
@@ -651,48 +810,41 @@ class CameraClient:
             binary_response=True
         )
 
-        if success and binary_data:
-            try:
-                # Decode image based on format
-                if (hasattr(CompressionFormat, 'JPEG') and format == CompressionFormat.JPEG) or format == "jpeg":
-                    image = decode_jpeg_to_image(binary_data)
-                elif format == CompressionFormat.PNG:
-                    # Decode PNG using OpenCV
-                    import cv2
-                    import numpy as np
-                    nparr = np.frombuffer(binary_data, np.uint8)
-                    image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
-                elif format == CompressionFormat.RAW:
-                    # Process raw data based on response metadata
-                    if response and hasattr(response, 'payload'):
-                        metadata = response.payload
-                        width = metadata.get('width', 0)
-                        height = metadata.get('height', 0)
-                        channels = metadata.get('channels', 1)
-                        
-                        if width > 0 and height > 0:
-                            # Convert raw bytes to numpy array
-                            image = np.frombuffer(binary_data, dtype=np.uint8)
-                            image = image.reshape((height, width, channels))
-                        else:
-                            logger.error("Invalid raw image dimensions")
-                            return None
-                    else:
-                        logger.error("Missing metadata for raw image format")
-                        return None
-                else:
-                    logger.error(f"Unsupported image format: {format}")
-                    return None
-                    
-                return image
-            except Exception as e:
-                logger.error(f"Error decoding image: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
-                return None
-        else:
-            logger.error(f"Error capturing image from camera {camera_id}")
-            return None
+        if not success or not binary_data:
+            error_msg = ERROR_CAPTURE_FAILED.format(camera_id)
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        
+        try:
+            # Decode image based on format
+            if format == CompressionFormat.JPEG:
+                image = decode_jpeg_to_image(binary_data)
+            elif format == CompressionFormat.PNG:
+                nparr = np.frombuffer(binary_data, np.uint8)
+                image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+            elif format == CompressionFormat.RAW:
+                # RAW format requires metadata
+                if not response or not hasattr(response, 'payload'):
+                    raise ValueError("Missing metadata for RAW format")
+                
+                metadata = response.payload
+                width = metadata.get('width', 0)
+                height = metadata.get('height', 0)
+                channels = metadata.get('channels', 1)
+                
+                if width <= 0 or height <= 0:
+                    raise ValueError(f"Invalid image dimensions: {width}x{height}")
+                
+                image = np.frombuffer(binary_data, dtype=np.uint8)
+                image = image.reshape((height, width, channels))
+            else:
+                raise ValueError(f"Unsupported image format: {format}")
+            
+            return image
+            
+        except Exception as e:
+            logger.error(f"Failed to decode {format.value} image: {e}")
+            raise RuntimeError(f"Image decoding failed: {e}") from e
 
     def capture_multi(self, 
                   camera_ids: List[str], 
@@ -1456,22 +1608,6 @@ class CameraClient:
             logger.error(f"Failed to capture test image: {response.payload.get('error')}")
             return None
     
-    def _load_default_calibration(self):
-        """
-        Load default calibration file automatically on initialization.
-        """
-        try:
-            # Get the path to the default calibration file
-            module_dir = Path(__file__).parent.parent.parent  # unlook/
-            calibration_file = module_dir / "calibration" / "default" / "default_stereo.json"
-            
-            if calibration_file.exists():
-                logger.info(f"Loading default calibration from {calibration_file}")
-                self.load_calibration(str(calibration_file))
-            else:
-                logger.warning(f"Default calibration file not found at {calibration_file}")
-        except Exception as e:
-            logger.error(f"Error loading default calibration: {e}")
     
     def load_calibration(self, calibration_file: str) -> bool:
         """
@@ -1516,3 +1652,46 @@ class CameraClient:
         if calibration_file.exists():
             return str(calibration_file)
         return None
+    
+    def capture_stereo_pair(self, 
+                          jpeg_quality: int = DEFAULT_JPEG_QUALITY,
+                          format: CompressionFormat = CompressionFormat.JPEG) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Capture synchronized images from a stereo camera pair.
+        
+        Convenience method for capturing from 'left' and 'right' cameras
+        with temporal synchronization.
+        
+        Args:
+            jpeg_quality: JPEG compression quality (0-100)
+            format: Image compression format
+        
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: (left_image, right_image)
+        
+        Raises:
+            RuntimeError: If capture fails or cameras not found
+        
+        Example:
+            >>> left, right = client.camera.capture_stereo_pair()
+            >>> cv2.imwrite('left.jpg', left)
+            >>> cv2.imwrite('right.jpg', right)
+        """
+        # Capture from both cameras
+        images = self.capture_multi(['left', 'right'], 
+                                   jpeg_quality=jpeg_quality,
+                                   format=format)
+        
+        # Check both images were captured
+        if 'left' not in images or 'right' not in images:
+            missing = []
+            if 'left' not in images:
+                missing.append('left')
+            if 'right' not in images:
+                missing.append('right')
+            raise RuntimeError(f"Failed to capture from cameras: {', '.join(missing)}")
+        
+        if images['left'] is None or images['right'] is None:
+            raise RuntimeError("Stereo capture returned null images")
+        
+        return images['left'], images['right']

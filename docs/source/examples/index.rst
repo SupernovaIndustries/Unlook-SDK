@@ -8,6 +8,7 @@ This section provides practical examples for using the Unlook SDK.
    :caption: Contents:
 
    basic_connection
+   handpose_tracking
    realtime_scanning
    camera_focus
    camera_calibration

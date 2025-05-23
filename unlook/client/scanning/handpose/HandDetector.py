@@ -1,13 +1,14 @@
 """Hand pose detection using MediaPipe for UnLook SDK.
 
-Based on handpose3d by TemugeB: https://github.com/TemugeB/handpose3d
+This module provides robust hand detection and keypoint extraction using MediaPipe,
+optimized for the UnLook Scanner's stereo camera setup.
 """
 
 import time
 import logging
 import numpy as np
 import cv2
-from typing import Tuple, List, Optional, Dict
+from typing import Tuple, List, Optional, Dict, Any
 
 try:
     import mediapipe as mp
@@ -19,30 +20,22 @@ logger = logging.getLogger(__name__)
 
 
 class HandDetector:
-    """Real-time hand pose detection using MediaPipe."""
+    """Real-time hand pose detection using MediaPipe without ML dependencies."""
     
     def __init__(self, 
-                 detection_confidence: float = 0.6,  # Increased default confidence
-                 tracking_confidence: float = 0.6,  # Increased default confidence
+                 detection_confidence: float = 0.6,
+                 tracking_confidence: float = 0.6,
                  max_num_hands: int = 2,
-                 hand_mirror_mode: bool = True):  # Set to True for selfie cameras, False for world facing
+                 hand_mirror_mode: bool = False):  # False for world-facing cameras
         """
         Initialize the hand detector.
         
         Args:
-            detection_confidence: Minimum confidence for hand detection (default increased to 0.6)
-            tracking_confidence: Minimum confidence for hand tracking (default increased to 0.6) 
-            max_num_hands: Maximum number of hands to detect (default 2)
-            hand_mirror_mode: Whether the camera view is mirrored (selfie) or not (world facing)
-                              This affects handedness determination
-        """
-        """
-        Initialize the hand detector.
-        
-        Args:
-            detection_confidence: Minimum confidence for hand detection (default increased to 0.6)
-            tracking_confidence: Minimum confidence for hand tracking (default increased to 0.6) 
-            max_num_hands: Maximum number of hands to detect (default 2)
+            detection_confidence: Minimum confidence for hand detection (0.6 default)
+            tracking_confidence: Minimum confidence for hand tracking (0.6 default)
+            max_num_hands: Maximum number of hands to detect (2 default)
+            hand_mirror_mode: Whether camera is in mirrored/selfie mode (False default)
+                             True for selfie/front-facing cameras, False for world-facing
         """
         if not MEDIAPIPE_AVAILABLE:
             logger.error("MediaPipe is required for hand detection")
@@ -50,8 +43,9 @@ class HandDetector:
         
         self.mp_hands = mp.solutions.hands
         self.mp_drawing = mp.solutions.drawing_utils
+        self.mp_drawing_styles = mp.solutions.drawing_styles
         
-        # Initialize MediaPipe Hands with improved parameters
+        # Initialize MediaPipe Hands
         logger.info(f"Initializing MediaPipe Hands with confidence: {detection_confidence}/{tracking_confidence}")
         self.hands = self.mp_hands.Hands(
             static_image_mode=False,
@@ -62,7 +56,7 @@ class HandDetector:
         )
         
         self.hand_mirror_mode = hand_mirror_mode
-        logger.info(f"Hand mirror mode: {hand_mirror_mode} (set True for selfie cameras, False for world facing)")
+        logger.info(f"Hand mirror mode: {hand_mirror_mode} (True for selfie cameras, False for world facing)")
         
         self.max_num_hands = max_num_hands
         self.detection_confidence = detection_confidence
@@ -81,8 +75,8 @@ class HandDetector:
         # Store results
         self.last_results = None
         self.last_processed_time = 0
-        
-    def detect_hands(self, image: np.ndarray) -> Dict:
+
+    def detect_hands(self, image: np.ndarray) -> Dict[str, Any]:
         """
         Detect hands in an image and return 2D keypoints with improved filtering.
         
@@ -96,7 +90,18 @@ class HandDetector:
             - 'handedness': List of handedness (left/right) for each detected hand
             - 'confidence': List of confidence scores for each hand
             - 'image': Annotated image with hand landmarks
+            - 'timestamp': Time of detection
         """
+        if image is None or image.size == 0:
+            return {
+                'keypoints': [],
+                'world_keypoints': [],
+                'handedness': [],
+                'confidence': [],
+                'image': None,
+                'timestamp': time.time()
+            }
+        
         # Convert BGR to RGB
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
@@ -222,7 +227,9 @@ class HandDetector:
                 self.mp_drawing.draw_landmarks(
                     output['image'], 
                     hand['landmarks'], 
-                    self.mp_hands.HAND_CONNECTIONS
+                    self.mp_hands.HAND_CONNECTIONS,
+                    self.mp_drawing_styles.get_default_hand_landmarks_style(),
+                    self.mp_drawing_styles.get_default_hand_connections_style()
                 )
             
             # Get world coordinates if available
@@ -252,7 +259,7 @@ class HandDetector:
     
     def detect_hands_stereo(self, 
                            left_image: np.ndarray, 
-                           right_image: np.ndarray) -> Dict:
+                           right_image: np.ndarray) -> Dict[str, Any]:
         """
         Detect hands in stereo images for 3D reconstruction.
         
@@ -261,7 +268,10 @@ class HandDetector:
             right_image: Right camera image (BGR format)
         
         Returns:
-            Dictionary containing stereo detection results
+            Dictionary containing stereo detection results:
+            - 'left': Left camera detection results
+            - 'right': Right camera detection results
+            - 'timestamp': Time of detection
         """
         # Detect hands in both images
         left_results = self.detect_hands(left_image)
@@ -308,7 +318,8 @@ class HandDetector:
     def draw_hand_bounding_box(self, 
                               image: np.ndarray, 
                               keypoints: np.ndarray,
-                              color: Tuple[int, int, int] = (0, 255, 0)) -> np.ndarray:
+                              color: Tuple[int, int, int] = (0, 255, 0),
+                              label: Optional[str] = None) -> np.ndarray:
         """
         Draw bounding box around detected hand.
         
@@ -316,6 +327,7 @@ class HandDetector:
             image: Input image
             keypoints: Hand keypoints in pixel coordinates
             color: Box color (BGR)
+            label: Optional label text
         
         Returns:
             Image with bounding box
@@ -323,6 +335,9 @@ class HandDetector:
         if len(keypoints) == 0:
             return image
         
+        if image is None:
+            return None
+            
         # Get bounding box from keypoints
         x_coords = keypoints[:, 0]
         y_coords = keypoints[:, 1]
@@ -341,6 +356,11 @@ class HandDetector:
         
         # Draw box
         cv2.rectangle(image, (x_min, y_min), (x_max, y_max), color, 2)
+        
+        # Add label if provided
+        if label is not None:
+            cv2.putText(image, label, (x_min, y_min - 10), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
         
         return image
     

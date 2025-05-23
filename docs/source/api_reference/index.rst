@@ -3,16 +3,47 @@ API Reference
 
 This section provides detailed API documentation for the Unlook SDK.
 
+Core Modules
+-----------
+
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Core Components:
 
    client
    camera
    projector
-   realtime_scanner
-   structured_light
-   point_cloud_processing
-   visualization
-   events
    discovery
+   events
+
+3D Scanning
+-----------
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Scanning Components:
+
+   triangulator
+   pattern_decoder
+   point_cloud_processing
+   structured_light
+   visualization
+
+Hand Tracking
+------------
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Hand Tracking:
+
+   handpose
+
+Utilities
+---------
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Utilities:
+
+   logging_config
+   exceptions

@@ -9,6 +9,7 @@ This user guide provides comprehensive information about using the Unlook SDK fo
 
    overview
    client_server_architecture
+   handpose_setup
    realtime_scanning
    camera_configuration
    pattern_sequences

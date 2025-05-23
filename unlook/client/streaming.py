@@ -518,7 +518,7 @@ class StreamClient:
             camera_id: str,
             callback: Callable[[np.ndarray, Dict[str, Any]], None],
             fps: int = 60,  # Default più alto per lo streaming diretto
-            jpeg_quality: int = 85,  # Qualità leggermente superiore
+            jpeg_quality: int = DEFAULT_JPEG_QUALITY,  # Qualità leggermente superiore
             sync_with_projector: bool = False,
             synchronization_pattern_interval: int = 5,  # Ogni quanti frame cambiare pattern
             low_latency: bool = True
@@ -1058,7 +1058,7 @@ class StreamClient:
                 camera_id,
                 callback,
                 stream_config.get("fps", 60),
-                stream_config.get("jpeg_quality", 85),
+                stream_config.get("jpeg_quality", DEFAULT_JPEG_QUALITY),
                 stream_config.get("sync_with_projector", False),
                 stream_config.get("synchronization_pattern_interval", 5),
                 stream_config.get("low_latency", True)
@@ -1077,7 +1077,7 @@ class StreamClient:
             self,
             callback: Callable[[np.ndarray, np.ndarray, Dict[str, Any]], None],
             fps: int = 60,
-            jpeg_quality: int = 85,
+            jpeg_quality: int = DEFAULT_JPEG_QUALITY,
             sync_with_projector: bool = False,
             synchronization_pattern_interval: int = 5,
             low_latency: bool = True

@@ -6,9 +6,14 @@ import logging
 import threading
 import time
 import random
-from typing import Dict, List, Optional, Any, Callable, Tuple
+from typing import Dict, List, Optional, Any, Callable, Tuple, TYPE_CHECKING
 
 import zmq
+
+if TYPE_CHECKING:
+    from ..camera import CameraClient
+    from ..projector import ProjectorClient
+    from ..streaming import StreamClient
 
 from ...core.events import EventType, EventEmitter
 from ...core.protocol import Message, MessageType
@@ -72,7 +77,7 @@ class UnlookClient(EventEmitter):
             self.start_discovery(discovery_callback)
 
     @property
-    def camera(self):
+    def camera(self) -> 'CameraClient':
         """Lazy-loading of the camera client."""
         if self._camera is None:
             # Import from reorganized structure
@@ -81,7 +86,7 @@ class UnlookClient(EventEmitter):
         return self._camera
 
     @property
-    def projector(self):
+    def projector(self) -> 'ProjectorClient':
         """Lazy-loading of the projector client."""
         if self._projector is None:
             # Delayed import to avoid circular imports
@@ -90,7 +95,7 @@ class UnlookClient(EventEmitter):
         return self._projector
 
     @property
-    def stream(self):
+    def stream(self) -> 'StreamClient':
         """Lazy-loading of the streaming client."""
         if self._stream is None:
             # Delayed import to avoid circular imports

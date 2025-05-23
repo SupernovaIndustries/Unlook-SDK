@@ -100,9 +100,9 @@ class LEDController:
             logger.warning("LED control not available")
             return False
         
-        # Always set LED1 to 0, only adjust LED2
-        led1 = 0  # LED1 is always set to 0
-        led2 = max(0, min(450, led2))  # Clamp LED2 to valid range
+        # Enable both LEDs - LED1 for point projection, LED2 for flood illumination
+        led1 = max(0, min(450, led1))  # LED1 can now be used for point projection
+        led2 = max(0, min(450, led2))  # LED2 for flood illumination
         
         try:
             success, response, _ = self.client.send_message(MessageType.LED_SET_INTENSITY, {
@@ -114,7 +114,7 @@ class LEDController:
                 self.led1_intensity = led1
                 self.led2_intensity = led2
                 self.led_active = True
-                logger.info(f"LED intensity set: LED1={led1}mA (fixed to 0), LED2={led2}mA")
+                logger.info(f"LED intensity set: LED1={led1}mA (point projection), LED2={led2}mA (flood illumination)")
                 return True
             else:
                 error_msg = "Unknown error"
