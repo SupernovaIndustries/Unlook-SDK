@@ -233,36 +233,3 @@ class GestureRecognizer:
             self.gesture_history.pop(0)
     
     
-    def _get_partial_extensions(self, keypoints: np.ndarray) -> int:
-        """
-        Check for partially extended fingers for more lenient recognition.
-        Returns count of at least partially extended fingers.
-        """
-        partially_extended = 0
-        wrist = keypoints[self.WRIST]
-        palm_center = np.mean(keypoints[[0, 5, 9, 13, 17]], axis=0)
-        
-        # Check thumb
-        thumb_tip_dist = np.linalg.norm(keypoints[self.THUMB_TIP][:2] - palm_center[:2])
-        thumb_base_dist = np.linalg.norm(keypoints[self.THUMB_BASE][:2] - palm_center[:2])
-        if thumb_tip_dist > thumb_base_dist:
-            partially_extended += 1
-            
-        # Check fingers
-        for tip_idx, base_idx in [
-            (self.INDEX_TIP, self.INDEX_BASE),
-            (self.MIDDLE_TIP, self.MIDDLE_BASE),
-            (self.RING_TIP, self.RING_BASE),
-            (self.PINKY_TIP, self.PINKY_BASE)
-        ]:
-            tip_dist = np.linalg.norm(keypoints[tip_idx][:2] - palm_center[:2])
-            base_dist = np.linalg.norm(keypoints[base_idx][:2] - palm_center[:2])
-            
-            # Very lenient threshold
-            if tip_dist > base_dist * 1.05:
-                partially_extended += 1
-                
-        return partially_extended
-    
-    def _is_waving(self) -> bool:
-        Returns:

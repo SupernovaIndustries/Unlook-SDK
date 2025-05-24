@@ -37,6 +37,11 @@ MIDDLE_BASE = MIDDLE_FINGER_MCP
 RING_BASE = RING_FINGER_MCP
 PINKY_BASE = PINKY_MCP
 
+# Shorter aliases for tip indices (for compatibility)
+INDEX_TIP = INDEX_FINGER_TIP
+MIDDLE_TIP = MIDDLE_FINGER_TIP
+RING_TIP = RING_FINGER_TIP
+
 # Landmark names for debugging
 LANDMARK_NAMES = [
     'WRIST', 'THUMB_CMC', 'THUMB_MCP', 'THUMB_IP', 'THUMB_TIP',
@@ -65,6 +70,11 @@ class GestureType(Enum):
     ROCK = "rock"
     PINCH = "pinch"
     WAVE = "wave"
+    SWIPE_LEFT = "swipe_left"
+    SWIPE_RIGHT = "swipe_right"
+    SWIPE_UP = "swipe_up"
+    SWIPE_DOWN = "swipe_down"
+    CIRCLE = "circle"
     
     @classmethod
     def from_string(cls, value: str) -> 'GestureType':

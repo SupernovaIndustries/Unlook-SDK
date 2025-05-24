@@ -21,6 +21,7 @@ from .HandDetector import HandDetector
 from .HandTracker import HandTracker
 from .GestureRecognizer import GestureRecognizer
 from .LEDController import LEDController
+from .dynamic_gesture_recognizer import DynamicGestureRecognizer, DynamicEvent
 
 # Types and constants
 from .gesture_types import GestureType, GESTURE_CONFIG
@@ -38,6 +39,8 @@ __all__ = [
     'HandTracker',
     'GestureRecognizer',
     'LEDController',
+    'DynamicGestureRecognizer',
+    'DynamicEvent',
     # Types
     'GestureType',
     'GESTURE_CONFIG',

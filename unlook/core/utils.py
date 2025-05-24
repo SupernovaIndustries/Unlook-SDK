@@ -313,7 +313,7 @@ def deserialize_binary_message(data: bytes) -> Tuple[str, Dict, Optional[bytes]]
                     return "multi_camera_response", {"format": "jpeg", "alternative_format": True}, data
 
             # If not recognized, return raw binary data
-            return "binary_data", {"format": "unknown"}, data
+            return "camera_capture_response", {"format": "unknown"}, data
 
         # Check if there's enough data for the header
         if len(data) < 4 + header_size:
@@ -362,10 +362,10 @@ def deserialize_binary_message(data: bytes) -> Tuple[str, Dict, Optional[bytes]]
         if len(data) >= 2 and data[0] == 0xFF and data[1] == 0xD8:
             logger.debug("Detected JPEG despite JSON decoding error")
             return "camera_frame", {"format": "jpeg", "direct_image": True}, data
-        return "binary_data", {"format": "raw", "error": f"Invalid JSON: {str(e)}"}, data
+        return "camera_capture_response", {"format": "raw", "error": f"Invalid JSON: {str(e)}"}, data
     except Exception as e:
         logger.debug(f"Error in binary message deserialization: {e}")
-        return "binary_data", {"format": "raw", "error": f"Deserialization error: {str(e)}"}, data
+        return "camera_capture_response", {"format": "raw", "error": f"Deserialization error: {str(e)}"}, data
 
 
 class RateLimiter:

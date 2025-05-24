@@ -9,9 +9,8 @@ from .scanner.scanner3d import create_scanner, ScanResult, ScanConfig as Scanner
 # Import from new structure
 from .scanning import (
     StaticScanner,
-    StaticScanConfig,
-    RealTimeScanner,
-    RealTimeScanConfig
+    StaticScanConfig
+    # RealTimeScanner and RealTimeScanConfig removed - old implementation
 )
 from .scanning.calibration import StereoCalibrator
 from .projector import ProjectorClient
@@ -30,8 +29,8 @@ __all__ = [
     'ScanConfig',
     'StaticScanner',
     'StaticScanConfig',
-    'RealTimeScanner',
-    'RealTimeScanConfig',
+    # 'RealTimeScanner',  # Removed - old implementation
+    # 'RealTimeScanConfig',  # Removed - old implementation
     'ProjectorClient',
     'scanning',
     'projector'

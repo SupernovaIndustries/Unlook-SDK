@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 from ...core.events import EventType, EventEmitter
 from ...core.protocol import Message, MessageType
 from ...core.discovery import DiscoveryService, ScannerInfo
-from ...core.constants import DEFAULT_CONTROL_PORT, DEFAULT_TIMEOUT, MAX_RETRIES
+from unlook.core.constants import DEFAULT_CONTROL_PORT, DEFAULT_TIMEOUT, MAX_RETRIES
 from ...core.utils import generate_uuid, get_machine_info, deserialize_binary_message
 
 logger = logging.getLogger(__name__)

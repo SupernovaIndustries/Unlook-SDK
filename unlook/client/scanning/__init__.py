@@ -6,7 +6,8 @@ from . import reconstruction
 
 # Scanner implementations
 from .static_scanner import StaticScanner, StaticScanConfig
-from .realtime_scanner import RealTimeScanner, RealTimeScanConfig
+# TODO: Remove after refactoring
+# from .realtime_scanner import RealTimeScanner, RealTimeScanConfig
 
 __all__ = [
     "patterns", 
@@ -14,6 +15,6 @@ __all__ = [
     "reconstruction",
     "StaticScanner",
     "StaticScanConfig",
-    "RealTimeScanner", 
-    "RealTimeScanConfig"
+    # "RealTimeScanner", 
+    # "RealTimeScanConfig"
 ]
