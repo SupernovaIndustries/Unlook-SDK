@@ -13,6 +13,7 @@ import json
 import logging
 import numpy as np
 import cv2
+from typing import TYPE_CHECKING
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
@@ -21,25 +22,80 @@ from typing import List, Dict, Tuple, Any, Optional
 from concurrent.futures import ThreadPoolExecutor
 
 # Try to import Open3D for point cloud processing
-try:
+if TYPE_CHECKING:
     import open3d as o3d
-    OPEN3D_AVAILABLE = True
-    logging.info(f"Open3D version: {o3d.__version__}")
-except ImportError:
-    OPEN3D_AVAILABLE = False
-    logging.warning("Open3D not installed. Visualization will be limited.")
+else:
+    try:
+        import open3d as o3d
+        OPEN3D_AVAILABLE = True
+        logging.info(f"Open3D version: {o3d.__version__}")
+    except ImportError:
+        OPEN3D_AVAILABLE = False
+        o3d = None
+        logging.warning("Open3D not installed. Visualization will be limited.")
 
 # Configure logger
 logger = logging.getLogger(__name__)
 
+# Create a dummy PointCloud class for when Open3D is not available
+if not OPEN3D_AVAILABLE:
+    class DummyPointCloud:
+        def __init__(self):
+            self.points = []
+            self.colors = []
+    
+    class DummyGeometry:
+        PointCloud = DummyPointCloud
+    
+    class DummyUtility:
+        @staticmethod
+        def Vector3dVector(data):
+            return data
+    
+    class DummyIO:
+        @staticmethod
+        def write_point_cloud(filename, pointcloud):
+            logger.warning(f"Cannot save point cloud to {filename} - Open3D not installed")
+            return False
+    
+    # Create dummy o3d module structure
+    class DummyO3D:
+        geometry = DummyGeometry()
+        utility = DummyUtility()
+        io = DummyIO()
+    
+    if o3d is None:
+        o3d = DummyO3D()
+
 # Import pattern generation utilities from appropriate modules
-from .patterns.enhanced_gray_code import generate_enhanced_gray_code_patterns, decode_patterns as decode_gray_code_patterns
-from .patterns.enhanced_phaseshift import generate_phase_shift_patterns as _generate_phase_shift_patterns_raw
-from .patterns.enhanced_patterns import (
-    generate_multi_scale_patterns,
-    generate_multi_frequency_patterns,
-    generate_variable_width_gray_code,
-)
+# NOTE: These pattern modules don't exist in the current structure
+# Commenting out to fix circular import issue
+# from .patterns.enhanced_gray_code import generate_enhanced_gray_code_patterns, decode_patterns as decode_gray_code_patterns
+# from .patterns.enhanced_phaseshift import generate_phase_shift_patterns as _generate_phase_shift_patterns_raw
+# from .patterns.enhanced_patterns import (
+#     generate_multi_scale_patterns,
+#     generate_multi_frequency_patterns,
+#     generate_variable_width_gray_code,
+# )
+
+# Placeholder functions to avoid NameError
+def generate_enhanced_gray_code_patterns(*args, **kwargs):
+    raise NotImplementedError("Pattern generation not available in current version")
+
+def decode_gray_code_patterns(*args, **kwargs):
+    raise NotImplementedError("Pattern decoding not available in current version")
+
+def _generate_phase_shift_patterns_raw(*args, **kwargs):
+    raise NotImplementedError("Phase shift patterns not available in current version")
+
+def generate_multi_scale_patterns(*args, **kwargs):
+    raise NotImplementedError("Multi-scale patterns not available in current version")
+
+def generate_multi_frequency_patterns(*args, **kwargs):
+    raise NotImplementedError("Multi-frequency patterns not available in current version")
+
+def generate_variable_width_gray_code(*args, **kwargs):
+    raise NotImplementedError("Variable width Gray code not available in current version")
 
 # Camera imports are handled through client lazy loading to avoid circular imports
 
@@ -871,7 +927,7 @@ class StaticScanner:
         
         return captured_images
         
-    def perform_scan(self) -> o3d.geometry.PointCloud:
+    def perform_scan(self) -> 'o3d.geometry.PointCloud':
         """
         Perform a complete 3D scan using structured light.
         
@@ -2001,7 +2057,7 @@ class StaticScanner:
         
         return left_coords_reshaped, right_coords_reshaped, final_mask_left, final_mask_right
 
-    def triangulate_points(self, points_left: np.ndarray, points_right: np.ndarray) -> o3d.geometry.PointCloud:
+    def triangulate_points(self, points_left: np.ndarray, points_right: np.ndarray) -> 'o3d.geometry.PointCloud':
         """
         Triangulate 3D points from corresponding 2D points.
         

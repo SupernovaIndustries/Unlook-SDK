@@ -38,6 +38,20 @@ from concurrent.futures import ThreadPoolExecutor
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# Add ARM patch for MediaPipe if needed
+try:
+    import mediapipe as mp
+except (ImportError, RuntimeError) as e:
+    if "AVX" in str(e) or "jaxlib" in str(e):
+        print("Detected ARM processor, applying MediaPipe patch...")
+        sdk_root = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(sdk_root))
+        try:
+            import mediapipe_arm_patch
+        except:
+            print("Warning: MediaPipe ARM patch not found. Run fix_arm_mediapipe.py first.")
+            pass
+
 # Import UnLook SDK
 from unlook import UnlookClient
 from unlook.client.scanning.handpose import HandTracker, GestureRecognizer, GestureType

@@ -1,8 +1,8 @@
 """Scanning subsystem for Unlook SDK."""
 
-from . import patterns
 from . import calibration
-from . import reconstruction
+# Note: patterns module is in client.patterns, not scanning.patterns
+# from . import reconstruction  # Commented out as this module doesn't exist
 
 # Scanner implementations
 from .static_scanner import StaticScanner, StaticScanConfig
@@ -10,9 +10,8 @@ from .static_scanner import StaticScanner, StaticScanConfig
 # from .realtime_scanner import RealTimeScanner, RealTimeScanConfig
 
 __all__ = [
-    "patterns", 
     "calibration", 
-    "reconstruction",
+    # "reconstruction",
     "StaticScanner",
     "StaticScanConfig",
     # "RealTimeScanner", 
