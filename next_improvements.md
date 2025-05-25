@@ -99,7 +99,7 @@ pythonclass PhaseShiftingImplementation:
             "reliability": "Works in controlled lighting"
         }
 Phase 1 Deliverables
-yamlTimeline: 0-6 months
+yamlTimeline: 0-6 days
 Investment: Software development only (~€25K)
 Key Outputs:
   - Hardware sync precision <100μs
@@ -108,6 +108,9 @@ Key Outputs:
   - 0.1mm accuracy demonstration
   - Network protocol v2.0
 Success Metric: Ready for Roboze demo with professional-grade precision
+Phase 1.5:
+Custom unlook OS based on raspian
+
 Phase 2: TOF Integration (Post-Roboze Demo)
 Trigger: Successful Roboze validation
 2.1 Single TOF Camera Integration
