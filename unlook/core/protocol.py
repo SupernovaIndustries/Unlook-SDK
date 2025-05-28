@@ -97,6 +97,10 @@ class MessageType(enum.Enum):
     SERVER_LOG = "server_log"  # Server log message to client
     SERVER_LOG_SUBSCRIBE = "server_log_subscribe"  # Subscribe to server logs
     SERVER_LOG_UNSUBSCRIBE = "server_log_unsubscribe"  # Unsubscribe from server logs
+    
+    # Preprocessing version control
+    PREPROCESSING_VERSION_SET = "preprocessing_version_set"  # Set preprocessing version
+    PREPROCESSING_VERSION_GET = "preprocessing_version_get"  # Get current preprocessing version
 
 
 class Message:

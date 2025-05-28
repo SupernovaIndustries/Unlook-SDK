@@ -266,6 +266,74 @@ class UnlookServer(EventEmitter):
         }
         return capabilities
 
+    def _apply_preprocessing_config(self, client_id: str, version: str, config: Dict[str, Any]):
+        """
+        Apply preprocessing configuration for a specific client.
+        
+        Args:
+            client_id: Client identifier
+            version: Requested preprocessing version
+            config: Preprocessing configuration
+        """
+        logger.info(f"Applying preprocessing config for client {client_id}: {version}")
+        
+        # Store current version for this client
+        if not hasattr(self, 'client_preprocessing_versions'):
+            self.client_preprocessing_versions = {}
+        
+        self.client_preprocessing_versions[client_id] = version
+        
+        # Apply configuration based on version
+        if version == "v1_legacy":
+            # V1 Legacy: Disable GPU preprocessing, use standard protocol
+            self._configure_v1_preprocessing(client_id)
+            logger.info(f"Client {client_id} configured for V1 Legacy preprocessing")
+            
+        elif version == "v2_enhanced":
+            # V2 Enhanced: Enable GPU preprocessing, use protocol v2
+            self._configure_v2_preprocessing(client_id)
+            logger.info(f"Client {client_id} configured for V2 Enhanced preprocessing")
+            
+        elif version == "auto":
+            # Auto: Decide based on server capabilities and client needs
+            if self.enable_protocol_v2 and self.enable_preprocessing:
+                self._configure_v2_preprocessing(client_id)
+                logger.info(f"Client {client_id} auto-configured for V2 Enhanced preprocessing")
+            else:
+                self._configure_v1_preprocessing(client_id)
+                logger.info(f"Client {client_id} auto-configured for V1 Legacy preprocessing")
+        
+        # Store the current version as server attribute for global reference
+        self.current_preprocessing_version = version
+
+    def _configure_v1_preprocessing(self, client_id: str):
+        """Configure server for V1 legacy preprocessing."""
+        # For V1, we want minimal preprocessing and standard protocol
+        self._client_configs = getattr(self, '_client_configs', {})
+        self._client_configs[client_id] = {
+            'use_protocol_v2': False,
+            'enable_gpu_preprocessing': False,
+            'compression_level': 0,
+            'delta_encoding': False
+        }
+
+    def _configure_v2_preprocessing(self, client_id: str):
+        """Configure server for V2 enhanced preprocessing."""
+        # For V2, we want full preprocessing and protocol v2
+        self._client_configs = getattr(self, '_client_configs', {})
+        self._client_configs[client_id] = {
+            'use_protocol_v2': True,
+            'enable_gpu_preprocessing': True,
+            'compression_level': 6,
+            'delta_encoding': True
+        }
+
+    def _get_client_config(self, client_id: str) -> Dict[str, Any]:
+        """Get configuration for a specific client."""
+        if not hasattr(self, '_client_configs'):
+            return {}
+        return self._client_configs.get(client_id, {})
+
     def _handle_camera_direct_stream_start(self, message: Message) -> Message:
         """Handle CAMERA_DIRECT_STREAM_START messages."""
         if not self.camera_manager:
@@ -1475,6 +1543,17 @@ class UnlookServer(EventEmitter):
         """Handle HELLO messages."""
         client_info = message.payload.get("client_info", {})
         client_id = client_info.get("id", "unknown")
+        
+        # Handle preprocessing configuration
+        preprocessing_config = message.payload.get("preprocessing_config", {})
+        if preprocessing_config:
+            requested_version = preprocessing_config.get("version", "auto")
+            config = preprocessing_config.get("config", {})
+            
+            logger.info(f"Client {client_id} requested preprocessing version: {requested_version}")
+            
+            # Apply preprocessing configuration
+            self._apply_preprocessing_config(client_id, requested_version, config)
 
         with self._lock:
             self.clients.add(client_id)
@@ -1493,6 +1572,10 @@ class UnlookServer(EventEmitter):
                 "status": {
                     "streaming": self.streaming_active,
                     "scanning": self.scanning
+                },
+                "preprocessing": {
+                    "current_version": getattr(self, 'current_preprocessing_version', 'auto'),
+                    "supported_versions": ["v1_legacy", "v2_enhanced", "auto"]
                 }
             }
         )

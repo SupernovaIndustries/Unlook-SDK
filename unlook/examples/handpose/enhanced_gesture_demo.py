@@ -1114,7 +1114,13 @@ def run_gesture_demo(calibration_file=None, timeout=10, verbose=False,
     """
     # Initialize UnLook client
     logger.info("Initializing UnLook client...")
-    client = UnlookClient(auto_discover=False)
+    # Import preprocessing version for V1 legacy
+    from unlook.core.constants import PreprocessingVersion
+    
+    client = UnlookClient(
+        auto_discover=False,
+        preprocessing_version=PreprocessingVersion.V1_LEGACY
+    )
     
     try:
         # Start discovery

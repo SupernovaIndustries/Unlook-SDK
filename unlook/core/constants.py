@@ -86,6 +86,41 @@ GPU_BATCH_SIZE = 1000
 MEMORY_POOL_SIZE = 100 * 1024 * 1024  # 100MB
 CACHE_SIZE = 50
 
+# ==================== PREPROCESSING PIPELINE VERSIONS ====================
+class PreprocessingVersion:
+    """Preprocessing pipeline version selection."""
+    V1_LEGACY = "v1_legacy"          # Original pipeline, optimized for handpose
+    V2_ENHANCED = "v2_enhanced"      # Enhanced pipeline with GPU preprocessing
+    AUTO = "auto"                    # Auto-select based on use case
+
+# Preprocessing configuration per version
+PREPROCESSING_CONFIGS = {
+    PreprocessingVersion.V1_LEGACY: {
+        'protocol_version': '1.0',
+        'gpu_preprocessing': False,
+        'compression_enabled': False,
+        'delta_encoding': False,
+        'optimization_level': 'none',
+        'description': 'Legacy V1 pipeline for handpose and real-time applications'
+    },
+    PreprocessingVersion.V2_ENHANCED: {
+        'protocol_version': '2.0',
+        'gpu_preprocessing': True,
+        'compression_enabled': True,
+        'delta_encoding': True,
+        'optimization_level': 'advanced',
+        'description': 'Enhanced V2 pipeline for 3D scanning with GPU acceleration'
+    },
+    PreprocessingVersion.AUTO: {
+        'protocol_version': 'auto',
+        'gpu_preprocessing': 'auto',
+        'compression_enabled': 'auto',
+        'delta_encoding': 'auto',
+        'optimization_level': 'auto',
+        'description': 'Auto-select best pipeline based on use case'
+    }
+}
+
 # ==================== QUALITY PRESETS ====================
 QUALITY_PRESETS = {
     'fast': {

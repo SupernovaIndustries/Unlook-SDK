@@ -121,6 +121,75 @@ class ProtocolOptimizer:
         
         return message, stats
     
+    def optimize_multi_camera_message(self, camera_data: Dict[str, bytes], metadata: Dict[str, Any]) -> Tuple[bytes, CompressionStats]:
+        """
+        Optimize multi-camera message for transmission.
+        
+        Args:
+            camera_data: Dictionary of camera_id -> image_data
+            metadata: Message metadata
+            
+        Returns:
+            Tuple of (optimized message bytes, compression stats)
+        """
+        start_time = time.time()
+        total_original_size = sum(len(data) for data in camera_data.values())
+        
+        # Create multi-camera optimized metadata
+        optimized_metadata = metadata.copy()
+        optimized_metadata['cameras'] = {}
+        optimized_metadata['optimization'] = {
+            'multi_camera': True,
+            'num_cameras': len(camera_data),
+            'compression_enabled': True,
+            'original_total_size': total_original_size
+        }
+        
+        # Optimize each camera's data
+        optimized_data = bytearray()
+        camera_metadata = {}
+        
+        for camera_id, image_data in camera_data.items():
+            # Apply compression to image data
+            if len(image_data) > 1024:  # Only compress if > 1KB
+                compressed_data, compression_level = self._apply_adaptive_compression(image_data, metadata)
+            else:
+                compressed_data = image_data
+                compression_level = 0
+            
+            # Store camera metadata
+            camera_metadata[camera_id] = {
+                'offset': len(optimized_data),
+                'size': len(compressed_data),
+                'original_size': len(image_data),
+                'compression_level': compression_level
+            }
+            
+            # Append compressed data
+            optimized_data.extend(compressed_data)
+        
+        optimized_metadata['cameras'] = camera_metadata
+        
+        # Serialize with V2 format
+        message = self._serialize_optimized('multi_camera_response', optimized_metadata, bytes(optimized_data))
+        
+        # Calculate stats
+        compression_time = (time.time() - start_time) * 1000
+        compressed_size = len(message)
+        compression_ratio = total_original_size / compressed_size if compressed_size > 0 else 0
+        
+        stats = CompressionStats(
+            original_size=total_original_size,
+            compressed_size=compressed_size,
+            compression_ratio=compression_ratio,
+            compression_time_ms=compression_time,
+            method=f"multi_camera_v2+compression"
+        )
+        
+        self.compression_stats.append(stats)
+        
+        return message, stats
+    
     def _apply_delta_encoding(self, data: bytes, camera_id: str, 
                              metadata: Dict) -> Tuple[bytes, str]:
         """Apply delta encoding if beneficial."""
@@ -276,8 +345,13 @@ class ProtocolOptimizer:
                     data = message[data_start+4:data_start+4+data_size]
                     
                     # Apply reverse transformations if needed
-                    optimization = header['metadata'].get('optimization', {})
-                    if optimization.get('compression_level', 0) > 0:
+                    metadata = header.get('metadata', {})
+                    optimization = metadata.get('optimization', {})
+                    
+                    # Handle multi-camera format
+                    if optimization.get('multi_camera', False):
+                        data = self._deserialize_multi_camera_data(data, metadata)
+                    elif optimization.get('compression_level', 0) > 0:
                         data = zlib.decompress(data)
                     
                     # Delta decoding would happen on client side
@@ -286,11 +360,56 @@ class ProtocolOptimizer:
             else:
                 data = None
             
-            return header['type'], header['metadata'], data
+            # Return type, metadata (or entire header as fallback), data
+            msg_type = header.get('type', 'unknown_message_type')
+            payload = header.get('metadata', header.get('payload', {}))
+            
+            return msg_type, payload, data
             
         except Exception as e:
             logger.error(f"Error deserializing optimized message: {e}")
             return 'error', {'error': str(e)}, None
+    
+    def _deserialize_multi_camera_data(self, data: bytes, metadata: Dict[str, Any]) -> Dict[str, bytes]:
+        """
+        Deserialize multi-camera data from V2 format.
+        
+        Args:
+            data: Compressed multi-camera data
+            metadata: Message metadata with camera information
+            
+        Returns:
+            Dictionary of camera_id -> decompressed_image_data
+        """
+        try:
+            cameras_info = metadata.get('cameras', {})
+            camera_images = {}
+            
+            for camera_id, camera_meta in cameras_info.items():
+                offset = camera_meta.get('offset', 0)
+                size = camera_meta.get('size', 0)
+                compression_level = camera_meta.get('compression_level', 0)
+                
+                if offset + size <= len(data):
+                    # Extract camera data
+                    camera_data = data[offset:offset + size]
+                    
+                    # Decompress if needed
+                    if compression_level > 0:
+                        try:
+                            camera_data = zlib.decompress(camera_data)
+                        except Exception as e:
+                            logger.warning(f"Failed to decompress camera {camera_id} data: {e}")
+                    
+                    camera_images[camera_id] = camera_data
+                else:
+                    logger.error(f"Invalid offset/size for camera {camera_id}: offset={offset}, size={size}, data_len={len(data)}")
+            
+            return camera_images
+            
+        except Exception as e:
+            logger.error(f"Error deserializing multi-camera data: {e}")
+            return {}
     
     def get_compression_stats(self) -> Dict[str, float]:
         """Get compression performance statistics."""

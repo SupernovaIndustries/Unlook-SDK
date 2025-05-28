@@ -18,7 +18,10 @@ if TYPE_CHECKING:
 from ...core.events import EventType, EventEmitter
 from ...core.protocol import Message, MessageType
 from ...core.discovery import DiscoveryService, ScannerInfo
-from unlook.core.constants import DEFAULT_CONTROL_PORT, DEFAULT_TIMEOUT, MAX_RETRIES
+from unlook.core.constants import (
+    DEFAULT_CONTROL_PORT, DEFAULT_TIMEOUT, MAX_RETRIES,
+    PreprocessingVersion, PREPROCESSING_CONFIGS
+)
 from ...core.utils import generate_uuid, get_machine_info, deserialize_binary_message
 
 logger = logging.getLogger(__name__)
@@ -34,7 +37,8 @@ class UnlookClient(EventEmitter):
             self,
             client_name: str = "UnlookClient",
             auto_discover: bool = True,
-            discovery_callback: Optional[Callable[[ScannerInfo, bool], None]] = None
+            discovery_callback: Optional[Callable[[ScannerInfo, bool], None]] = None,
+            preprocessing_version: str = PreprocessingVersion.AUTO
     ):
         """
         Initialize a new UnLook client.
@@ -43,11 +47,22 @@ class UnlookClient(EventEmitter):
             client_name: Client name
             auto_discover: Automatically start scanner discovery
             discovery_callback: Callback for scanner discovery
+            preprocessing_version: Preprocessing pipeline version (V1_LEGACY, V2_ENHANCED, AUTO)
         """
         super().__init__()
 
         # Client identification
         self.name = client_name
+        
+        # Preprocessing version configuration
+        self.preprocessing_version = preprocessing_version
+        self.preprocessing_config = PREPROCESSING_CONFIGS.get(
+            preprocessing_version, 
+            PREPROCESSING_CONFIGS[PreprocessingVersion.AUTO]
+        )
+        
+        logger.info(f"Client initialized with preprocessing version: {preprocessing_version}")
+        logger.debug(f"Preprocessing config: {self.preprocessing_config['description']}")
         self.id = generate_uuid()
 
         # Connection state
@@ -216,7 +231,7 @@ class UnlookClient(EventEmitter):
             # Register with poller
             self.poller.register(self.control_socket, zmq.POLLIN)
 
-            # Send HELLO message
+            # Send HELLO message with preprocessing version
             hello_msg = Message(
                 msg_type=MessageType.HELLO,
                 payload={
@@ -225,6 +240,10 @@ class UnlookClient(EventEmitter):
                         "id": self.id,
                         "version": "1.0",
                         **get_machine_info()
+                    },
+                    "preprocessing_config": {
+                        "version": self.preprocessing_version,
+                        "config": self.preprocessing_config
                     }
                 }
             )

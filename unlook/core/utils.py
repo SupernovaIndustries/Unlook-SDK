@@ -302,7 +302,21 @@ def deserialize_binary_message(data: bytes) -> Tuple[str, Dict, Optional[bytes]]
 
         # Check reasonable size (avoid overflow)
         if header_size <= 0 or header_size > 100000:  # Reasonable limit for JSON header
-            logger.warning(f"Suspicious header size: {header_size}, could be alternative format")
+            logger.warning(f"Suspicious header size: {header_size}, trying Protocol V2 first")
+            
+            # Try Protocol V2 first for suspicious header sizes
+            try:
+                from .protocol_v2 import ProtocolOptimizer
+                optimizer = ProtocolOptimizer()
+                msg_type, metadata, binary_data = optimizer.deserialize_optimized(data)
+                
+                if msg_type and msg_type != 'error':
+                    logger.debug(f"Successfully parsed with Protocol V2: {msg_type}")
+                    return msg_type, metadata, binary_data
+                else:
+                    logger.debug("Protocol V2 returned error, trying alternatives")
+            except Exception as e:
+                logger.debug(f"Protocol V2 failed: {e}, trying alternative detection")
             
             # The problem might be that we're reading JPEG data as header_size
             # Try to detect if this is actually JPEG data disguised as a message

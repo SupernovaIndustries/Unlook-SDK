@@ -199,21 +199,27 @@ def deserialize_message_with_v2_support(data: bytes):
     Returns:
         Tuple of (msg_type, metadata, binary_data)
     """
-    # Try protocol v2 first (check for v2 header marker)
+    # Try protocol v2 first (prioritize V2)
     if PROTOCOL_V2_AVAILABLE and len(data) > 8:
         try:
             # Check if it's a v2 message by looking for header structure
             import struct
             header_size = struct.unpack('<I', data[:4])[0]
-            if 100 < header_size < 10000:  # Reasonable header size range
-                # Try to deserialize as v2
-                optimizer = ProtocolOptimizer()
-                msg_type, metadata, binary_data = optimizer.deserialize_optimized(data)
-                
-                # Check if it looks like valid v2 data
-                if isinstance(metadata, dict) and 'optimization' in metadata:
-                    logger.debug("Successfully deserialized protocol v2 message in camera client")
-                    return msg_type, metadata, binary_data
+            # Be more aggressive with V2 detection - try any reasonable header size
+            if 10 < header_size < 100000:  # Expanded range for V2
+                # Always try V2 first for any header in this range
+                try:
+                    optimizer = ProtocolOptimizer()
+                    msg_type, metadata, binary_data = optimizer.deserialize_optimized(data)
+                    
+                    # If deserialization succeeds and we get reasonable data, use it
+                    if msg_type and msg_type != 'error':
+                        logger.debug(f"Successfully deserialized protocol v2 message: {msg_type}")
+                        return msg_type, metadata, binary_data
+                    else:
+                        logger.debug("V2 deserialization returned error, trying fallback")
+                except Exception as v2_error:
+                    logger.debug(f"V2 deserialization failed: {v2_error}, trying v1 fallback")
         except Exception as e:
             logger.debug(f"Protocol v2 deserialization failed in camera client, falling back to v1: {e}")
     
@@ -1012,6 +1018,31 @@ class CameraClient:
             # Log format information
             logger.debug(f"Detected format: {msg_type}, payload: {payload.get('format', 'N/A')}")
 
+            # PROTOCOL V2 MULTI-CAMERA HANDLING
+            if (msg_type == "multi_camera_response" and 
+                isinstance(binary_data, dict) and 
+                payload.get('optimization', {}).get('multi_camera', False)):
+                
+                logger.info(f"Processing Protocol V2 multi-camera response with {len(binary_data)} cameras")
+                
+                # binary_data is already a dict of camera_id -> image_bytes
+                images = {}
+                for camera_id, image_bytes in binary_data.items():
+                    try:
+                        image = decode_jpeg_to_image(image_bytes)
+                        if image is not None:
+                            images[camera_id] = image
+                            logger.debug(f"Decoded V2 multi-camera image for {camera_id}: {image.shape}")
+                        else:
+                            logger.error(f"Failed to decode V2 image for camera {camera_id}")
+                    except Exception as e:
+                        logger.error(f"Error decoding V2 image for camera {camera_id}: {e}")
+                
+                if images:
+                    return images
+                else:
+                    logger.warning("No V2 multi-camera images decoded, falling through")
+
             # ULMC FORMAT HANDLING
             if msg_type == "multi_camera_response" and payload.get("format") == "ULMC":
                 logger.info(f"Processing ULMC response with {payload.get('num_cameras', 0)} cameras")
@@ -1085,6 +1116,11 @@ class CameraClient:
                 else:
                     logger.debug(f"Processing format {format_type} with fallback")
                     return self._fallback_decode_multi_response(binary_data, camera_ids)
+
+            # UNKNOWN MESSAGE TYPE HANDLING
+            if msg_type == "unknown_message_type":
+                logger.info("Processing unknown_message_type, attempting fallback")
+                return self._fallback_decode_multi_response(binary_data, camera_ids)
 
             # If we're here, we couldn't decode the format
             logger.warning(f"Unrecognized response format: {msg_type}")
