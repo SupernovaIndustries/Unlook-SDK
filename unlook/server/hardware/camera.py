@@ -16,6 +16,14 @@ try:
 except ImportError:
     PICAMERA2_AVAILABLE = False
 
+# Import camera sync module
+try:
+    from .camera_sync import get_camera_sync, SyncMetrics
+    SYNC_AVAILABLE = True
+except ImportError:
+    SYNC_AVAILABLE = False
+    SyncMetrics = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,6 +41,15 @@ class PiCamera2Manager:
         self.cameras = {}  # Dict[camera_id, camera_info]
         self.active_cameras = {}  # Dict[camera_id, Picamera2]
         self._lock = threading.RLock()
+        
+        # Initialize hardware sync if available
+        self.sync_controller = None
+        if SYNC_AVAILABLE:
+            try:
+                self.sync_controller = get_camera_sync()
+                logger.info("Hardware camera sync initialized")
+            except Exception as e:
+                logger.warning(f"Could not initialize hardware sync: {e}")
 
         # Detect available cameras
         self._discover_cameras()
@@ -792,3 +809,103 @@ class PiCamera2Manager:
 
             self.active_cameras.clear()
             logger.info("All cameras closed")
+    
+    def capture_synchronized(self, camera_ids: List[str], timeout: float = 1.0) -> Dict[str, Any]:
+        """
+        Capture synchronized images from multiple cameras.
+        
+        Args:
+            camera_ids: List of camera IDs to capture from
+            timeout: Maximum time to wait for sync trigger
+            
+        Returns:
+            Dictionary with camera_id -> capture result mapping
+        """
+        import queue
+        
+        if not self.sync_controller:
+            logger.warning("No sync controller, falling back to sequential capture")
+            results = {}
+            for cam_id in camera_ids:
+                image = self.capture_image(cam_id)
+                results[cam_id] = {
+                    'image': image,
+                    'timestamp': time.time(),
+                    'synchronized': False
+                }
+            return results
+        
+        results = {}
+        result_queue = queue.Queue()
+        
+        def capture_on_trigger(cam_id: str, trigger_time: float):
+            """Capture callback for synchronized acquisition."""
+            try:
+                # Capture with minimal latency
+                image = self.capture_image(cam_id)
+                if image is not None:
+                    result = {
+                        'image': image,
+                        'trigger_timestamp': trigger_time,
+                        'capture_timestamp': time.time(),
+                        'capture_latency_us': (time.time() - trigger_time) * 1_000_000,
+                        'synchronized': True
+                    }
+                else:
+                    result = None
+                result_queue.put((cam_id, result))
+            except Exception as e:
+                logger.error(f"Error in synchronized capture for {cam_id}: {e}")
+                result_queue.put((cam_id, None))
+        
+        # Register callbacks for all cameras
+        callbacks = []
+        for cam_id in camera_ids:
+            callback = lambda t, cid=cam_id: capture_on_trigger(cid, t)
+            self.sync_controller.register_callback(callback)
+            callbacks.append(callback)
+        
+        # Wait for trigger
+        trigger_time = self.sync_controller.wait_for_trigger(timeout)
+        
+        if trigger_time:
+            # Collect results
+            for _ in camera_ids:
+                try:
+                    cam_id, result = result_queue.get(timeout=0.5)
+                    results[cam_id] = result
+                except:
+                    pass
+        
+        # Cleanup callbacks
+        for callback in callbacks:
+            try:
+                self.sync_controller.callbacks.remove(callback)
+            except:
+                pass
+        
+        return results
+    
+    def get_sync_metrics(self) -> Optional[SyncMetrics]:
+        """
+        Get synchronization quality metrics.
+        
+        Returns:
+            SyncMetrics object or None if sync not available
+        """
+        if self.sync_controller:
+            return self.sync_controller.get_sync_metrics()
+        return None
+    
+    def enable_software_sync(self, fps: float = 30.0):
+        """
+        Enable software-based synchronization.
+        
+        Args:
+            fps: Frames per second for sync trigger
+        """
+        if self.sync_controller:
+            self.sync_controller.enable_software_trigger(fps)
+            logger.info(f"Software sync enabled at {fps} FPS")
+        else:
+            logger.warning("No sync controller available")

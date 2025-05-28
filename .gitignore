@@ -91,3 +91,4 @@ unlook/models/YOLOv10x_hands.pt
 unlook/models/Non confermato 536239.crdownload
 unlook_client_analysis.md
 precision_analysis.png
+unlook/examples/__pycache__/test_vcsel_proj.cpython-312-pytest-8.3.5.pyc

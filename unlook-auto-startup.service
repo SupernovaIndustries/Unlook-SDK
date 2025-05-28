@@ -1,0 +1,24 @@
+[Unit]
+Description=UnLook 3D Scanner Auto-Startup Service
+After=network.target multi-user.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+WorkingDirectory=%h/Unlook-SDK
+ExecStart=/bin/bash %h/unlook_startup.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Environment=PYTHONPATH=%h/Unlook-SDK
+
+# Ensure proper cleanup on stop
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

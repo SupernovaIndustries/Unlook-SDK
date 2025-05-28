@@ -2,6 +2,68 @@
 
 This guide explains how to install and configure the UnLook server as a systemd service on a Raspberry Pi.
 
+## 🚀 Quick Auto-Startup Setup (Recommended for V2)
+
+For production setups with the latest optimizations, use the new auto-startup scripts:
+
+### 1. Install Auto-Startup Service (V2 Optimized - User Agnostic)
+```bash
+cd Unlook-SDK/
+chmod +x install_auto_startup.sh
+./install_auto_startup.sh
+
+# Works for any user (pi, unlook, admin, etc.)
+# Automatically detects current user and home directory
+# Creates user-specific systemd service
+```
+
+### 2. Manual Startup with Optimizations
+```bash
+cd Unlook-SDK/
+chmod +x unlook_startup.sh
+./unlook_startup.sh
+```
+
+**V2 Features Enabled**:
+- ✅ GPU-accelerated preprocessing (VideoCore VI)
+- ✅ Hardware synchronization <500μs (GPIO 27)
+- ✅ Protocol optimization with delta encoding
+- ✅ Real-time quality metrics
+- ✅ Automatic git updates on startup
+
+### 3. Service Management
+```bash
+# Service is user-specific, e.g., for user 'pi':
+SERVICE_NAME="unlook-auto-startup@pi.service"
+
+# Check status
+sudo systemctl status unlook-auto-startup@$(whoami)
+
+# View logs
+sudo journalctl -u unlook-auto-startup@$(whoami) -f
+
+# Stop service
+sudo systemctl stop unlook-auto-startup@$(whoami)
+
+# Disable auto-startup
+sudo systemctl disable unlook-auto-startup@$(whoami)
+```
+
+### 4. Advanced Configuration
+```bash
+# Custom startup with different settings
+python unlook/server_bootstrap.py \
+    --enable-pattern-preprocessing \
+    --preprocessing-level full \
+    --enable-sync \
+    --sync-fps 60 \
+    --log-level DEBUG
+```
+
+---
+
+## 📜 Legacy Installation (V1)
+
 ## Prerequisites
 
 - Raspberry Pi with Raspberry Pi OS (Bullseye or later recommended)

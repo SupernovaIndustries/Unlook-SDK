@@ -83,6 +83,14 @@ def main():
     parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                       default="INFO", help="Set the logging level")
     parser.add_argument("--daemon", action="store_true", help="Run as a daemon process")
+    parser.add_argument("--enable-pattern-preprocessing", action="store_true",
+                      help="Enable GPU-accelerated pattern preprocessing on Raspberry Pi")
+    parser.add_argument("--preprocessing-level", choices=["basic", "advanced", "full"],
+                      default="basic", help="Level of preprocessing to perform")
+    parser.add_argument("--enable-sync", action="store_true",
+                      help="Enable hardware camera synchronization")
+    parser.add_argument("--sync-fps", type=float, default=30.0,
+                      help="FPS for software sync trigger (default: 30)")
     args = parser.parse_args()
     
     # Set up logging
@@ -122,6 +130,17 @@ def main():
         # Extract server configuration
         server_config = config.get("server", {})
         
+        # Apply command-line overrides
+        if args.enable_pattern_preprocessing:
+            server_config['enable_pattern_preprocessing'] = True
+            server_config['preprocessing_level'] = args.preprocessing_level
+            logger.info(f"Pattern preprocessing enabled at level: {args.preprocessing_level}")
+        
+        if args.enable_sync:
+            server_config['enable_sync'] = True
+            server_config['sync_fps'] = args.sync_fps
+            logger.info(f"Hardware sync enabled at {args.sync_fps} FPS")
+        
         # Display server config for debugging
         logger.info(f"Server name: {server_config.get('name', 'UnLookScanner')}")
         logger.info(f"Control port: {server_config.get('control_port', 5555)}")
@@ -135,7 +154,11 @@ def main():
             stream_port=server_config.get("stream_port", 5556),
             direct_stream_port=server_config.get("direct_stream_port", 5557),
             scanner_uuid=server_config.get("scanner_uuid"),
-            auto_start=True
+            auto_start=True,
+            enable_preprocessing=server_config.get('enable_pattern_preprocessing', False),
+            preprocessing_level=server_config.get('preprocessing_level', 'basic'),
+            enable_sync=server_config.get('enable_sync', False),
+            sync_fps=server_config.get('sync_fps', 30.0)
         )
 
         logger.info("Server started successfully")

@@ -40,7 +40,11 @@ class UnlookServer(EventEmitter):
             stream_port: int = DEFAULT_STREAM_PORT,
             direct_stream_port: int = None,  # Nuova porta per lo streaming diretto
             scanner_uuid: Optional[str] = None,
-            auto_start: bool = True
+            auto_start: bool = True,
+            enable_preprocessing: bool = False,
+            preprocessing_level: str = "basic",
+            enable_sync: bool = False,
+            sync_fps: float = 30.0
     ):
         """
         Inizializza il server UnLook.
@@ -68,6 +72,12 @@ class UnlookServer(EventEmitter):
         self.running = False
         self.clients = set()
         self._lock = threading.RLock()
+        
+        # Preprocessing and sync settings
+        self.enable_preprocessing = enable_preprocessing
+        self.preprocessing_level = preprocessing_level
+        self.enable_sync = enable_sync
+        self.sync_fps = sync_fps
 
         # Inizializza contesto ZMQ
         self.zmq_context = zmq.Context()
@@ -90,6 +100,8 @@ class UnlookServer(EventEmitter):
         self._projector = None
         self._camera_manager = None
         self._led_controller = None
+        self._gpu_preprocessor = None
+        self._protocol_optimizer = None
 
         # Streaming
         self.streaming_active = False
@@ -173,6 +185,8 @@ class UnlookServer(EventEmitter):
             MessageType.LED_ON: self._handle_led_on,
             MessageType.LED_OFF: self._handle_led_off,
             MessageType.LED_STATUS: self._handle_led_status,
+            MessageType.SYNC_METRICS: self._handle_sync_metrics,
+            MessageType.SYNC_ENABLE: self._handle_sync_enable,
 
             # Altri handlers...
         }
@@ -575,14 +589,42 @@ class UnlookServer(EventEmitter):
                             logger.error(f"Failed to capture image from camera {camera_id} after {max_capture_attempts} attempts")
                             continue
 
-                        # Codifica in JPEG con gestione eccezioni
-                        try:
-                            jpeg_data = encode_image_to_jpeg(image, jpeg_quality)
-                        except Exception as e:
-                            logger.error(f"Errore nella codifica JPEG per la telecamera {camera_id}: {e}")
-                            import traceback
-                            logger.error(traceback.format_exc())
-                            continue
+                        # Apply GPU preprocessing if enabled
+                        if self.enable_preprocessing and self.gpu_preprocessor:
+                            try:
+                                preprocess_result = self.gpu_preprocessor.preprocess_frame(
+                                    image, camera_id, 
+                                    metadata={'pattern_type': 'streaming'}
+                                )
+                                
+                                # Use preprocessed image if available
+                                if 'compressed_frame' in preprocess_result:
+                                    jpeg_data = preprocess_result['compressed_frame']
+                                else:
+                                    # Fallback to standard encoding
+                                    processed_image = preprocess_result.get('frame', image)
+                                    jpeg_data = encode_image_to_jpeg(processed_image, jpeg_quality)
+                                    
+                                # Add preprocessing info to metadata
+                                preprocessing_info = {
+                                    'preprocessing_applied': preprocess_result.get('preprocessing_applied', []),
+                                    'preprocessing_time_ms': preprocess_result.get('preprocessing_time_ms', 0)
+                                }
+                            except Exception as e:
+                                logger.error(f"Preprocessing error for camera {camera_id}: {e}")
+                                # Fallback to standard encoding
+                                jpeg_data = encode_image_to_jpeg(image, jpeg_quality)
+                                preprocessing_info = None
+                        else:
+                            # Standard encoding without preprocessing
+                            try:
+                                jpeg_data = encode_image_to_jpeg(image, jpeg_quality)
+                                preprocessing_info = None
+                            except Exception as e:
+                                logger.error(f"Errore nella codifica JPEG per la telecamera {camera_id}: {e}")
+                                import traceback
+                                logger.error(traceback.format_exc())
+                                continue
 
                         # Prepara metadati
                         height, width = image.shape[:2]
@@ -599,6 +641,10 @@ class UnlookServer(EventEmitter):
                             "is_direct_stream": True
                         }
 
+                        # Add preprocessing info if available
+                        if preprocessing_info:
+                            metadata["preprocessing_info"] = preprocessing_info
+                        
                         # Aggiungi informazioni di sincronizzazione se necessario
                         if is_sync_frame:
                             metadata["is_sync_frame"] = True
@@ -606,12 +652,34 @@ class UnlookServer(EventEmitter):
                         if pattern_info:
                             metadata["pattern_info"] = pattern_info
 
-                        # Crea messaggio binario
-                        binary_message = serialize_binary_message(
-                            "direct_frame",  # Tipo specifico per frame diretti
-                            metadata,
-                            jpeg_data
-                        )
+                        # Crea messaggio binario con ottimizzazione se disponibile
+                        if self.protocol_optimizer and self.enable_preprocessing:
+                            try:
+                                binary_message, compression_stats = self.protocol_optimizer.optimize_message(
+                                    "direct_frame",
+                                    metadata,
+                                    jpeg_data,
+                                    camera_id
+                                )
+                                # Add compression stats to metadata for next frame
+                                if compression_stats:
+                                    logger.debug(f"Compression ratio: {compression_stats.compression_ratio:.2f}x, "
+                                               f"time: {compression_stats.compression_time_ms:.1f}ms")
+                            except Exception as e:
+                                logger.error(f"Protocol optimization failed: {e}")
+                                # Fallback to standard serialization
+                                binary_message = serialize_binary_message(
+                                    "direct_frame",
+                                    metadata,
+                                    jpeg_data
+                                )
+                        else:
+                            # Standard serialization
+                            binary_message = serialize_binary_message(
+                                "direct_frame",
+                                metadata,
+                                jpeg_data
+                            )
 
                         # Pubblica frame attraverso il socket di streaming diretto
                         try:
@@ -1346,6 +1414,47 @@ class UnlookServer(EventEmitter):
                 logger.error(f"Traceback: {traceback.format_exc()}")
                 self._led_controller = None
         return self._led_controller
+    
+    @property
+    def gpu_preprocessor(self):
+        """Lazy-loading del GPU preprocessor."""
+        if self._gpu_preprocessor is None and self.enable_preprocessing:
+            try:
+                logger.info("Lazy loading GPU preprocessor...")
+                from .hardware.gpu_preprocessing import RaspberryProcessingV2, PreprocessingConfig
+                
+                # Configure preprocessing based on level
+                config = PreprocessingConfig()
+                if self.preprocessing_level == "basic":
+                    config.pattern_preprocessing = False
+                elif self.preprocessing_level == "advanced":
+                    config.pattern_preprocessing = True
+                    config.compression_level = "adaptive"
+                elif self.preprocessing_level == "full":
+                    config.pattern_preprocessing = True
+                    config.compression_level = "adaptive"
+                    config.roi_detection = True
+                
+                self._gpu_preprocessor = RaspberryProcessingV2(config)
+                logger.info(f"GPU preprocessor initialized at level: {self.preprocessing_level}")
+            except Exception as e:
+                logger.error(f"Error initializing GPU preprocessor: {e}")
+                self._gpu_preprocessor = None
+        return self._gpu_preprocessor
+    
+    @property
+    def protocol_optimizer(self):
+        """Lazy-loading del protocol optimizer."""
+        if self._protocol_optimizer is None:
+            try:
+                logger.info("Lazy loading protocol optimizer...")
+                from ..core.protocol_v2 import ProtocolOptimizer
+                self._protocol_optimizer = ProtocolOptimizer()
+                logger.info("Protocol optimizer initialized")
+            except Exception as e:
+                logger.error(f"Error initializing protocol optimizer: {e}")
+                self._protocol_optimizer = None
+        return self._protocol_optimizer
 
     # Duplicate method removed to fix issue with direct streaming handlers
     # The actual handler initialization is at the beginning of the class
@@ -2427,3 +2536,76 @@ class UnlookServer(EventEmitter):
             
         result = self.led_controller.get_status()
         return Message.create_reply(message, result)
+    
+    def _handle_sync_metrics(self, message: Message) -> Message:
+        """Handle SYNC_METRICS messages."""
+        if not self.camera_manager:
+            return Message.create_error(message, "Camera manager not available")
+        
+        # Get sync metrics from camera manager
+        sync_metrics = self.camera_manager.get_sync_metrics()
+        
+        if sync_metrics:
+            # Convert to dict
+            metrics_dict = {
+                'sync_precision_us': sync_metrics.sync_precision_us,
+                'frame_consistency': sync_metrics.frame_consistency,
+                'average_latency_us': sync_metrics.average_latency_us,
+                'jitter_us': sync_metrics.jitter_us,
+                'missed_triggers': sync_metrics.missed_triggers,
+                'timestamp': sync_metrics.timestamp
+            }
+            
+            # Add protocol optimization stats if available
+            if self.protocol_optimizer:
+                compression_stats = self.protocol_optimizer.get_compression_stats()
+                metrics_dict['compression_stats'] = compression_stats
+            
+            # Add preprocessing stats if available
+            if self.gpu_preprocessor:
+                preprocessing_stats = self.gpu_preprocessor.get_performance_stats()
+                metrics_dict['preprocessing_stats'] = preprocessing_stats
+            
+            return Message.create_reply(message, {
+                'sync_enabled': self.enable_sync,
+                'sync_fps': self.sync_fps,
+                'metrics': metrics_dict
+            })
+        else:
+            return Message.create_reply(message, {
+                'sync_enabled': self.enable_sync,
+                'sync_fps': self.sync_fps,
+                'metrics': None,
+                'message': 'Synchronization not active or not available'
+            })
+    
+    def _handle_sync_enable(self, message: Message) -> Message:
+        """Handle SYNC_ENABLE messages."""
+        if not self.camera_manager:
+            return Message.create_error(message, "Camera manager not available")
+        
+        enable = message.payload.get('enable', True)
+        fps = message.payload.get('fps', self.sync_fps)
+        
+        try:
+            if enable:
+                # Enable software sync
+                self.camera_manager.enable_software_sync(fps)
+                self.enable_sync = True
+                self.sync_fps = fps
+                return Message.create_reply(message, {
+                    'success': True,
+                    'sync_enabled': True,
+                    'sync_fps': fps,
+                    'message': f'Synchronization enabled at {fps} FPS'
+                })
+            else:
+                # Disable sync
+                self.enable_sync = False
+                return Message.create_reply(message, {
+                    'success': True,
+                    'sync_enabled': False,
+                    'message': 'Synchronization disabled'
+                })
+        except Exception as e:
+            return Message.create_error(message, f"Failed to configure synchronization: {str(e)}")

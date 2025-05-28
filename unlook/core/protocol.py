@@ -85,6 +85,10 @@ class MessageType(enum.Enum):
     LED_ON = "led_on"  # Turn LED on
     LED_OFF = "led_off"  # Turn LED off
     LED_STATUS = "led_status"  # Get LED status
+    
+    # Synchronization metrics
+    SYNC_METRICS = "sync_metrics"  # Get synchronization quality metrics
+    SYNC_ENABLE = "sync_enable"  # Enable/disable synchronization
 
 
 class Message:
