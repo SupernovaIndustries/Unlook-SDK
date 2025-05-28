@@ -15,11 +15,7 @@ import argparse
 import socket
 from pathlib import Path
 
-# Configure basic logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Logger will be configured in setup_logging()
 logger = logging.getLogger("ServerBoot")
 
 # Fix: Add the root directory (Unlook-SDK) to the Python path for proper import resolution
@@ -51,6 +47,9 @@ def setup_logging(log_file=None, log_level=logging.INFO):
     """Set up logging configuration."""
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
+    
+    # Clear any existing handlers to avoid duplicates
+    root_logger.handlers.clear()
     
     # Set up console handler
     console_handler = logging.StreamHandler()
