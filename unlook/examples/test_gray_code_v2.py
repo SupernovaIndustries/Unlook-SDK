@@ -48,7 +48,7 @@ def test_gray_code_capture():
         print("⚠️ Protocol V2 NOT enabled")
     
     # Get cameras
-    cameras = client.get_cameras()
+    cameras = client.camera.get_cameras()
     print(f"✅ Found {len(cameras)} cameras")
     
     if len(cameras) < 2:
@@ -65,19 +65,19 @@ def test_gray_code_capture():
     patterns = [
         # Reference white
         {
-            "type": "solid_field",
+            "pattern_type": "solid_field",
             "color": "White",
             "name": "reference_white"
         },
         # Reference black
         {
-            "type": "solid_field",
+            "pattern_type": "solid_field",
             "color": "Black", 
             "name": "reference_black"
         },
         # Blue vertical stripes (simulating Gray code bit 0)
         {
-            "type": "vertical_lines",
+            "pattern_type": "vertical_lines",
             "foreground_color": "Blue",
             "background_color": "Black",
             "foreground_width": 128,  # Wide stripes for bit 0
@@ -86,7 +86,7 @@ def test_gray_code_capture():
         },
         # Inverted blue stripes
         {
-            "type": "vertical_lines",
+            "pattern_type": "vertical_lines",
             "foreground_color": "Black",
             "background_color": "Blue",
             "foreground_width": 128,
@@ -95,7 +95,7 @@ def test_gray_code_capture():
         },
         # Narrower stripes (bit 1)
         {
-            "type": "vertical_lines",
+            "pattern_type": "vertical_lines",
             "foreground_color": "Blue",
             "background_color": "Black",
             "foreground_width": 64,
@@ -109,9 +109,31 @@ def test_gray_code_capture():
     for i, pattern in enumerate(patterns):
         print(f"\nPattern {i+1}/{len(patterns)}: {pattern['name']}")
         
-        # Project pattern
-        if not client.projector.project_pattern(pattern):
-            print(f"❌ Failed to project pattern")
+        # Project pattern based on type
+        pattern_type = pattern.get("pattern_type")
+        success = False
+        
+        try:
+            if pattern_type == "solid_field":
+                success = client.projector.show_solid_field(pattern.get("color", "White"))
+            elif pattern_type == "vertical_lines":
+                success = client.projector.show_vertical_lines(
+                    foreground_color=pattern.get("foreground_color", "White"),
+                    background_color=pattern.get("background_color", "Black"),
+                    foreground_width=pattern.get("foreground_width", 4),
+                    background_width=pattern.get("background_width", 4)
+                )
+            else:
+                print(f"  ⚠️ Unknown pattern type: {pattern_type}")
+                continue
+                
+            if not success:
+                print(f"  ❌ Failed to project pattern")
+                continue
+            else:
+                print(f"  ✅ Pattern projected")
+        except Exception as e:
+            print(f"  ❌ Error projecting pattern: {e}")
             continue
         
         # Wait for stabilization
@@ -120,7 +142,7 @@ def test_gray_code_capture():
         # Capture multi-camera
         print("  Capturing synchronized images...")
         start_time = time.time()
-        images = client.capture_images_multi(camera_ids)
+        images = client.camera.capture_multi(camera_ids)
         capture_time = (time.time() - start_time) * 1000
         
         if images and len(images) == 2:
@@ -135,7 +157,7 @@ def test_gray_code_capture():
             print(f"  ❌ Failed to capture")
     
     # Turn off projector
-    client.projector.project_pattern({"type": "solid_field", "color": "Black"})
+    client.projector.show_solid_field("Black")
     
     # Get compression stats
     print("\nCompression Statistics:")

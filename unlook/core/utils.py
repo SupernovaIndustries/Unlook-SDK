@@ -303,16 +303,31 @@ def deserialize_binary_message(data: bytes) -> Tuple[str, Dict, Optional[bytes]]
         # Check reasonable size (avoid overflow)
         if header_size <= 0 or header_size > 100000:  # Reasonable limit for JSON header
             logger.warning(f"Suspicious header size: {header_size}, could be alternative format")
+            
+            # The problem might be that we're reading JPEG data as header_size
+            # Try to detect if this is actually JPEG data disguised as a message
+            
+            # Check if the first 4 bytes look like a JPEG size followed by JPEG markers
+            if len(data) >= 10:
+                # Check if bytes 4-6 could be JPEG SOI marker (FF D8)
+                if data[4] == 0xFF and data[5] == 0xD8:
+                    logger.debug("Detected JPEG data starting at offset 4, treating as raw image")
+                    return "camera_frame", {"format": "jpeg", "raw_with_size_prefix": True}, data[4:]
+                
+                # Check if the pattern looks like: [size][JPEG][size][JPEG]...
+                # This would be multi-camera format
+                try:
+                    first_size = int.from_bytes(data[:4], byteorder='little')
+                    if (4 + first_size < len(data) and 
+                        first_size > 0 and first_size < 1000000 and  # Reasonable JPEG size
+                        data[4] == 0xFF and data[5] == 0xD8):  # JPEG markers at expected position
+                        
+                        logger.debug(f"Detected multi-camera JPEG format, first image size: {first_size}")
+                        return "multi_camera_response", {"format": "raw_multi_jpeg"}, data
+                except:
+                    pass
 
-            # Try to detect if it's a multi-camera message without standard header
-            if len(data) >= 8:
-                # Check if after 4 bytes there's a reasonable JPEG size
-                img_size = int.from_bytes(data[4:8], byteorder='little')
-                if img_size > 0 and img_size < len(data) - 8:
-                    logger.debug(f"Detected possible multi-camera format with image size: {img_size}")
-                    return "multi_camera_response", {"format": "jpeg", "alternative_format": True}, data
-
-            # If not recognized, return raw binary data
+            # If not recognized, return raw binary data  
             return "camera_capture_response", {"format": "unknown"}, data
 
         # Check if there's enough data for the header
