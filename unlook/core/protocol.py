@@ -92,6 +92,11 @@ class MessageType(enum.Enum):
     # Synchronization metrics
     SYNC_METRICS = "sync_metrics"  # Get synchronization quality metrics
     SYNC_ENABLE = "sync_enable"  # Enable/disable synchronization
+    
+    # Server logging
+    SERVER_LOG = "server_log"  # Server log message to client
+    SERVER_LOG_SUBSCRIBE = "server_log_subscribe"  # Subscribe to server logs
+    SERVER_LOG_UNSUBSCRIBE = "server_log_unsubscribe"  # Unsubscribe from server logs
 
 
 class Message:
