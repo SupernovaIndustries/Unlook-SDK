@@ -18,6 +18,9 @@ Usage:
 import time
 import logging
 from pathlib import Path
+import os
+from datetime import datetime
+import cv2
 
 # Setup logging
 logging.basicConfig(
@@ -133,6 +136,11 @@ def test_protocol_v2_integration():
         print(f"   Available cameras: {len(cameras) if cameras else 0}")
         
         if cameras:
+            # Create debug directory for images
+            debug_dir = os.path.join("debug_captures", datetime.now().strftime("%Y%m%d_%H%M%S"))
+            os.makedirs(debug_dir, exist_ok=True)
+            print(f"   📁 Saving debug images to: {debug_dir}")
+            
             # Test single capture with protocol v2 optimization
             print("   Testing single camera capture...")
             camera_id = cameras[0]['id']  # cameras is a list of dicts
@@ -149,6 +157,10 @@ def test_protocol_v2_integration():
                 height, width = result.shape[:2]
                 print(f"   ✅ Captured {width}x{height} image in {capture_time:.1f}ms")
                 print(f"   📦 Protocol V2 optimization: Integrated in capture pipeline")
+                # Save single capture image
+                filename = os.path.join(debug_dir, f"single_capture_{camera_id}.jpg")
+                cv2.imwrite(filename, result)
+                print(f"   💾 Saved: {filename}")
             else:
                 print("   ⚠️  Single capture failed")
             
@@ -163,6 +175,11 @@ def test_protocol_v2_integration():
                 
                 if results and len(results) >= 2:
                     print(f"   ✅ Multi-camera capture: {len(results)} cameras in {multi_capture_time:.1f}ms")
+                    # Save multi-camera captures
+                    for i, (cam_id, image) in enumerate(results.items()):
+                        filename = os.path.join(debug_dir, f"multi_capture_{cam_id}.jpg")
+                        cv2.imwrite(filename, image)
+                        print(f"   💾 Saved: {filename} ({image.shape})")
                 else:
                     print("   ⚠️  Multi-camera capture failed")
         
@@ -187,6 +204,18 @@ def test_protocol_v2_integration():
                 if frame_count == 1:
                     height, width = image.shape[:2]
                     print(f"   📹 Receiving {width}x{height} frames...")
+                    # Save first streaming frame
+                    filename = os.path.join(debug_dir, f"stream_frame_{camera_id}_001.jpg")
+                    cv2.imwrite(filename, image)
+                    print(f"   💾 Saved first stream frame: {filename}")
+                
+                # Save frame 5 and 10 for comparison
+                if frame_count == 5:
+                    filename = os.path.join(debug_dir, f"stream_frame_{camera_id}_005.jpg")
+                    cv2.imwrite(filename, image)
+                elif frame_count == 10:
+                    filename = os.path.join(debug_dir, f"stream_frame_{camera_id}_010.jpg")
+                    cv2.imwrite(filename, image)
                 
                 # Stop after 10 frames
                 if frame_count >= 10:
