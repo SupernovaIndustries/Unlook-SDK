@@ -674,3 +674,112 @@ class DLPC342XController:
             logger.error(f"Error executing splash screen: {e}")
             self.summary["Successful"] = False
             return False
+    
+    def set_led_current(self, red_current, green_current, blue_current):
+        """Set LED current for RGB channels.
+        
+        According to DLPC342X documentation, command 0x4B controls RGB LED current.
+        
+        Args:
+            red_current: Red LED current (0-1023, where 1023 = 100%)
+            green_current: Green LED current (0-1023)
+            blue_current: Blue LED current (0-1023)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        self.summary["Command"] = "Write RGB LED Current"
+        
+        try:
+            # Validate current values (0-1023 range)
+            red_current = max(0, min(1023, int(red_current)))
+            green_current = max(0, min(1023, int(green_current)))
+            blue_current = max(0, min(1023, int(blue_current)))
+            
+            # Pack current values as 16-bit little-endian
+            red_bytes = list(struct.pack('<H', red_current))
+            green_bytes = list(struct.pack('<H', green_current))
+            blue_bytes = list(struct.pack('<H', blue_current))
+            
+            # Command 0x4B for RGB LED current control
+            command_bytes = [0x4B] + red_bytes + green_bytes + blue_bytes
+            
+            # Send the command
+            success = self._write_command(command_bytes)
+            self.summary["Successful"] = success
+            
+            logger.info(f"Set LED current - R:{red_current}, G:{green_current}, B:{blue_current}: "
+                       f"{'Success' if success else 'Failed'}")
+            return success
+        except Exception as e:
+            logger.error(f"Error setting LED current: {e}")
+            self.summary["Successful"] = False
+            return False
+    
+    def get_led_current(self):
+        """Get current LED current settings.
+        
+        Returns:
+            Tuple of (red, green, blue) current values (0-1023), or None if error
+        """
+        self.summary["Command"] = "Read RGB LED Current"
+        
+        try:
+            # Command 0x4C to read LED current
+            response = self._read_command(0x4C, 6)  # 6 bytes for 3x 16-bit values
+            
+            if response and len(response) >= 6:
+                # Unpack 16-bit values
+                red_current = struct.unpack('<H', bytes(response[0:2]))[0]
+                green_current = struct.unpack('<H', bytes(response[2:4]))[0]
+                blue_current = struct.unpack('<H', bytes(response[4:6]))[0]
+                
+                self.summary["Successful"] = True
+                logger.info(f"Current LED values - R:{red_current}, G:{green_current}, B:{blue_current}")
+                return (red_current, green_current, blue_current)
+            else:
+                self.summary["Successful"] = False
+                logger.warning("Failed to get LED current")
+                return None
+        except Exception as e:
+            logger.error(f"Error getting LED current: {e}")
+            self.summary["Successful"] = False
+            return None
+    
+    def set_led_enable(self, red_enable, green_enable, blue_enable):
+        """Enable or disable individual LED channels.
+        
+        Args:
+            red_enable: Enable red LED (True/False)
+            green_enable: Enable green LED (True/False)
+            blue_enable: Enable blue LED (True/False)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        self.summary["Command"] = "Write RGB LED Enable"
+        
+        try:
+            # Pack enable bits
+            enable_value = 0
+            if red_enable:
+                enable_value |= (1 << 0)
+            if green_enable:
+                enable_value |= (1 << 1)
+            if blue_enable:
+                enable_value |= (1 << 2)
+            
+            # Command 0x50 for LED enable control
+            command_bytes = [0x50, enable_value]
+            
+            # Send the command
+            success = self._write_command(command_bytes)
+            self.summary["Successful"] = success
+            
+            logger.info(f"Set LED enable - R:{red_enable}, G:{green_enable}, B:{blue_enable}: "
+                       f"{'Success' if success else 'Failed'}")
+            return success
+        except Exception as e:
+            logger.error(f"Error setting LED enable: {e}")
+            self.summary["Successful"] = False
+            return False

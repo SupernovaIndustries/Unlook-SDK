@@ -975,6 +975,117 @@ class ProjectorClient:
             
             logger.error(f"Error stopping pattern sequence: {error_msg}")
             return None
+    
+    def set_led_current(self, red_current: int, green_current: int, blue_current: int) -> bool:
+        """
+        Set LED current for RGB channels in the DLP projector.
+        
+        Args:
+            red_current: Red LED current (0-1023, where 1023 = 100%)
+            green_current: Green LED current (0-1023)
+            blue_current: Blue LED current (0-1023)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        success, response, _ = self.client.send_message(
+            MessageType.LED_SET_CURRENT,
+            {
+                "red_current": red_current,
+                "green_current": green_current,
+                "blue_current": blue_current
+            }
+        )
+        
+        if success and response:
+            logger.info(f"LED current set - R:{red_current}, G:{green_current}, B:{blue_current}")
+            return True
+        else:
+            error_msg = self._get_error_message(response)
+            logger.error(f"Failed to set LED current: {error_msg}")
+            return False
+    
+    def get_led_current(self) -> Optional[Tuple[int, int, int]]:
+        """
+        Get current LED current values.
+        
+        Returns:
+            Tuple of (red, green, blue) current values (0-1023), or None if error
+        """
+        success, response, _ = self.client.send_message(
+            MessageType.LED_GET_CURRENT,
+            {}
+        )
+        
+        if success and response:
+            payload = response.payload if hasattr(response, 'payload') else response
+            return (
+                payload.get("red_current", 0),
+                payload.get("green_current", 0),
+                payload.get("blue_current", 0)
+            )
+        else:
+            error_msg = self._get_error_message(response)
+            logger.error(f"Failed to get LED current: {error_msg}")
+            return None
+    
+    def set_led_enable(self, red_enable: bool = True, green_enable: bool = True, blue_enable: bool = True) -> bool:
+        """
+        Enable or disable individual LED channels.
+        
+        Args:
+            red_enable: Enable red LED
+            green_enable: Enable green LED
+            blue_enable: Enable blue LED
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        success, response, _ = self.client.send_message(
+            MessageType.LED_SET_ENABLE,
+            {
+                "red_enable": red_enable,
+                "green_enable": green_enable,
+                "blue_enable": blue_enable
+            }
+        )
+        
+        if success and response:
+            logger.info(f"LED enable set - R:{red_enable}, G:{green_enable}, B:{blue_enable}")
+            return True
+        else:
+            error_msg = self._get_error_message(response)
+            logger.error(f"Failed to set LED enable: {error_msg}")
+            return False
+    
+    def set_led_intensity_percent(self, red_percent: float, green_percent: float, blue_percent: float) -> bool:
+        """
+        Set LED intensity as percentage (0-100%).
+        
+        Args:
+            red_percent: Red LED intensity (0-100%)
+            green_percent: Green LED intensity (0-100%)
+            blue_percent: Blue LED intensity (0-100%)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # Convert percentage to 0-1023 range
+        red_current = int((red_percent / 100.0) * 1023)
+        green_current = int((green_percent / 100.0) * 1023)
+        blue_current = int((blue_percent / 100.0) * 1023)
+        
+        return self.set_led_current(red_current, green_current, blue_current)
+    
+    def _get_error_message(self, response) -> str:
+        """Extract error message from response."""
+        if not response:
+            return "No response"
+        if hasattr(response, 'payload'):
+            return response.payload.get("error_message", "Unknown error")
+        elif isinstance(response, dict):
+            return response.get("error_message", "Unknown error")
+        return str(response)
             
     def create_pattern(self, pattern_type: str, **kwargs) -> Dict[str, Any]:
         """

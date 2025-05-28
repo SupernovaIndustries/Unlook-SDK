@@ -185,6 +185,9 @@ class UnlookServer(EventEmitter):
             MessageType.LED_ON: self._handle_led_on,
             MessageType.LED_OFF: self._handle_led_off,
             MessageType.LED_STATUS: self._handle_led_status,
+            MessageType.LED_SET_CURRENT: self._handle_led_set_current,
+            MessageType.LED_GET_CURRENT: self._handle_led_get_current,
+            MessageType.LED_SET_ENABLE: self._handle_led_set_enable,
             MessageType.SYNC_METRICS: self._handle_sync_metrics,
             MessageType.SYNC_ENABLE: self._handle_sync_enable,
 
@@ -2536,6 +2539,98 @@ class UnlookServer(EventEmitter):
             
         result = self.led_controller.get_status()
         return Message.create_reply(message, result)
+    
+    def _handle_led_set_current(self, message: Message) -> Message:
+        """Handle LED_SET_CURRENT messages for DLP projector RGB LED current control."""
+        if not self.projector:
+            return Message.create_error(message, "Projector not available")
+        
+        # Get current values from payload (0-1023 range)
+        red_current = message.payload.get("red_current", 1023)
+        green_current = message.payload.get("green_current", 1023)
+        blue_current = message.payload.get("blue_current", 1023)
+        
+        try:
+            # Set LED current using the DLP controller
+            success = self.projector.set_led_current(red_current, green_current, blue_current)
+            
+            if success:
+                logger.info(f"LED current set - R:{red_current}, G:{green_current}, B:{blue_current}")
+                return Message.create_reply(
+                    message,
+                    {
+                        "success": True,
+                        "red_current": red_current,
+                        "green_current": green_current,
+                        "blue_current": blue_current
+                    }
+                )
+            else:
+                return Message.create_error(message, "Failed to set LED current")
+                
+        except Exception as e:
+            logger.error(f"Error setting LED current: {e}")
+            return Message.create_error(message, str(e))
+    
+    def _handle_led_get_current(self, message: Message) -> Message:
+        """Handle LED_GET_CURRENT messages to get current LED current values."""
+        if not self.projector:
+            return Message.create_error(message, "Projector not available")
+        
+        try:
+            # Get current LED values
+            current_values = self.projector.get_led_current()
+            
+            if current_values:
+                red, green, blue = current_values
+                logger.info(f"Current LED values - R:{red}, G:{green}, B:{blue}")
+                return Message.create_reply(
+                    message,
+                    {
+                        "success": True,
+                        "red_current": red,
+                        "green_current": green,
+                        "blue_current": blue
+                    }
+                )
+            else:
+                return Message.create_error(message, "Failed to get LED current values")
+                
+        except Exception as e:
+            logger.error(f"Error getting LED current: {e}")
+            return Message.create_error(message, str(e))
+    
+    def _handle_led_set_enable(self, message: Message) -> Message:
+        """Handle LED_SET_ENABLE messages to enable/disable individual LED channels."""
+        if not self.projector:
+            return Message.create_error(message, "Projector not available")
+        
+        # Get enable flags from payload
+        red_enable = message.payload.get("red_enable", True)
+        green_enable = message.payload.get("green_enable", True)
+        blue_enable = message.payload.get("blue_enable", True)
+        
+        try:
+            # Set LED enable state
+            success = self.projector.set_led_enable(red_enable, green_enable, blue_enable)
+            
+            if success:
+                logger.info(f"LED enable set - R:{red_enable}, G:{green_enable}, B:{blue_enable}")
+                return Message.create_reply(
+                    message,
+                    {
+                        "success": True,
+                        "red_enable": red_enable,
+                        "green_enable": green_enable,
+                        "blue_enable": blue_enable
+                    }
+                )
+            else:
+                return Message.create_error(message, "Failed to set LED enable state")
+                
+        except Exception as e:
+            logger.error(f"Error setting LED enable: {e}")
+            return Message.create_error(message, str(e))
     
     def _handle_sync_metrics(self, message: Message) -> Message:
         """Handle SYNC_METRICS messages."""

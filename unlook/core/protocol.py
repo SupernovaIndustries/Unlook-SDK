@@ -85,6 +85,9 @@ class MessageType(enum.Enum):
     LED_ON = "led_on"  # Turn LED on
     LED_OFF = "led_off"  # Turn LED off
     LED_STATUS = "led_status"  # Get LED status
+    LED_SET_CURRENT = "led_set_current"  # Set LED current (0-1023)
+    LED_GET_CURRENT = "led_get_current"  # Get LED current values
+    LED_SET_ENABLE = "led_set_enable"  # Enable/disable individual LEDs
     
     # Synchronization metrics
     SYNC_METRICS = "sync_metrics"  # Get synchronization quality metrics
