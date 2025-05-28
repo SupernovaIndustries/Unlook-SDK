@@ -243,14 +243,28 @@ class RaspberryProcessingV2:
         x, y, w, h = roi
         try:
             if isinstance(frame, cv2.UMat):
-                # GPU cropping
-                return frame[y:y+h, x:x+w]
+                # GPU cropping using cv2.UMat compatible method
+                # Create ROI rectangle
+                roi_rect = (x, y, w, h)
+                # Use cv2.UMat's ROI functionality
+                cropped = cv2.UMat(frame, roi_rect)
+                return cropped
             else:
                 # CPU cropping
                 return frame[y:y+h, x:x+w]
         except Exception as e:
             logger.error(f"ROI cropping failed: {e}")
-            return frame
+            # If GPU cropping fails, try CPU fallback
+            try:
+                if isinstance(frame, cv2.UMat):
+                    frame_cpu = frame.get()
+                    cropped_cpu = frame_cpu[y:y+h, x:x+w]
+                    return cv2.UMat(cropped_cpu)
+                else:
+                    return frame[y:y+h, x:x+w]
+            except Exception as fallback_e:
+                logger.error(f"ROI cropping fallback also failed: {fallback_e}")
+                return frame
     
     def _preprocess_gray_code_gpu(self, frame):
         """Preprocess Gray code patterns on GPU."""

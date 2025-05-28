@@ -20,6 +20,10 @@ except ImportError:
         PROJECTOR_PATTERN_SEQUENCE = "projector_pattern_sequence"
         PROJECTOR_PATTERN_SEQUENCE_STEP = "projector_pattern_sequence_step"
         PROJECTOR_PATTERN_SEQUENCE_STOP = "projector_pattern_sequence_stop"
+        LED_SET_INTENSITY = "led_set_intensity"
+        LED_ON = "led_on"
+        LED_OFF = "led_off"
+        LED_STATUS = "led_status"
         LED_SET_CURRENT = "led_set_current"
         LED_GET_CURRENT = "led_get_current"
         LED_SET_ENABLE = "led_set_enable"
@@ -1325,3 +1329,78 @@ class ProjectorClient:
         patterns.append({"pattern_type": "solid_field", "color": "Black"})
         
         return patterns
+
+    # ============== LED CONTROL METHODS ==============
+    
+    def led_set_intensity(self, led1_mA: int, led2_mA: int) -> bool:
+        """
+        Set LED intensity for both LEDs.
+        
+        Args:
+            led1_mA: LED1 intensity in milliamps (0-500mA)
+            led2_mA: LED2 intensity in milliamps (0-500mA)
+            
+        Returns:
+            True if successful
+        """
+        success, response, _ = self.client.send_message(
+            MessageType.LED_SET_INTENSITY,
+            {
+                "led1_mA": led1_mA,
+                "led2_mA": led2_mA
+            }
+        )
+        
+        if success and response:
+            logger.info(f"LED intensity set: LED1={led1_mA}mA, LED2={led2_mA}mA")
+            return True
+        else:
+            logger.error("Failed to set LED intensity")
+            return False
+    
+    def led_on(self) -> bool:
+        """
+        Turn LEDs on with current intensity settings.
+        
+        Returns:
+            True if successful
+        """
+        success, response, _ = self.client.send_message(MessageType.LED_ON, {})
+        
+        if success and response:
+            logger.info("LEDs turned on")
+            return True
+        else:
+            logger.error("Failed to turn LEDs on")
+            return False
+    
+    def led_off(self) -> bool:
+        """
+        Turn LEDs off.
+        
+        Returns:
+            True if successful
+        """
+        success, response, _ = self.client.send_message(MessageType.LED_OFF, {})
+        
+        if success and response:
+            logger.info("LEDs turned off")
+            return True
+        else:
+            logger.error("Failed to turn LEDs off")
+            return False
+    
+    def led_get_status(self) -> dict:
+        """
+        Get LED status.
+        
+        Returns:
+            Dictionary with LED status information
+        """
+        success, response, _ = self.client.send_message(MessageType.LED_STATUS, {})
+        
+        if success and response and hasattr(response, 'payload'):
+            return response.payload
+        else:
+            logger.error("Failed to get LED status")
+            return {}

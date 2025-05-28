@@ -1971,8 +1971,46 @@ class UnlookServer(EventEmitter):
             # Serialize with ULMC format
             if self.protocol_optimizer and self.enable_protocol_v2:
                 try:
-                    # For multi-camera, use combined data
-                    combined_data = json.dumps(payload).encode('utf-8')
+                    # For multi-camera, we need to handle binary data specially
+                    # Create metadata-only payload for JSON serialization
+                    metadata_payload = {
+                        "timestamp": payload["timestamp"],
+                        "num_cameras": payload["num_cameras"],
+                        "format": payload["format"],
+                        "ulmc_version": payload["ulmc_version"]
+                    }
+                    if "resolution" in payload:
+                        metadata_payload["resolution"] = payload["resolution"]
+                    if "crop_region" in payload:
+                        metadata_payload["crop_region"] = payload["crop_region"]
+                    
+                    # Add camera metadata (without binary data)
+                    metadata_payload["cameras"] = {}
+                    for cam_id, cam_data in payload["cameras"].items():
+                        metadata_payload["cameras"][cam_id] = {
+                            "metadata": cam_data["metadata"]
+                        }
+                    
+                    # Serialize metadata as JSON
+                    metadata_json = json.dumps(metadata_payload)
+                    
+                    # Combine metadata and binary data
+                    # Format: [4 bytes: metadata length][metadata JSON][camera1 binary][camera2 binary]...
+                    combined_parts = [
+                        len(metadata_json).to_bytes(4, 'little'),
+                        metadata_json.encode('utf-8')
+                    ]
+                    
+                    # Add binary data for each camera in order
+                    for cam_id in sorted(payload["cameras"].keys()):
+                        binary_data = payload["cameras"][cam_id]["jpeg_data"]
+                        combined_parts.extend([
+                            len(binary_data).to_bytes(4, 'little'),
+                            binary_data
+                        ])
+                    
+                    combined_data = b''.join(combined_parts)
+                    
                     binary_response, compression_stats = self.protocol_optimizer.optimize_message(
                         "multi_camera_response",
                         {"format_type": "ulmc", "cameras": list(cameras.keys())},
@@ -2566,8 +2604,9 @@ class UnlookServer(EventEmitter):
             logger.error("LED controller is None or False")
             return Message.create_error(message, "LED controller not available")
             
-        led1 = message.payload.get("led1", 450)
-        led2 = message.payload.get("led2", 450)
+        # Check for both naming conventions (led1_mA from client, led1 for backwards compatibility)
+        led1 = message.payload.get("led1_mA", message.payload.get("led1", 450))
+        led2 = message.payload.get("led2_mA", message.payload.get("led2", 450))
         
         result = self.led_controller.set_intensity(led1=led1, led2=led2)
         
