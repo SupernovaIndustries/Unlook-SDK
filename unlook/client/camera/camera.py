@@ -222,7 +222,14 @@ def deserialize_message_with_v2_support(data: bytes):
         return deserialize_binary_message(data)
     except Exception as e:
         logger.error(f"Both protocol v1 and v2 deserialization failed in camera client: {e}")
-        raise
+        # As last resort, try to extract raw JPEG data
+        logger.debug("Attempting raw JPEG extraction as final fallback")
+        jpeg_start = data.find(b'\xff\xd8')  # JPEG SOI marker
+        if jpeg_start >= 0:
+            return "camera_frame", {"format": "jpeg", "raw_extraction": True}, data[jpeg_start:]
+        else:
+            # Return unknown format
+            return "camera_capture_response", {"format": "unknown", "error": str(e)}, data
 
 
 class StereoCamera:
@@ -858,10 +865,61 @@ class CameraClient:
             logger.error(error_msg)
             raise RuntimeError(error_msg)
         
+        # Check response type and handle accordingly
+        if response and hasattr(response, 'msg_type'):
+            msg_type_str = response.msg_type.value if hasattr(response.msg_type, 'value') else str(response.msg_type)
+            logger.debug(f"Received capture response type: {msg_type_str}")
+            
+            if msg_type_str == "camera_capture_response":
+                logger.debug("Processing camera_capture_response format")
+                # For camera_capture_response, the binary_data might need special handling
+                # Try to extract the actual image data
+                try:
+                    # First check if it's raw JPEG data
+                    if binary_data.startswith(b'\xff\xd8'):
+                        logger.debug("Binary data starts with JPEG marker, using directly")
+                        image = decode_jpeg_to_image(binary_data)
+                        return image
+                    else:
+                        # Try deserializing to extract the image
+                        logger.debug("Binary data doesn't start with JPEG marker, trying extraction")
+                        msg_type, payload, extracted_binary = deserialize_message_with_v2_support(binary_data)
+                        if extracted_binary and extracted_binary.startswith(b'\xff\xd8'):
+                            image = decode_jpeg_to_image(extracted_binary)
+                            return image
+                        else:
+                            # Look for JPEG markers in the data
+                            jpeg_start = binary_data.find(b'\xff\xd8')
+                            if jpeg_start >= 0:
+                                image = decode_jpeg_to_image(binary_data[jpeg_start:])
+                                return image
+                except Exception as e:
+                    logger.warning(f"Failed to extract from camera_capture_response: {e}, trying standard decode")
+        
         try:
             # Decode image based on format
             if format == CompressionFormat.JPEG:
-                image = decode_jpeg_to_image(binary_data)
+                # Try direct JPEG decode first
+                try:
+                    image = decode_jpeg_to_image(binary_data)
+                except Exception as e:
+                    # If direct decode fails, try to deserialize and extract JPEG
+                    logger.debug(f"Direct JPEG decode failed: {e}, trying alternative extraction")
+                    try:
+                        # The binary_data might contain protocol headers, try to extract actual JPEG
+                        msg_type, payload, extracted_binary = deserialize_message_with_v2_support(binary_data)
+                        if extracted_binary:
+                            image = decode_jpeg_to_image(extracted_binary)
+                        else:
+                            # Look for JPEG markers in the raw data
+                            jpeg_start = binary_data.find(b'\xff\xd8')  # JPEG SOI marker
+                            if jpeg_start >= 0:
+                                image = decode_jpeg_to_image(binary_data[jpeg_start:])
+                            else:
+                                raise e
+                    except Exception as e2:
+                        logger.error(f"All JPEG extraction methods failed: {e2}")
+                        raise e
             elif format == CompressionFormat.PNG:
                 nparr = np.frombuffer(binary_data, np.uint8)
                 image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
@@ -993,7 +1051,7 @@ class CameraClient:
                         logger.warning("No images decoded from ULMC format, falling through")
 
             # DIRECT JPEG HANDLING
-            if msg_type == "camera_frame" and payload.get("direct_image", False):
+            if msg_type == "camera_frame" and (payload.get("direct_image", False) or payload.get("raw_extraction", False)):
                 # It's a single JPEG image, assign it to the first camera
                 if camera_ids:
                     image = decode_jpeg_to_image(binary_data)
@@ -1010,6 +1068,23 @@ class CameraClient:
             if msg_type == "binary_data":
                 logger.info("Processing raw binary data with fallback method")
                 return self._fallback_decode_multi_response(binary_data, camera_ids)
+
+            # CAMERA_CAPTURE_RESPONSE HANDLING
+            if msg_type == "camera_capture_response":
+                logger.info(f"Processing camera_capture_response with format: {payload.get('format', 'unknown')}")
+                
+                # Handle different sub-formats
+                format_type = payload.get("format", "unknown")
+                
+                if format_type == "raw_multi_jpeg":
+                    logger.debug("Processing raw_multi_jpeg format")
+                    return self._fallback_decode_multi_response(binary_data, camera_ids)
+                elif format_type == "unknown":
+                    logger.debug("Processing unknown format, trying fallback")
+                    return self._fallback_decode_multi_response(binary_data, camera_ids)
+                else:
+                    logger.debug(f"Processing format {format_type} with fallback")
+                    return self._fallback_decode_multi_response(binary_data, camera_ids)
 
             # If we're here, we couldn't decode the format
             logger.warning(f"Unrecognized response format: {msg_type}")

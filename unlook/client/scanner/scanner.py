@@ -395,9 +395,16 @@ class UnlookClient(EventEmitter):
 
                     # If we expect a binary response
                     if binary_response:
-                        # Deserialize binary response
+                        # Deserialize binary response with v2 support
                         try:
-                            msg_type, payload, binary_data = deserialize_binary_message(response_data)
+                            # Try to import and use the enhanced deserializer
+                            try:
+                                from ..camera.camera import deserialize_message_with_v2_support
+                                msg_type, payload, binary_data = deserialize_message_with_v2_support(response_data)
+                            except ImportError:
+                                # Fallback to standard deserializer
+                                msg_type, payload, binary_data = deserialize_binary_message(response_data)
+                            
                             # Create a message from the response
                             response = Message(
                                 msg_type=MessageType(msg_type),
