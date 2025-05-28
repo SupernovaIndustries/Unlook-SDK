@@ -767,10 +767,12 @@ class UnlookClient(EventEmitter):
         
         try:
             status = self.get_server_status()
+            optimization_settings = status.get("optimization_settings", {})
+            hardware_status = status.get("hardware_status", {})
             return {
-                "enabled": status.get("preprocessing_enabled", False),
-                "level": status.get("preprocessing_level", "none"),
-                "gpu_available": status.get("gpu_preprocessing_available", False),
+                "enabled": optimization_settings.get("preprocessing_enabled", False),
+                "level": optimization_settings.get("preprocessing_level", "none"),
+                "gpu_available": hardware_status.get("gpu_preprocessing_available", False),
                 "performance_metrics": status.get("preprocessing_metrics", {})
             }
         except Exception as e:
@@ -786,7 +788,8 @@ class UnlookClient(EventEmitter):
         """
         try:
             status = self.get_server_status()
-            return status.get("protocol_v2_enabled", False)
+            optimization_settings = status.get("optimization_settings", {})
+            return optimization_settings.get("protocol_v2_enabled", False)
         except Exception as e:
             logger.warning(f"Could not check protocol v2 status: {e}")
             return False

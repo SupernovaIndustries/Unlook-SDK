@@ -66,22 +66,23 @@ class HardwareCameraSyncV2:
         self.trigger_count = 0
         self.missed_triggers = 0
         
-        # GPIO interface
+        # GPIO interface - TEMPORANEAMENTE DISABILITATO (conflitto con AS1170 su GPIO 27)
         self.pi = None
-        if PIGPIO_AVAILABLE:
-            try:
-                self.pi = pigpio.pi()
-                if self.pi.connected:
-                    logger.info(f"Connected to pigpio daemon for GPIO {trigger_gpio}")
-                    self._setup_gpio()
-                else:
-                    logger.warning("Could not connect to pigpio daemon - hardware sync will use software timing")
-                    self.pi = None
-            except Exception as e:
-                logger.error(f"Error initializing pigpio: {e}")
-                self.pi = None
-        else:
-            logger.warning("pigpio not available, hardware sync disabled")
+        logger.info("Hardware GPIO sync temporaneamente disabilitato - conflitto AS1170 GPIO 27")
+        # if PIGPIO_AVAILABLE:
+        #     try:
+        #         self.pi = pigpio.pi()
+        #         if self.pi.connected:
+        #             logger.info(f"Connected to pigpio daemon for GPIO {trigger_gpio}")
+        #             self._setup_gpio()
+        #         else:
+        #             logger.warning("Could not connect to pigpio daemon - hardware sync will use software timing")
+        #             self.pi = None
+        #     except Exception as e:
+        #         logger.error(f"Error initializing pigpio: {e}")
+        #         self.pi = None
+        # else:
+        #     logger.warning("pigpio not available, hardware sync disabled")
     
     def _setup_gpio(self):
         """Configure GPIO for interrupt-based triggering."""

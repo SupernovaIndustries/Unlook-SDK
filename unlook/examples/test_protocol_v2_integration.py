@@ -113,7 +113,7 @@ def test_protocol_v2_integration():
         if cameras:
             # Test single capture with protocol v2 optimization
             print("   Testing single camera capture...")
-            camera_id = list(cameras.keys())[0]
+            camera_id = cameras[0]['id']  # cameras is a list of dicts
             
             start_time = time.time()
             result = client.camera.capture_image(camera_id)
@@ -136,7 +136,7 @@ def test_protocol_v2_integration():
             # Test multi-camera capture
             if len(cameras) >= 2:
                 print("   Testing multi-camera capture...")
-                camera_ids = list(cameras.keys())[:2]
+                camera_ids = [cam['id'] for cam in cameras[:2]]  # Get first 2 camera IDs
                 
                 start_time = time.time()
                 results = client.camera.capture_synchronized(camera_ids)
@@ -151,7 +151,7 @@ def test_protocol_v2_integration():
         print("\n6️⃣ Testing streaming with protocol v2...")
         
         if cameras:
-            camera_id = list(cameras.keys())[0]
+            camera_id = cameras[0]['id']  # cameras is a list of dicts
             
             # Stream callback to count frames and check optimization
             frame_count = 0
