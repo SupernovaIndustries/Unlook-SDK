@@ -19,13 +19,7 @@ from .core.discovery import ScannerInfo, DiscoveryService
 import builtins
 import logging
 
-# Simple API - For most users (NEW!)
-try:
-    from .simple import UnlookSimple, quick_capture, quick_scan
-except ImportError:
-    UnlookSimple = None
-    quick_capture = None
-    quick_scan = None
+# Simple API removed - use UnlookClient directly
 
 # Client API - For advanced users
 _client_imported = False
@@ -49,7 +43,7 @@ except (ImportError, NameError) as e:
 
 # High-level 3D scanning API
 UnlookScanner = None
-if _client_imported:
+if _client_imported and not _SERVER_ONLY_MODE:
     try:
         from .client.scanner import UnlookScanner
     except ImportError:
@@ -102,17 +96,12 @@ __all__ = [
     '__version__',
     '__author__',
 
-    # Simple API (RECOMMENDED!)
-    'UnlookSimple',
-    'quick_capture',
-    'quick_scan',
-
     # Core types
     'EventType',
     'ScannerInfo',
     'DiscoveryService',
 
-    # Advanced API
+    # Main API
     'UnlookClient',
     'UnlookServer',
     'UnlookScanner',
@@ -126,29 +115,33 @@ def hello():
     """Print quick start guide."""
     print("Welcome to UnLook - The Arduino of Computer Vision!")
     print("\nQuick start:")
-    print("  from unlook import quick_capture, quick_scan")
-    print("  quick_capture('photo.jpg')  # Capture image")
-    print("  quick_scan('object.ply')    # 3D scan")
-    print("\nSimple usage:")
-    print("  from unlook import UnlookSimple")
-    print("  scanner = UnlookSimple()")
-    print("  scanner.connect()")
-    print("  image = scanner.capture()")
+    print("  from unlook.client.scanner.scanner import UnlookClient")
+    print("  client = UnlookClient(auto_discover=True)")
+    print("  client.connect(client.get_discovered_scanners()[0])")
+    print("  image = client.camera.capture_image('cam0')")
     print("\nExamples:")
     print("  python -m unlook.examples.basic.hello_unlook")
+    print("  python -m unlook.examples.test_protocol_v2_integration")
     print("\nDocumentation: https://docs.unlook.io")
 
 # Auto-connect for interactive use
 def connect():
     """Quick connect for interactive Python sessions."""
-    if UnlookSimple:
-        scanner = UnlookSimple(debug=True)
-        if scanner.connect():
-            print("Connected! Use 'scanner' variable.")
-            return scanner
-        else:
-            print("No scanner found. Check connection.")
+    if UnlookClient:
+        try:
+            client = UnlookClient(auto_discover=True)
+            import time
+            time.sleep(2)  # Wait for discovery
+            scanners = client.get_discovered_scanners()
+            if scanners and client.connect(scanners[0]):
+                print("Connected! Use 'client' variable.")
+                return client
+            else:
+                print("No scanner found. Check connection.")
+                return None
+        except Exception as e:
+            print(f"Connection failed: {e}")
             return None
     else:
-        print("Simple API not available. Check installation.")
+        print("UnlookClient not available. Check installation.")
         return None
