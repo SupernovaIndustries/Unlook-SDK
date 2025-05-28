@@ -652,3 +652,130 @@ class UnlookClient(EventEmitter):
             callback: Function to remove
         """
         self.off(event, callback)
+
+    # ============== NEW FEATURES SUPPORT ==============
+    
+    def get_sync_metrics(self) -> Dict[str, Any]:
+        """
+        Get synchronization quality metrics from the server.
+        
+        Returns:
+            Dictionary with sync metrics like precision, frame consistency, etc.
+        """
+        if not self.connected:
+            logger.error("Not connected to scanner")
+            return {}
+        
+        try:
+            success, response, _ = self.send_message(MessageType.SYNC_METRICS, {})
+            if success and isinstance(response, dict):
+                return response
+            else:
+                logger.warning("Failed to get sync metrics or invalid response")
+                return {}
+        except Exception as e:
+            logger.error(f"Error getting sync metrics: {e}")
+            return {}
+    
+    def enable_sync(self, enable: bool = True, fps: float = 30.0) -> bool:
+        """
+        Enable/disable hardware synchronization.
+        
+        Args:
+            enable: Whether to enable sync
+            fps: Target FPS for sync
+            
+        Returns:
+            True if successful
+        """
+        if not self.connected:
+            logger.error("Not connected to scanner")
+            return False
+        
+        try:
+            success, response, _ = self.send_message(
+                MessageType.SYNC_ENABLE, 
+                {"enable": enable, "fps": fps}
+            )
+            return success and response.get("success", False)
+        except Exception as e:
+            logger.error(f"Error enabling sync: {e}")
+            return False
+    
+    def get_server_status(self) -> Dict[str, Any]:
+        """
+        Get detailed server status including optimization settings.
+        
+        Returns:
+            Dictionary with server configuration and status
+        """
+        if not self.connected:
+            logger.error("Not connected to scanner")
+            return {}
+        
+        try:
+            success, response, _ = self.send_message(MessageType.SYSTEM_STATUS, {})
+            if success and isinstance(response, dict):
+                return response
+            else:
+                return {}
+        except Exception as e:
+            logger.error(f"Error getting server status: {e}")
+            return {}
+    
+    def get_compression_stats(self) -> Dict[str, Any]:
+        """
+        Get protocol v2 compression statistics from the server.
+        
+        Returns:
+            Dictionary with compression performance stats
+        """
+        if not self.connected:
+            logger.error("Not connected to scanner")
+            return {}
+        
+        # This would need a new message type in protocol.py
+        # For now, include in system status
+        try:
+            status = self.get_server_status()
+            return status.get("compression_stats", {})
+        except Exception as e:
+            logger.error(f"Error getting compression stats: {e}")
+            return {}
+    
+    def get_preprocessing_info(self) -> Dict[str, Any]:
+        """
+        Get information about server preprocessing capabilities.
+        
+        Returns:
+            Dictionary with preprocessing configuration and performance
+        """
+        if not self.connected:
+            logger.error("Not connected to scanner")
+            return {}
+        
+        try:
+            status = self.get_server_status()
+            return {
+                "enabled": status.get("preprocessing_enabled", False),
+                "level": status.get("preprocessing_level", "none"),
+                "gpu_available": status.get("gpu_preprocessing_available", False),
+                "performance_metrics": status.get("preprocessing_metrics", {})
+            }
+        except Exception as e:
+            logger.error(f"Error getting preprocessing info: {e}")
+            return {}
+    
+    def is_protocol_v2_enabled(self) -> bool:
+        """
+        Check if the server has protocol v2 optimization enabled.
+        
+        Returns:
+            True if protocol v2 is active
+        """
+        try:
+            status = self.get_server_status()
+            return status.get("protocol_v2_enabled", False)
+        except Exception as e:
+            logger.warning(f"Could not check protocol v2 status: {e}")
+            return False

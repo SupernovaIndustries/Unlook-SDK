@@ -52,6 +52,13 @@ try:
     from ...core.utils import decode_jpeg_to_image, deserialize_binary_message
     from ...core.events import EventType
     from .camera_config import CameraConfig, ColorMode, CompressionFormat, ImageQualityPreset
+    
+    # Try to import protocol v2
+    try:
+        from ...core.protocol_v2 import ProtocolOptimizer
+        PROTOCOL_V2_AVAILABLE = True
+    except ImportError:
+        PROTOCOL_V2_AVAILABLE = False
 except ImportError:
     # Define fallback classes for when the core modules are not available
     class MessageType:
@@ -82,6 +89,9 @@ except ImportError:
     class CameraConfig:
         def __init__(self):
             pass
+    
+    # Fallback protocol v2 support
+    PROTOCOL_V2_AVAILABLE = False
     
     # Simple fallback for deserialize_binary_message
     def deserialize_binary_message(data):
@@ -180,6 +190,39 @@ except ImportError:
     DEFAULT_JPEG_QUALITY = 85
 
 logger = get_logger(__name__)
+
+
+def deserialize_message_with_v2_support(data: bytes):
+    """
+    Deserialize message with protocol v2 support and fallback to v1.
+    
+    Returns:
+        Tuple of (msg_type, metadata, binary_data)
+    """
+    # Try protocol v2 first (check for v2 header marker)
+    if PROTOCOL_V2_AVAILABLE and len(data) > 8:
+        try:
+            # Check if it's a v2 message by looking for header structure
+            import struct
+            header_size = struct.unpack('<I', data[:4])[0]
+            if 100 < header_size < 10000:  # Reasonable header size range
+                # Try to deserialize as v2
+                optimizer = ProtocolOptimizer()
+                msg_type, metadata, binary_data = optimizer.deserialize_optimized(data)
+                
+                # Check if it looks like valid v2 data
+                if isinstance(metadata, dict) and 'optimization' in metadata:
+                    logger.debug("Successfully deserialized protocol v2 message in camera client")
+                    return msg_type, metadata, binary_data
+        except Exception as e:
+            logger.debug(f"Protocol v2 deserialization failed in camera client, falling back to v1: {e}")
+    
+    # Fallback to protocol v1
+    try:
+        return deserialize_binary_message(data)
+    except Exception as e:
+        logger.error(f"Both protocol v1 and v2 deserialization failed in camera client: {e}")
+        raise
 
 
 class StereoCamera:
@@ -905,8 +948,8 @@ class CameraClient:
             # Debug log
             logger.debug(f"Received {len(binary_data)} bytes of binary data")
 
-            # Deserialize using the improved function
-            msg_type, payload, binary_data = deserialize_binary_message(binary_data)
+            # Deserialize using the improved function with protocol v2 support
+            msg_type, payload, binary_data = deserialize_message_with_v2_support(binary_data)
 
             # Log format information
             logger.debug(f"Detected format: {msg_type}, payload: {payload.get('format', 'N/A')}")

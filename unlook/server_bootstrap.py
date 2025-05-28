@@ -90,6 +90,10 @@ def main():
                       help="Enable hardware camera synchronization")
     parser.add_argument("--sync-fps", type=float, default=30.0,
                       help="FPS for software sync trigger (default: 30)")
+    parser.add_argument("--enable-protocol-v2", action="store_true", default=True,
+                      help="Enable protocol v2 optimizations (default: enabled)")
+    parser.add_argument("--disable-protocol-v2", action="store_true",
+                      help="Disable protocol v2 optimizations")
     args = parser.parse_args()
     
     # Set up logging
@@ -140,6 +144,11 @@ def main():
             server_config['sync_fps'] = args.sync_fps
             logger.info(f"Hardware sync enabled at {args.sync_fps} FPS")
         
+        # Handle protocol v2 setting
+        enable_protocol_v2 = args.enable_protocol_v2 and not args.disable_protocol_v2
+        server_config['enable_protocol_v2'] = enable_protocol_v2
+        logger.info(f"Protocol v2 optimization: {'enabled' if enable_protocol_v2 else 'disabled'}")
+        
         # Display server config for debugging
         logger.info(f"Server name: {server_config.get('name', 'UnLookScanner')}")
         logger.info(f"Control port: {server_config.get('control_port', 5555)}")
@@ -157,7 +166,8 @@ def main():
             enable_preprocessing=server_config.get('enable_pattern_preprocessing', False),
             preprocessing_level=server_config.get('preprocessing_level', 'basic'),
             enable_sync=server_config.get('enable_sync', False),
-            sync_fps=server_config.get('sync_fps', 30.0)
+            sync_fps=server_config.get('sync_fps', 30.0),
+            enable_protocol_v2=server_config.get('enable_protocol_v2', True)
         )
 
         logger.info("Server started successfully")

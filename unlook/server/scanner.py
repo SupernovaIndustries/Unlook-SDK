@@ -23,6 +23,7 @@ from ..core import (
     generate_uuid, get_machine_info,
     encode_image_to_jpeg, serialize_binary_message
 )
+from ..core.protocol_v2 import ProtocolOptimizer
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,8 @@ class UnlookServer(EventEmitter):
             enable_preprocessing: bool = False,
             preprocessing_level: str = "basic",
             enable_sync: bool = False,
-            sync_fps: float = 30.0
+            sync_fps: float = 30.0,
+            enable_protocol_v2: bool = True
     ):
         """
         Inizializza il server UnLook.
@@ -78,6 +80,7 @@ class UnlookServer(EventEmitter):
         self.preprocessing_level = preprocessing_level
         self.enable_sync = enable_sync
         self.sync_fps = sync_fps
+        self.enable_protocol_v2 = enable_protocol_v2
 
         # Inizializza contesto ZMQ
         self.zmq_context = zmq.Context()
@@ -135,6 +138,9 @@ class UnlookServer(EventEmitter):
 
         # Thread di controllo
         self.control_thread = None
+        
+        # Server startup time for uptime calculation
+        self._start_time = time.time()
 
         # Callback per gestione messaggi personalizzati
         self.message_handlers: Dict[MessageType, Callable] = self._init_message_handlers()
@@ -190,6 +196,7 @@ class UnlookServer(EventEmitter):
             MessageType.LED_SET_ENABLE: self._handle_led_set_enable,
             MessageType.SYNC_METRICS: self._handle_sync_metrics,
             MessageType.SYNC_ENABLE: self._handle_sync_enable,
+            MessageType.SYSTEM_STATUS: self._handle_system_status,
 
             # Altri handlers...
         }
@@ -656,7 +663,7 @@ class UnlookServer(EventEmitter):
                             metadata["pattern_info"] = pattern_info
 
                         # Crea messaggio binario con ottimizzazione se disponibile
-                        if self.protocol_optimizer and self.enable_preprocessing:
+                        if self.protocol_optimizer and self.enable_protocol_v2:
                             try:
                                 binary_message, compression_stats = self.protocol_optimizer.optimize_message(
                                     "direct_frame",
@@ -1801,11 +1808,30 @@ class UnlookServer(EventEmitter):
                 metadata["crop_region"] = crop_region
 
             # Create a special message of string type (not enum) for the response
-            binary_response = serialize_binary_message(
-                "camera_capture_response",
-                metadata,
-                binary_data
-            )
+            if self.protocol_optimizer and self.enable_protocol_v2:
+                try:
+                    binary_response, compression_stats = self.protocol_optimizer.optimize_message(
+                        "camera_capture_response",
+                        metadata,
+                        binary_data,
+                        camera_id
+                    )
+                    if compression_stats:
+                        logger.debug(f"Capture response compression: {compression_stats.compression_ratio:.2f}x")
+                except Exception as e:
+                    logger.error(f"Capture response optimization failed: {e}")
+                    # Fallback to standard serialization
+                    binary_response = serialize_binary_message(
+                        "camera_capture_response",
+                        metadata,
+                        binary_data
+                    )
+            else:
+                binary_response = serialize_binary_message(
+                    "camera_capture_response",
+                    metadata,
+                    binary_data
+                )
 
             # Send binary response directly
             self.control_socket.send(binary_response)
@@ -1943,11 +1969,32 @@ class UnlookServer(EventEmitter):
                 payload["crop_region"] = crop_region
 
             # Serialize with ULMC format
-            binary_response = serialize_binary_message(
-                "multi_camera_response",
-                payload,
-                format_type="ulmc"
-            )
+            if self.protocol_optimizer and self.enable_protocol_v2:
+                try:
+                    # For multi-camera, use combined data
+                    combined_data = json.dumps(payload).encode('utf-8')
+                    binary_response, compression_stats = self.protocol_optimizer.optimize_message(
+                        "multi_camera_response",
+                        {"format_type": "ulmc", "cameras": list(cameras.keys())},
+                        combined_data,
+                        "multi_camera"
+                    )
+                    if compression_stats:
+                        logger.debug(f"Multi-camera response compression: {compression_stats.compression_ratio:.2f}x")
+                except Exception as e:
+                    logger.error(f"Multi-camera response optimization failed: {e}")
+                    # Fallback to standard serialization
+                    binary_response = serialize_binary_message(
+                        "multi_camera_response",
+                        payload,
+                        format_type="ulmc"
+                    )
+            else:
+                binary_response = serialize_binary_message(
+                    "multi_camera_response",
+                    payload,
+                    format_type="ulmc"
+                )
 
             # Send response
             self.control_socket.send(binary_response)
@@ -2218,12 +2265,33 @@ class UnlookServer(EventEmitter):
                             "fps": fps
                         }
 
-                        # Create binary message
-                        binary_message = serialize_binary_message(
-                            "camera_frame",
-                            metadata,
-                            jpeg_data
-                        )
+                        # Create binary message with optimization if available
+                        if self.protocol_optimizer and self.enable_protocol_v2:
+                            try:
+                                binary_message, compression_stats = self.protocol_optimizer.optimize_message(
+                                    "camera_frame",
+                                    metadata,
+                                    jpeg_data,
+                                    camera_id
+                                )
+                                if compression_stats:
+                                    logger.debug(f"Stream compression ratio: {compression_stats.compression_ratio:.2f}x, "
+                                               f"time: {compression_stats.compression_time_ms:.1f}ms")
+                            except Exception as e:
+                                logger.error(f"Stream protocol optimization failed: {e}")
+                                # Fallback to standard serialization
+                                binary_message = serialize_binary_message(
+                                    "camera_frame",
+                                    metadata,
+                                    jpeg_data
+                                )
+                        else:
+                            # Standard serialization
+                            binary_message = serialize_binary_message(
+                                "camera_frame",
+                                metadata,
+                                jpeg_data
+                            )
 
                         # Publish frame
                         self.stream_socket.send(binary_message)
@@ -2704,3 +2772,71 @@ class UnlookServer(EventEmitter):
                 })
         except Exception as e:
             return Message.create_error(message, f"Failed to configure synchronization: {str(e)}")
+
+    def _handle_system_status(self, message: Message) -> Message:
+        """Handle SYSTEM_STATUS requests."""
+        try:
+            # Collect comprehensive system status
+            status = {
+                'server_info': {
+                    'name': self.name,
+                    'uuid': self.uuid,
+                    'running': self.running,
+                    'version': '2.0',
+                    'uptime': time.time() - getattr(self, '_start_time', time.time())
+                },
+                'network': {
+                    'control_port': self.control_port,
+                    'stream_port': self.stream_port,
+                    'direct_stream_port': self.direct_stream_port,
+                    'clients_connected': len(self.clients)
+                },
+                'optimization_settings': {
+                    'preprocessing_enabled': self.enable_preprocessing,
+                    'preprocessing_level': self.preprocessing_level,
+                    'sync_enabled': self.enable_sync,
+                    'sync_fps': self.sync_fps,
+                    'protocol_v2_enabled': self.enable_protocol_v2
+                },
+                'hardware_status': {
+                    'cameras_available': len(self.camera_manager.cameras) if self.camera_manager else 0,
+                    'projector_available': self.projector is not None,
+                    'gpu_preprocessing_available': self.gpu_preprocessor is not None,
+                    'led_controller_available': self.led_controller is not None
+                },
+                'performance_metrics': {}
+            }
+            
+            # Add sync metrics if available
+            if hasattr(self, 'camera_manager') and self.camera_manager:
+                try:
+                    if hasattr(self.camera_manager, 'get_sync_metrics'):
+                        sync_metrics = self.camera_manager.get_sync_metrics()
+                        status['sync_metrics'] = sync_metrics
+                except Exception as e:
+                    logger.debug(f"Could not get sync metrics: {e}")
+            
+            # Add compression stats if protocol optimizer is available
+            if self.protocol_optimizer:
+                try:
+                    compression_stats = self.protocol_optimizer.get_compression_stats()
+                    status['compression_stats'] = compression_stats
+                    status['performance_metrics']['protocol_v2'] = compression_stats
+                except Exception as e:
+                    logger.debug(f"Could not get compression stats: {e}")
+            
+            # Add preprocessing metrics if available
+            if self.gpu_preprocessor:
+                try:
+                    # Would need to implement get_performance_metrics in gpu_preprocessor
+                    status['performance_metrics']['preprocessing'] = {
+                        'level': self.preprocessing_level,
+                        'gpu_acceleration': True
+                    }
+                except Exception as e:
+                    logger.debug(f"Could not get preprocessing metrics: {e}")
+            
+            return Message.create_reply(message, status)
+            
+        except Exception as e:
+            return Message.create_error(message, f"Failed to get system status: {str(e)}")

@@ -20,6 +20,9 @@ except ImportError:
         PROJECTOR_PATTERN_SEQUENCE = "projector_pattern_sequence"
         PROJECTOR_PATTERN_SEQUENCE_STEP = "projector_pattern_sequence_step"
         PROJECTOR_PATTERN_SEQUENCE_STOP = "projector_pattern_sequence_stop"
+        LED_SET_CURRENT = "led_set_current"
+        LED_GET_CURRENT = "led_get_current"
+        LED_SET_ENABLE = "led_set_enable"
     
     class EventType:
         PROJECTOR_PATTERN_CHANGED = "projector_pattern_changed"
