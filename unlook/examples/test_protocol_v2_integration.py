@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 """
 Test completo per l'integrazione Protocol V2 e nuove features.
@@ -106,7 +107,7 @@ def test_protocol_v2_integration():
         print("\n5️⃣ Testing camera with protocol v2...")
         
         # Get camera list
-        cameras = client.camera.get_camera_list()
+        cameras = client.camera.get_cameras()
         print(f"   Available cameras: {len(cameras) if cameras else 0}")
         
         if cameras:

@@ -668,8 +668,14 @@ class UnlookClient(EventEmitter):
         
         try:
             success, response, _ = self.send_message(MessageType.SYNC_METRICS, {})
-            if success and isinstance(response, dict):
-                return response
+            if success and response:
+                if isinstance(response, dict):
+                    return response
+                elif hasattr(response, 'payload'):
+                    return response.payload
+                else:
+                    logger.warning("Failed to get sync metrics or invalid response")
+                    return {}
             else:
                 logger.warning("Failed to get sync metrics or invalid response")
                 return {}
@@ -697,7 +703,7 @@ class UnlookClient(EventEmitter):
                 MessageType.SYNC_ENABLE, 
                 {"enable": enable, "fps": fps}
             )
-            return success and response.get("success", False)
+            return success and response and response.payload.get("success", False)
         except Exception as e:
             logger.error(f"Error enabling sync: {e}")
             return False
@@ -715,8 +721,13 @@ class UnlookClient(EventEmitter):
         
         try:
             success, response, _ = self.send_message(MessageType.SYSTEM_STATUS, {})
-            if success and isinstance(response, dict):
-                return response
+            if success and response:
+                if isinstance(response, dict):
+                    return response
+                elif hasattr(response, 'payload'):
+                    return response.payload
+                else:
+                    return {}
             else:
                 return {}
         except Exception as e:

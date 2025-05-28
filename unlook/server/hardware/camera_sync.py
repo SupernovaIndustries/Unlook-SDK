@@ -30,6 +30,11 @@ class SyncMetrics:
     jitter_us: float  # Standard deviation of latency
     missed_triggers: int  # Number of missed sync triggers
     timestamp: float  # When metrics were calculated
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        from dataclasses import asdict
+        return asdict(self)
 
 
 class HardwareCameraSyncV2:
@@ -70,7 +75,7 @@ class HardwareCameraSyncV2:
                     logger.info(f"Connected to pigpio daemon for GPIO {trigger_gpio}")
                     self._setup_gpio()
                 else:
-                    logger.error("Could not connect to pigpio daemon")
+                    logger.warning("Could not connect to pigpio daemon - hardware sync will use software timing")
                     self.pi = None
             except Exception as e:
                 logger.error(f"Error initializing pigpio: {e}")

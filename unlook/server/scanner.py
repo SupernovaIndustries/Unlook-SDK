@@ -2812,7 +2812,18 @@ class UnlookServer(EventEmitter):
                 try:
                     if hasattr(self.camera_manager, 'get_sync_metrics'):
                         sync_metrics = self.camera_manager.get_sync_metrics()
-                        status['sync_metrics'] = sync_metrics
+                        if sync_metrics and hasattr(sync_metrics, 'to_dict'):
+                            status['sync_metrics'] = sync_metrics.to_dict()
+                        elif sync_metrics:
+                            # Fallback for non-dataclass sync metrics
+                            status['sync_metrics'] = {
+                                'sync_precision_us': getattr(sync_metrics, 'sync_precision_us', 0),
+                                'frame_consistency': getattr(sync_metrics, 'frame_consistency', 0),
+                                'average_latency_us': getattr(sync_metrics, 'average_latency_us', 0),
+                                'jitter_us': getattr(sync_metrics, 'jitter_us', 0),
+                                'missed_triggers': getattr(sync_metrics, 'missed_triggers', 0),
+                                'timestamp': getattr(sync_metrics, 'timestamp', time.time())
+                            }
                 except Exception as e:
                     logger.debug(f"Could not get sync metrics: {e}")
             
