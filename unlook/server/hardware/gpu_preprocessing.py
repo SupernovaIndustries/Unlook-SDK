@@ -489,7 +489,8 @@ class RaspberryProcessingV2:
                 y_end = min(height, y + h + margin)
                 
                 # Create mask on GPU
-                mask = cv2.UMat.zeros((height, width), cv2.CV_8UC1)
+                mask_cpu = np.zeros((height, width), dtype=np.uint8)
+                mask = cv2.UMat(mask_cpu)
                 # Fill ROI area with white (255)
                 cv2.rectangle(mask, (x_start, y_start), (x_end, y_end), 255, -1)
                 
