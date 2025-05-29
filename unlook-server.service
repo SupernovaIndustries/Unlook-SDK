@@ -9,7 +9,7 @@ Type=simple
 User=pi
 Group=pi
 WorkingDirectory=/home/pi/Unlook-SDK
-ExecStart=/home/pi/Unlook-SDK/.venv/bin/python3 -m unlook.server_bootstrap --daemon --log-file=/var/log/unlook/server.log
+ExecStart=/home/pi/Unlook-SDK/.venv/bin/python3 -m unlook.server_bootstrap --daemon --log-file=/var/log/unlook/server.log --enable-protocol-v2 --enable-pattern-preprocessing --preprocessing-level advanced --enable-sync --sync-fps 30
 Restart=on-failure
 RestartSec=5s
 # Give the server up to 60 seconds to start

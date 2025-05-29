@@ -71,13 +71,16 @@ sleep 3
 
 # Start UnLook server with full optimizations
 echo "🔥 Starting UnLook server with optimizations:"
+echo "   - Protocol V2: ENABLED (bandwidth optimization)"
 echo "   - Pattern preprocessing: ENABLED (advanced level)"
 echo "   - Hardware sync: ENABLED (30 FPS)"
 echo "   - GPU acceleration: ENABLED"
-echo "   - Protocol optimization: ENABLED"
+echo "   - Delta encoding: ENABLED"
+echo "   - Adaptive compression: ENABLED"
 echo ""
 
 python unlook/server_bootstrap.py \
+    --enable-protocol-v2 \
     --enable-pattern-preprocessing \
     --preprocessing-level advanced \
     --enable-sync \
