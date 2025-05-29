@@ -157,7 +157,7 @@ class RaspberryProcessingV2:
                 result['preprocessing_applied'].append('edge_preserving_filter')
             
             # 4. ROI detection and cropping
-            if self.config.roi_detection:
+            if False:  # Temporarily disabled - ROI detection not working properly
                 roi = self._detect_roi_gpu(gpu_frame, camera_id)
                 if roi:
                     gpu_frame = self._crop_roi_gpu(gpu_frame, roi)
