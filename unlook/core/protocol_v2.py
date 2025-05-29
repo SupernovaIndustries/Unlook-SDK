@@ -390,77 +390,17 @@ class ProtocolOptimizer:
         try:
             logger.info(f"_deserialize_multi_camera_data called with data length: {len(data)}, metadata: {metadata}")
             
-            # Check if it's the server's combined format
-            if metadata.get('format_type') == 'ulmc' or 'cameras' in metadata:
-                # Server sends: [4 bytes: metadata length][metadata JSON][camera1 binary][camera2 binary]...
-                logger.debug("Deserializing ULMC combined format")
-                
-                # Read metadata length
-                if len(data) < 4:
-                    logger.error("Data too short for metadata length")
-                    return {}
-                    
-                metadata_len = int.from_bytes(data[:4], 'little')
-                if len(data) < 4 + metadata_len:
-                    logger.error(f"Data too short for metadata: need {4 + metadata_len}, have {len(data)}")
-                    return {}
-                
-                # Read metadata JSON
-                try:
-                    metadata_json = data[4:4+metadata_len].decode('utf-8')
-                    parsed_metadata = json.loads(metadata_json)
-                    logger.debug(f"Parsed metadata: {parsed_metadata}")
-                except Exception as e:
-                    logger.error(f"Failed to parse metadata JSON: {e}")
-                    return {}
-                
-                # Read camera data
-                camera_images = {}
-                offset = 4 + metadata_len
-                
-                # Get camera order from metadata
-                camera_ids = sorted(parsed_metadata.get('cameras', {}).keys())
-                logger.debug(f"Camera IDs from metadata: {camera_ids}")
-                
-                for camera_id in camera_ids:
-                    if offset + 4 > len(data):
-                        logger.error(f"Data too short for camera {camera_id} size")
-                        break
-                        
-                    # Read camera data size
-                    cam_data_size = int.from_bytes(data[offset:offset+4], 'little')
-                    offset += 4
-                    
-                    if offset + cam_data_size > len(data):
-                        logger.error(f"Data too short for camera {camera_id} data: need {cam_data_size}, have {len(data) - offset}")
-                        break
-                    
-                    # Extract camera data
-                    camera_data = data[offset:offset+cam_data_size]
-                    offset += cam_data_size
-                    
-                    # Check if compressed
-                    compression_level = metadata.get('compression_level', 0)
-                    if compression_level > 0:
-                        try:
-                            camera_data = zlib.decompress(camera_data)
-                        except Exception as e:
-                            logger.debug(f"Camera data not compressed or decompression failed: {e}")
-                    
-                    camera_images[camera_id] = camera_data
-                    logger.debug(f"Extracted camera {camera_id}: {len(camera_data)} bytes")
-                
-                return camera_images
-                
-            # Original format handling
+            # The new format: metadata contains camera offsets/sizes, data contains raw images
             cameras_info = metadata.get('cameras', {})
             camera_images = {}
-            logger.info(f"Original format - cameras_info: {cameras_info}")
+            logger.info(f"Extracting {len(cameras_info)} cameras from binary data")
             
             for camera_id, camera_meta in cameras_info.items():
                 offset = camera_meta.get('offset', 0)
                 size = camera_meta.get('size', 0)
                 compression_level = camera_meta.get('compression_level', 0)
+                
+                logger.debug(f"Camera {camera_id}: offset={offset}, size={size}, compression={compression_level}")
                 
                 if offset + size <= len(data):
                     # Extract camera data
@@ -470,13 +410,16 @@ class ProtocolOptimizer:
                     if compression_level > 0:
                         try:
                             camera_data = zlib.decompress(camera_data)
+                            logger.debug(f"Decompressed camera {camera_id} data")
                         except Exception as e:
-                            logger.warning(f"Failed to decompress camera {camera_id} data: {e}")
+                            logger.debug(f"Camera {camera_id} data not compressed or decompression failed: {e}")
                     
                     camera_images[camera_id] = camera_data
+                    logger.info(f"Extracted camera {camera_id}: {len(camera_data)} bytes")
                 else:
                     logger.error(f"Invalid offset/size for camera {camera_id}: offset={offset}, size={size}, data_len={len(data)}")
             
+            logger.info(f"Successfully extracted {len(camera_images)} camera images")
             return camera_images
             
         except Exception as e:
