@@ -1017,6 +1017,11 @@ class CameraClient:
 
             # Log format information
             logger.debug(f"Detected format: {msg_type}, payload: {payload.get('format', 'N/A')}")
+            logger.info(f"Multi-camera capture - msg_type: {msg_type}")
+            logger.info(f"Multi-camera capture - payload keys: {list(payload.keys()) if payload else 'None'}")
+            logger.info(f"Multi-camera capture - binary_data type: {type(binary_data)}")
+            if isinstance(binary_data, dict):
+                logger.info(f"Multi-camera capture - binary_data keys: {list(binary_data.keys())}")
 
             # PROTOCOL V2 MULTI-CAMERA HANDLING
             if (msg_type == "multi_camera_response" and 

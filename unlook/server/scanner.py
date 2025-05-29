@@ -1941,11 +1941,15 @@ class UnlookServer(EventEmitter):
         try:
             # Open all requested cameras if they're not already open
             for camera_id in camera_ids:
+                logger.info(f"Attempting to open camera: {camera_id}")
                 if not self.camera_manager.open_camera(camera_id):
+                    logger.error(f"Failed to open camera {camera_id}")
                     return Message.create_error(
                         message,
                         f"Error opening camera {camera_id}"
                     )
+                else:
+                    logger.info(f"Successfully opened camera: {camera_id}")
 
             # Get capture parameters
             jpeg_quality = message.payload.get("jpeg_quality", self.jpeg_quality)
@@ -1975,15 +1979,19 @@ class UnlookServer(EventEmitter):
 
             # Synchronized capture
             cameras = {}
+            logger.info(f"Starting synchronized capture for {len(camera_ids)} cameras: {camera_ids}")
 
             for camera_id in camera_ids:
                 # Capture image
+                logger.info(f"Capturing image from camera: {camera_id}")
                 image = self.camera_manager.capture_image(camera_id)
                 if image is None:
+                    logger.error(f"Failed to capture image from camera {camera_id}")
                     return Message.create_error(
                         message,
                         f"Error capturing image from camera {camera_id}"
                     )
+                logger.info(f"Successfully captured image from {camera_id}: shape={image.shape}")
 
                 # Handle different compression formats
                 binary_data = None
@@ -2033,6 +2041,7 @@ class UnlookServer(EventEmitter):
                     "jpeg_data": binary_data,  # May not be JPEG, but we keep the field name for backwards compatibility
                     "metadata": camera_metadata
                 }
+                logger.info(f"Added camera {camera_id} to response: {len(binary_data)} bytes, format={format_name}")
 
             # Create complete payload
             payload = {
@@ -2042,6 +2051,7 @@ class UnlookServer(EventEmitter):
                 "format": compression_format,  # Global format for all cameras
                 "ulmc_version": "2.0"  # Advanced format with multi-format support
             }
+            logger.info(f"Created multi-camera payload with {len(cameras)} cameras: {list(cameras.keys())}")
             
             # Add resolution if configured for all cameras
             if resolution:
@@ -2053,6 +2063,7 @@ class UnlookServer(EventEmitter):
 
             # Serialize with ULMC format
             if self.protocol_optimizer and self.enable_protocol_v2:
+                logger.info(f"Using Protocol V2 for multi-camera response with {len(cameras)} cameras")
                 try:
                     # For multi-camera, we need to handle binary data specially
                     # Create metadata-only payload for JSON serialization
@@ -2074,31 +2085,16 @@ class UnlookServer(EventEmitter):
                             "metadata": cam_data["metadata"]
                         }
                     
-                    # Serialize metadata as JSON
-                    metadata_json = json.dumps(metadata_payload)
+                    # Use the multi-camera specific method
+                    # Extract just the binary data for each camera
+                    camera_binary_data = {}
+                    for cam_id, cam_data in payload["cameras"].items():
+                        camera_binary_data[cam_id] = cam_data["jpeg_data"]
                     
-                    # Combine metadata and binary data
-                    # Format: [4 bytes: metadata length][metadata JSON][camera1 binary][camera2 binary]...
-                    combined_parts = [
-                        len(metadata_json).to_bytes(4, 'little'),
-                        metadata_json.encode('utf-8')
-                    ]
-                    
-                    # Add binary data for each camera in order
-                    for cam_id in sorted(payload["cameras"].keys()):
-                        binary_data = payload["cameras"][cam_id]["jpeg_data"]
-                        combined_parts.extend([
-                            len(binary_data).to_bytes(4, 'little'),
-                            binary_data
-                        ])
-                    
-                    combined_data = b''.join(combined_parts)
-                    
-                    binary_response, compression_stats = self.protocol_optimizer.optimize_message(
-                        "multi_camera_response",
-                        {"format_type": "ulmc", "cameras": list(cameras.keys())},
-                        combined_data,
-                        "multi_camera"
+                    # Call the correct multi-camera optimization method
+                    binary_response, compression_stats = self.protocol_optimizer.optimize_multi_camera_message(
+                        camera_binary_data,
+                        metadata_payload
                     )
                     if compression_stats:
                         logger.debug(f"Multi-camera response compression: {compression_stats.compression_ratio:.2f}x")

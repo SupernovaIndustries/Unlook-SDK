@@ -337,6 +337,8 @@ class ProtocolOptimizer:
             header_json = message[4:4+header_size]
             header = json.loads(header_json.decode('utf-8'))
             
+            logger.debug(f"V2 deserialize - header: {header}")
+            
             # Read data if present
             data_start = 4 + header_size
             if len(message) > data_start + 4:
@@ -350,7 +352,11 @@ class ProtocolOptimizer:
                     
                     # Handle multi-camera format
                     if optimization.get('multi_camera', False):
+                        logger.info(f"V2 deserialize - detected multi-camera format, calling _deserialize_multi_camera_data")
                         data = self._deserialize_multi_camera_data(data, metadata)
+                        logger.info(f"V2 deserialize - multi-camera result type: {type(data)}")
+                        if isinstance(data, dict):
+                            logger.info(f"V2 deserialize - multi-camera cameras: {list(data.keys())}")
                     elif optimization.get('compression_level', 0) > 0:
                         data = zlib.decompress(data)
                     
@@ -382,6 +388,8 @@ class ProtocolOptimizer:
             Dictionary of camera_id -> decompressed_image_data
         """
         try:
+            logger.info(f"_deserialize_multi_camera_data called with data length: {len(data)}, metadata: {metadata}")
+            
             # Check if it's the server's combined format
             if metadata.get('format_type') == 'ulmc' or 'cameras' in metadata:
                 # Server sends: [4 bytes: metadata length][metadata JSON][camera1 binary][camera2 binary]...
@@ -447,6 +455,7 @@ class ProtocolOptimizer:
             # Original format handling
             cameras_info = metadata.get('cameras', {})
             camera_images = {}
+            logger.info(f"Original format - cameras_info: {cameras_info}")
             
             for camera_id, camera_meta in cameras_info.items():
                 offset = camera_meta.get('offset', 0)
