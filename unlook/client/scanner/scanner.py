@@ -7,6 +7,8 @@ import threading
 import time
 import random
 from typing import Dict, List, Optional, Any, Callable, Tuple, TYPE_CHECKING
+import numpy as np
+import cv2
 
 import zmq
 
@@ -804,3 +806,249 @@ class UnlookClient(EventEmitter):
         except Exception as e:
             logger.warning(f"Could not check protocol v2 status: {e}")
             return False
+
+
+class FocusAssessment:
+    """
+    Real-time focus assessment for cameras and projector patterns.
+    Analyzes image sharpness and pattern clarity.
+    """
+    
+    def __init__(self):
+        self.focus_history = {'left': [], 'right': [], 'projector': []}
+        self.history_length = 10
+        
+        # Focus thresholds (adjustable based on your cameras)
+        self.camera_focus_threshold = 100.0  # Laplacian variance threshold
+        self.projector_focus_threshold = 0.15  # Pattern clarity threshold
+        self.good_focus_threshold = 150.0  # Higher threshold for "good" focus
+        
+    def assess_camera_focus(self, image: np.ndarray, camera_id: str) -> Dict[str, Any]:
+        """
+        Assess camera focus using multiple metrics.
+        
+        Args:
+            image: Input image (grayscale or color)
+            camera_id: 'left' or 'right'
+            
+        Returns:
+            Dictionary with focus metrics and status
+        """
+        if image is None or image.size == 0:
+            return {'focus_score': 0, 'status': 'no_image', 'quality': 'poor'}
+        
+        # Convert to grayscale if needed
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image
+            
+        # 1. Laplacian variance (main focus metric)
+        laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+        laplacian_var = np.var(laplacian)
+        
+        # 2. Gradient magnitude
+        grad_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+        grad_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+        gradient_magnitude = np.sqrt(grad_x**2 + grad_y**2)
+        gradient_mean = np.mean(gradient_magnitude)
+        
+        # 3. High frequency content
+        fft = np.fft.fft2(gray)
+        fft_shift = np.fft.fftshift(fft)
+        magnitude_spectrum = np.abs(fft_shift)
+        
+        # Calculate high frequency energy (outer 30% of spectrum)
+        h, w = magnitude_spectrum.shape
+        center_h, center_w = h // 2, w // 2
+        inner_h, inner_w = int(h * 0.35), int(w * 0.35)
+        
+        # Create mask for high frequencies
+        y, x = np.ogrid[:h, :w]
+        mask = ((y - center_h)**2 + (x - center_w)**2) > (inner_h * inner_w)
+        high_freq_energy = np.sum(magnitude_spectrum[mask])
+        total_energy = np.sum(magnitude_spectrum)
+        high_freq_ratio = high_freq_energy / (total_energy + 1e-8)
+        
+        # Combined focus score (weighted average)
+        focus_score = (
+            laplacian_var * 0.5 +
+            gradient_mean * 0.3 +
+            high_freq_ratio * 1000 * 0.2  # Scale high freq ratio
+        )
+        
+        # Update history
+        if camera_id in self.focus_history:
+            self.focus_history[camera_id].append(focus_score)
+            if len(self.focus_history[camera_id]) > self.history_length:
+                self.focus_history[camera_id].pop(0)
+        
+        # Calculate smoothed score
+        smoothed_score = np.mean(self.focus_history[camera_id]) if self.focus_history[camera_id] else focus_score
+        
+        # Determine status
+        if smoothed_score > self.good_focus_threshold:
+            status = 'excellent'
+            quality = 'excellent'
+        elif smoothed_score > self.camera_focus_threshold:
+            status = 'good'
+            quality = 'good'
+        elif smoothed_score > self.camera_focus_threshold * 0.5:
+            status = 'fair'
+            quality = 'fair'
+        else:
+            status = 'poor'
+            quality = 'poor'
+            
+        return {
+            'focus_score': focus_score,
+            'smoothed_score': smoothed_score,
+            'laplacian_var': laplacian_var,
+            'gradient_mean': gradient_mean,
+            'high_freq_ratio': high_freq_ratio,
+            'status': status,
+            'quality': quality,
+            'threshold': self.camera_focus_threshold
+        }
+    
+    def assess_projector_focus(self, image: np.ndarray, pattern_type: str = 'lines') -> Dict[str, Any]:
+        """
+        Assess projector focus by analyzing projected pattern clarity.
+        
+        Args:
+            image: Image with projected pattern
+            pattern_type: Type of pattern ('lines', 'grid', 'checkerboard')
+            
+        Returns:
+            Dictionary with projector focus metrics
+        """
+        if image is None or image.size == 0:
+            return {'focus_score': 0, 'status': 'no_image', 'quality': 'poor'}
+            
+        # Convert to grayscale
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image
+            
+        # For line patterns, look for clear horizontal/vertical edges
+        if pattern_type == 'lines':
+            # Detect horizontal and vertical edges
+            edges_h = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+            edges_v = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+            
+            # Calculate edge strength
+            edge_strength = np.sqrt(edges_h**2 + edges_v**2)
+            
+            # Look for periodic patterns (lines)
+            # Use FFT to detect regularity
+            fft = np.fft.fft2(gray)
+            fft_shift = np.fft.fftshift(fft)
+            magnitude_spectrum = np.abs(fft_shift)
+            
+            # Find peaks in frequency domain (indicates regular patterns)
+            h, w = magnitude_spectrum.shape
+            center_h, center_w = h // 2, w // 2
+            
+            # Look for strong peaks away from DC component
+            peaks_mask = magnitude_spectrum > (np.mean(magnitude_spectrum) + 2 * np.std(magnitude_spectrum))
+            peaks_mask[center_h-5:center_h+5, center_w-5:center_w+5] = False  # Exclude DC
+            
+            pattern_regularity = np.sum(magnitude_spectrum[peaks_mask]) / np.sum(magnitude_spectrum)
+            
+            # Calculate contrast (important for projector focus)
+            min_val, max_val = np.min(gray), np.max(gray)
+            contrast = (max_val - min_val) / (max_val + min_val + 1e-8)
+            
+            # Combined projector focus score
+            focus_score = (
+                np.mean(edge_strength) * 0.4 +
+                pattern_regularity * 1000 * 0.3 +  # Scale pattern regularity
+                contrast * 100 * 0.3  # Scale contrast
+            )
+            
+        else:
+            # Generic pattern analysis
+            edges = cv2.Canny(gray, 50, 150)
+            edge_density = np.sum(edges > 0) / edges.size
+            
+            # Standard deviation (pattern clarity)
+            pattern_clarity = np.std(gray)
+            
+            focus_score = edge_density * 100 + pattern_clarity * 0.5
+        
+        # Update history
+        self.focus_history['projector'].append(focus_score)
+        if len(self.focus_history['projector']) > self.history_length:
+            self.focus_history['projector'].pop(0)
+            
+        # Calculate smoothed score
+        smoothed_score = np.mean(self.focus_history['projector']) if self.focus_history['projector'] else focus_score
+        
+        # Determine status for projector
+        if smoothed_score > self.projector_focus_threshold * 2:
+            status = 'excellent'
+            quality = 'excellent'
+        elif smoothed_score > self.projector_focus_threshold:
+            status = 'good'
+            quality = 'good'
+        elif smoothed_score > self.projector_focus_threshold * 0.5:
+            status = 'fair'
+            quality = 'fair'
+        else:
+            status = 'poor'
+            quality = 'poor'
+            
+        return {
+            'focus_score': focus_score,
+            'smoothed_score': smoothed_score,
+            'status': status,
+            'quality': quality,
+            'threshold': self.projector_focus_threshold,
+            'contrast': locals().get('contrast', 0),
+            'pattern_regularity': locals().get('pattern_regularity', 0)
+        }
+    
+    def get_overall_focus_status(self) -> Dict[str, Any]:
+        """
+        Get overall focus status for the entire system.
+        
+        Returns:
+            Dictionary with system-wide focus status
+        """
+        # Get latest scores
+        left_score = self.focus_history['left'][-1] if self.focus_history['left'] else 0
+        right_score = self.focus_history['right'][-1] if self.focus_history['right'] else 0
+        proj_score = self.focus_history['projector'][-1] if self.focus_history['projector'] else 0
+        
+        # Determine overall status
+        all_good = (
+            left_score > self.camera_focus_threshold and
+            right_score > self.camera_focus_threshold and
+            proj_score > self.projector_focus_threshold
+        )
+        
+        any_poor = (
+            left_score < self.camera_focus_threshold * 0.5 or
+            right_score < self.camera_focus_threshold * 0.5 or
+            proj_score < self.projector_focus_threshold * 0.5
+        )
+        
+        if all_good:
+            overall_status = 'ready'
+            message = "✅ All components in focus - Ready to scan!"
+        elif any_poor:
+            overall_status = 'poor'
+            message = "❌ Focus adjustment needed"
+        else:
+            overall_status = 'adjusting'
+            message = "⚠️ Fine-tuning focus..."
+            
+        return {
+            'status': overall_status,
+            'message': message,
+            'left_score': left_score,
+            'right_score': right_score,
+            'projector_score': proj_score,
+            'all_ready': all_good
+        }

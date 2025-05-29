@@ -31,13 +31,10 @@ logger = logging.getLogger(__name__)
 class PreprocessingConfig:
     """Configuration for GPU preprocessing."""
     lens_correction: bool = True
-    roi_detection: bool = True
-    pattern_preprocessing: bool = False  # Disabled by default
+    pattern_preprocessing: bool = True  # Enabled for full preprocessing
     compression_level: str = "adaptive"  # adaptive, high, medium, low
     quality_assessment: bool = True
     delta_encoding: bool = True
-    roi_detection_method: str = "reference_based"  # reference_based, edge_based
-    roi_margin: int = 50  # Pixel margin around detected ROI
     adaptive_quality: bool = True  # Enable adaptive quality levels
     edge_density_threshold: float = 0.1  # Threshold for edge density analysis
     max_downsampling_factor: float = 0.5  # Maximum downsampling (0.5 = half resolution)
@@ -64,13 +61,6 @@ class RaspberryProcessingV2:
         
         # Calibration data cache
         self.calibration_data = None
-        self.roi_cache = {}
-        
-        # Reference patterns for ROI detection
-        self.reference_patterns = {
-            'white': {},  # Store white reference per camera
-            'black': {}   # Store black reference per camera
-        }
         
         # Delta encoding state
         self.previous_frames = {}
@@ -156,15 +146,9 @@ class RaspberryProcessingV2:
                 gpu_frame = self._apply_edge_preserving_filter_gpu(gpu_frame)
                 result['preprocessing_applied'].append('edge_preserving_filter')
             
-            # 4. ROI detection and cropping
-            if False:  # Temporarily disabled - ROI detection not working properly
-                roi = self._detect_roi_gpu(gpu_frame, camera_id)
-                if roi:
-                    gpu_frame = self._crop_roi_gpu(gpu_frame, roi)
-                    result['roi'] = roi
-                    result['preprocessing_applied'].append('roi_detection')
+            # ROI detection removed - will be implemented later when scanner is fully functional
             
-            # 3. Pattern preprocessing (if enabled)
+            # 4. Pattern preprocessing (enabled for full preprocessing)
             if self.config.pattern_preprocessing and metadata:
                 pattern_type = metadata.get('pattern_type')
                 if pattern_type == 'gray_code':
@@ -174,12 +158,12 @@ class RaspberryProcessingV2:
                     gpu_frame = self._preprocess_phase_shift_gpu(gpu_frame)
                     result['preprocessing_applied'].append('phase_shift_preprocessing')
             
-            # 4. Quality assessment
+            # 5. Quality assessment
             if self.config.quality_assessment:
                 quality_metrics = self._assess_quality_gpu(gpu_frame)
                 result['quality_metrics'] = quality_metrics
             
-            # 5. Compression
+            # 6. Compression
             compressed_frame, compression_info = self._compress_frame_gpu(
                 gpu_frame, camera_id, self.config.compression_level
             )
@@ -318,218 +302,7 @@ class RaspberryProcessingV2:
             logger.error(f"Edge-preserving filtering failed: {e}")
             return frame
     
-    def store_reference_pattern(self, frame, camera_id: str, pattern_type: str):
-        """Store reference pattern (white/black) for improved ROI detection."""
-        if pattern_type in ['white', 'black']:
-            self.reference_patterns[pattern_type][camera_id] = frame
-            logger.info(f"Stored {pattern_type} reference pattern for camera {camera_id}")
-    
-    def _detect_roi_gpu(self, frame, camera_id: str) -> Optional[Tuple[int, int, int, int]]:
-        """Detect region of interest using GPU acceleration."""
-        # Check cache first
-        if camera_id in self.roi_cache:
-            return self.roi_cache[camera_id]
-        
-        try:
-            if self.config.roi_detection_method == "reference_based":
-                # Use reference patterns if available
-                if camera_id in self.reference_patterns['white'] and camera_id in self.reference_patterns['black']:
-                    roi = self._detect_roi_reference_based(
-                        self.reference_patterns['white'][camera_id],
-                        self.reference_patterns['black'][camera_id],
-                        camera_id
-                    )
-                    if roi:
-                        return roi
-            
-            # Fallback to edge-based detection
-            return self._detect_roi_edge_based(frame, camera_id)
-            
-        except Exception as e:
-            logger.error(f"ROI detection failed: {e}")
-        
-        return None
-    
-    def _detect_roi_reference_based(self, white_ref, black_ref, camera_id: str) -> Optional[Tuple[int, int, int, int]]:
-        """Detect ROI using white and black reference patterns."""
-        try:
-            # Convert to grayscale using maximum channel response (color-agnostic)
-            # This works for blue->red shift in IR cameras and future VCSEL patterns
-            if isinstance(white_ref, cv2.UMat):
-                # For GPU UMat, convert to CPU first
-                white_cpu = white_ref.get()
-                black_cpu = black_ref.get()
-                if len(white_cpu.shape) == 3:
-                    white_gray = np.max(white_cpu, axis=2).astype(np.uint8)
-                    black_gray = np.max(black_cpu, axis=2).astype(np.uint8)
-                else:
-                    white_gray = white_cpu
-                    black_gray = black_cpu
-                # Convert back to GPU if available
-                if self.gpu_available:
-                    white_gray = cv2.UMat(white_gray)
-                    black_gray = cv2.UMat(black_gray)
-            else:
-                # CPU path
-                if len(white_ref.shape) == 3:
-                    white_gray = np.max(white_ref, axis=2).astype(np.uint8)
-                    black_gray = np.max(black_ref, axis=2).astype(np.uint8)
-                else:
-                    white_gray = white_ref
-                    black_gray = black_ref
-            
-            # Calculate difference image
-            if self.gpu_available and isinstance(white_gray, cv2.UMat):
-                diff = cv2.subtract(white_gray, black_gray)
-            else:
-                diff = cv2.subtract(white_gray.get() if isinstance(white_gray, cv2.UMat) else white_gray,
-                                   black_gray.get() if isinstance(black_gray, cv2.UMat) else black_gray)
-            
-            # Apply adaptive threshold to identify bright regions (object area)
-            # Use adaptive threshold based on image statistics for robustness
-            if self.gpu_available and isinstance(diff, cv2.UMat):
-                diff_cpu = diff.get()
-            else:
-                diff_cpu = diff
-            
-            # Calculate threshold dynamically based on image statistics
-            mean_val = np.mean(diff_cpu)
-            std_val = np.std(diff_cpu)
-            threshold_val = max(20, min(100, mean_val + 0.5 * std_val))
-            
-            if self.gpu_available:
-                _, mask = cv2.threshold(diff, threshold_val, 255, cv2.THRESH_BINARY)
-            else:
-                _, mask = cv2.threshold(diff_cpu, threshold_val, 255, cv2.THRESH_BINARY)
-            
-            # Morphological operations to clean up mask
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-            if self.gpu_available and isinstance(mask, cv2.UMat):
-                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-                mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-            else:
-                mask_cpu = mask.get() if isinstance(mask, cv2.UMat) else mask
-                mask = cv2.morphologyEx(mask_cpu, cv2.MORPH_CLOSE, kernel)
-                mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-            
-            # Find contours
-            mask_cpu = mask.get() if isinstance(mask, cv2.UMat) else mask
-            contours, _ = cv2.findContours(mask_cpu, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            
-            if contours:
-                # Find largest contour (main object)
-                largest_contour = max(contours, key=cv2.contourArea)
-                x, y, w, h = cv2.boundingRect(largest_contour)
-                
-                # Add margin
-                margin = self.config.roi_margin
-                shape = white_ref.get().shape if isinstance(white_ref, cv2.UMat) else white_ref.shape
-                x = max(0, x - margin)
-                y = max(0, y - margin)
-                w = min(shape[1] - x, w + 2 * margin)
-                h = min(shape[0] - y, h + 2 * margin)
-                
-                roi = (x, y, w, h)
-                self.roi_cache[camera_id] = roi
-                logger.info(f"Reference-based ROI detected for {camera_id}: {roi}")
-                return roi
-                
-        except Exception as e:
-            logger.error(f"Reference-based ROI detection failed: {e}")
-        
-        return None
-    
-    def _detect_roi_edge_based(self, frame, camera_id: str) -> Optional[Tuple[int, int, int, int]]:
-        """Fallback edge-based ROI detection."""
-        try:
-            # Simple edge-based ROI detection
-            if self.gpu_available:
-                # GPU-accelerated edge detection
-                edges = cv2.Canny(frame, 50, 150)
-                
-                # Find contours
-                contours, _ = cv2.findContours(edges.get() if isinstance(edges, cv2.UMat) else edges,
-                                              cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                
-                if contours:
-                    # Find largest contour
-                    largest_contour = max(contours, key=cv2.contourArea)
-                    x, y, w, h = cv2.boundingRect(largest_contour)
-                    
-                    # Add margin
-                    margin = self.config.roi_margin
-                    x = max(0, x - margin)
-                    y = max(0, y - margin)
-                    w = min(frame.get().shape[1] if isinstance(frame, cv2.UMat) else frame.shape[1] - x, w + 2 * margin)
-                    h = min(frame.get().shape[0] if isinstance(frame, cv2.UMat) else frame.shape[0] - y, h + 2 * margin)
-                    
-                    roi = (x, y, w, h)
-                    self.roi_cache[camera_id] = roi
-                    return roi
-            
-        except Exception as e:
-            logger.error(f"Edge-based ROI detection failed: {e}")
-        
-        return None
-    
-    def _crop_roi_gpu(self, frame, roi: Tuple[int, int, int, int]):
-        """Mask frame to ROI using GPU, keeping original dimensions."""
-        x, y, w, h = roi
-        try:
-            # Expand ROI by a margin (e.g., 20 pixels) for smoother transitions
-            margin = 20
-            x_start = max(0, x - margin)
-            y_start = max(0, y - margin)
-            
-            if isinstance(frame, cv2.UMat):
-                # Get frame dimensions
-                frame_cpu = frame.get()
-                height, width = frame_cpu.shape[:2]
-                x_end = min(width, x + w + margin)
-                y_end = min(height, y + h + margin)
-                
-                # Create mask on GPU
-                mask_cpu = np.zeros((height, width), dtype=np.uint8)
-                mask = cv2.UMat(mask_cpu)
-                # Fill ROI area with white (255)
-                cv2.rectangle(mask, (x_start, y_start), (x_end, y_end), 255, -1)
-                
-                # Apply Gaussian blur to mask for smooth edges
-                mask = cv2.GaussianBlur(mask, (margin*2+1, margin*2+1), margin/2)
-                
-                # Convert mask to 3-channel if needed
-                if len(frame_cpu.shape) == 3:
-                    mask_3ch = cv2.merge([mask, mask, mask])
-                else:
-                    mask_3ch = mask
-                
-                # Apply mask to frame
-                masked_frame = cv2.multiply(frame, mask_3ch, scale=1.0/255.0)
-                return masked_frame
-            else:
-                # CPU masking
-                height, width = frame.shape[:2]
-                x_end = min(width, x + w + margin)
-                y_end = min(height, y + h + margin)
-                
-                # Create mask
-                mask = np.zeros((height, width), dtype=np.uint8)
-                mask[y_start:y_end, x_start:x_end] = 255
-                
-                # Apply Gaussian blur for smooth edges
-                mask = cv2.GaussianBlur(mask, (margin*2+1, margin*2+1), margin/2)
-                
-                # Apply mask
-                if len(frame.shape) == 3:
-                    mask_3ch = np.stack([mask, mask, mask], axis=2)
-                    masked_frame = (frame * (mask_3ch / 255.0)).astype(frame.dtype)
-                else:
-                    masked_frame = (frame * (mask / 255.0)).astype(frame.dtype)
-                
-                return masked_frame
-        except Exception as e:
-            logger.error(f"ROI masking failed: {e}")
-            return frame
+    # ROI detection methods removed - will be implemented later when scanner is fully functional
     
     def _preprocess_gray_code_gpu(self, frame):
         """Preprocess Gray code patterns on GPU."""
