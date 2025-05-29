@@ -473,32 +473,62 @@ class RaspberryProcessingV2:
         return None
     
     def _crop_roi_gpu(self, frame, roi: Tuple[int, int, int, int]):
-        """Crop frame to ROI using GPU."""
+        """Mask frame to ROI using GPU, keeping original dimensions."""
         x, y, w, h = roi
         try:
+            # Expand ROI by a margin (e.g., 20 pixels) for smoother transitions
+            margin = 20
+            x_start = max(0, x - margin)
+            y_start = max(0, y - margin)
+            
             if isinstance(frame, cv2.UMat):
-                # GPU cropping using cv2.UMat compatible method
-                # Create ROI rectangle
-                roi_rect = (x, y, w, h)
-                # Use cv2.UMat's ROI functionality
-                cropped = cv2.UMat(frame, roi_rect)
-                return cropped
-            else:
-                # CPU cropping
-                return frame[y:y+h, x:x+w]
-        except Exception as e:
-            logger.error(f"ROI cropping failed: {e}")
-            # If GPU cropping fails, try CPU fallback
-            try:
-                if isinstance(frame, cv2.UMat):
-                    frame_cpu = frame.get()
-                    cropped_cpu = frame_cpu[y:y+h, x:x+w]
-                    return cv2.UMat(cropped_cpu)
+                # Get frame dimensions
+                frame_cpu = frame.get()
+                height, width = frame_cpu.shape[:2]
+                x_end = min(width, x + w + margin)
+                y_end = min(height, y + h + margin)
+                
+                # Create mask on GPU
+                mask = cv2.UMat.zeros((height, width), cv2.CV_8UC1)
+                # Fill ROI area with white (255)
+                cv2.rectangle(mask, (x_start, y_start), (x_end, y_end), 255, -1)
+                
+                # Apply Gaussian blur to mask for smooth edges
+                mask = cv2.GaussianBlur(mask, (margin*2+1, margin*2+1), margin/2)
+                
+                # Convert mask to 3-channel if needed
+                if len(frame_cpu.shape) == 3:
+                    mask_3ch = cv2.merge([mask, mask, mask])
                 else:
-                    return frame[y:y+h, x:x+w]
-            except Exception as fallback_e:
-                logger.error(f"ROI cropping fallback also failed: {fallback_e}")
-                return frame
+                    mask_3ch = mask
+                
+                # Apply mask to frame
+                masked_frame = cv2.multiply(frame, mask_3ch, scale=1.0/255.0)
+                return masked_frame
+            else:
+                # CPU masking
+                height, width = frame.shape[:2]
+                x_end = min(width, x + w + margin)
+                y_end = min(height, y + h + margin)
+                
+                # Create mask
+                mask = np.zeros((height, width), dtype=np.uint8)
+                mask[y_start:y_end, x_start:x_end] = 255
+                
+                # Apply Gaussian blur for smooth edges
+                mask = cv2.GaussianBlur(mask, (margin*2+1, margin*2+1), margin/2)
+                
+                # Apply mask
+                if len(frame.shape) == 3:
+                    mask_3ch = np.stack([mask, mask, mask], axis=2)
+                    masked_frame = (frame * (mask_3ch / 255.0)).astype(frame.dtype)
+                else:
+                    masked_frame = (frame * (mask / 255.0)).astype(frame.dtype)
+                
+                return masked_frame
+        except Exception as e:
+            logger.error(f"ROI masking failed: {e}")
+            return frame
     
     def _preprocess_gray_code_gpu(self, frame):
         """Preprocess Gray code patterns on GPU."""
