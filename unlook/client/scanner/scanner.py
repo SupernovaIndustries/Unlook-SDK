@@ -414,31 +414,16 @@ class UnlookClient(EventEmitter):
 
                     # If we expect a binary response
                     if binary_response:
-                        # Deserialize binary response with v2 support
-                        try:
-                            # Try to import and use the enhanced deserializer
-                            try:
-                                from ..camera.camera import deserialize_message_with_v2_support
-                                msg_type, payload, binary_data = deserialize_message_with_v2_support(response_data)
-                            except ImportError:
-                                # Fallback to standard deserializer
-                                msg_type, payload, binary_data = deserialize_binary_message(response_data)
-                            
-                            # Create a message from the response
-                            response = Message(
-                                msg_type=MessageType(msg_type),
-                                payload=payload
-                            )
-                            return True, response, binary_data
-                        except Exception as e:
-                            logger.error(f"Error deserializing binary response: {e}")
-                            attempt += 1
-                            if attempt < max_attempts:
-                                # Calculate backoff time for parsing errors too
-                                backoff_time = min(0.1 * (2 ** (attempt - 1)) * jitter, 1.0)
-                                time.sleep(backoff_time)
-                                continue
-                            return False, None, None
+                        # For binary responses, pass raw data to the calling function
+                        # Let the specific handler (like capture_multi) do the deserialization
+                        # This avoids double-deserialization when V2 is used
+                        
+                        # Create a minimal response to indicate binary data is available
+                        response = Message(
+                            msg_type=MessageType.MULTI_CAMERA_RESPONSE,  # Use appropriate response type
+                            payload={"binary_response": True}
+                        )
+                        return True, response, response_data
                     else:
                         # Normal response
                         try:

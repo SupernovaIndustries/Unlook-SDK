@@ -1,5 +1,8 @@
 """
-Server principale per lo scanner UnLook.
+Main server for the UnLook scanner system.
+
+This module implements the server-side functionality for the UnLook 3D scanning
+system, handling client connections, hardware control, and data streaming.
 """
 
 import logging
@@ -108,7 +111,7 @@ class UnlookServer(EventEmitter):
 
         # Streaming
         self.streaming_active = False
-        self.active_streams = []  # Lista di stream attivi per gestire più telecamere
+        self.active_streams = []  # List of active streams to manage multiple cameras
         self.streaming_thread = None
         self.streaming_fps = DEFAULT_STREAM_FPS
         self.jpeg_quality = DEFAULT_JPEG_QUALITY
@@ -117,8 +120,8 @@ class UnlookServer(EventEmitter):
         self.direct_streaming_active = False
         self.active_direct_streams = []  # Lista di stream diretti attivi
         self.direct_streaming_thread = None
-        self.direct_streaming_fps = 60  # FPS predefinito più alto per lo streaming diretto
-        self.direct_jpeg_quality = 85  # Qualità JPEG predefinita più alta
+        self.direct_streaming_fps = 60  # Higher default FPS for direct streaming
+        self.direct_jpeg_quality = 85  # Higher default JPEG quality
 
         # Scansione
         self.scanning = False
@@ -142,10 +145,10 @@ class UnlookServer(EventEmitter):
         # Server startup time for uptime calculation
         self._start_time = time.time()
 
-        # Callback per gestione messaggi personalizzati
+        # Callback for custom message handling
         self.message_handlers: Dict[MessageType, Callable] = self._init_message_handlers()
 
-        # Avvio automatico
+        # Auto start
         if auto_start:
             self.start()
 
@@ -255,9 +258,9 @@ class UnlookServer(EventEmitter):
             },
             "direct_streaming": {  # Nuova capacità per lo streaming diretto
                 "available": self.camera_manager is not None,
-                "max_fps": 120,  # Presupponiamo un framerate massimo più alto per lo streaming diretto
+                "max_fps": 120,  # Assume higher maximum framerate for direct streaming
                 "low_latency": True,
-                "sync_capabilities": self.projector is not None  # Sincronizzazione disponibile se c'è un proiettore
+                "sync_capabilities": self.projector is not None  # Synchronization available if projector exists
             },
             "scanning": {
                 "available": self.projector is not None and self.camera_manager is not None,
@@ -349,11 +352,11 @@ class UnlookServer(EventEmitter):
         synchronization_pattern_interval = message.payload.get("synchronization_pattern_interval", 5)
         low_latency = message.payload.get("low_latency", True)
 
-        # Controlla se lo stream è già attivo per questa telecamera
+        # Check if stream is already active for this camera
         for stream_info in self.active_direct_streams:
             if stream_info["camera_id"] == camera_id:
-                logger.warning(f"Stream diretto già attivo per la telecamera {camera_id}, verrà riutilizzato")
-                # Aggiorna configurazione
+                logger.warning(f"Direct stream already active for camera {camera_id}, will be reused")
+                # Update configuration
                 stream_info["fps"] = fps
                 stream_info["jpeg_quality"] = jpeg_quality
                 stream_info["sync_with_projector"] = sync_with_projector
@@ -431,7 +434,7 @@ class UnlookServer(EventEmitter):
         # Aggiungi alla lista di stream diretti attivi
         self.active_direct_streams.append(stream_info)
 
-        # Avvia thread di streaming diretto se non è già attivo
+        # Start direct streaming thread if not already active
         if not self.direct_streaming_active:
             self.direct_streaming_active = True
             self.direct_streaming_thread = threading.Thread(
@@ -474,7 +477,7 @@ class UnlookServer(EventEmitter):
                     f"Stream diretto interrotto per la telecamera {stream_info['camera_id']} (ID: {stream_info['stream_id']})")
                 break
 
-        # Se non ci sono più stream attivi, interrompi il thread
+        # If no more active streams, stop the thread
         if not self.active_direct_streams:
             self.stop_direct_streaming()
 
@@ -529,7 +532,7 @@ class UnlookServer(EventEmitter):
             # Gestione heartbeat e messaggi dal client
             try:
                 if self.direct_stream_socket:
-                    # Controlla se ci sono messaggi in arrivo dal client senza bloccare
+                    # Check for incoming messages from client without blocking
                     if self.direct_stream_socket.poll(0):
                         msg_data = self.direct_stream_socket.recv(zmq.NOBLOCK)
                         try:
@@ -555,12 +558,12 @@ class UnlookServer(EventEmitter):
                         except json.JSONDecodeError:
                             logger.warning("Ricevuto messaggio non valido dal client di streaming diretto")
             except zmq.error.Again:
-                # Nessun messaggio disponibile, continua
+                # No message available, continue
                 pass
             except Exception as e:
-                logger.error(f"Errore nella gestione dei messaggi del client di streaming diretto: {e}")
+                logger.error(f"Error handling direct streaming client messages: {e}")
 
-            # Processa ogni stream
+            # Process each stream
             for stream_info in current_streams:
                 camera_id = stream_info["camera_id"]
                 fps = stream_info["fps"]
@@ -571,7 +574,7 @@ class UnlookServer(EventEmitter):
                 # Calcola intervallo frame
                 interval = 1.0 / fps
 
-                # Controlla se è il momento di inviare un nuovo frame
+                # Check if it's time to send a new frame
                 current_time = time.time()
                 last_time = last_frame_times.get(camera_id, 0)
 
@@ -581,9 +584,9 @@ class UnlookServer(EventEmitter):
                         is_sync_frame = False
                         pattern_info = None
 
-                        # Se richiesta sincronizzazione con il proiettore e il proiettore è disponibile
+                        # If synchronization with projector is requested and projector is available
                         if sync_with_projector and self.projector:
-                            # Controlla se è il momento di cambiare pattern
+                            # Check if it's time to change pattern
                             if current_time >= stream_info["next_pattern_time"]:
                                 # Calcola il tempo per il prossimo cambio pattern
                                 stream_info["next_pattern_time"] = current_time + (pattern_interval / fps)
@@ -606,10 +609,10 @@ class UnlookServer(EventEmitter):
                                     "timestamp": current_time
                                 }
 
-                        # Tempo di inizio elaborazione per calcolo performance
+                        # Processing start time for performance calculation
                         processing_start = time.time()
 
-                        # Cattura immagine con gestione eccezioni migliorata e logging dettagliato
+                        # Capture image with improved exception handling and detailed logging
                         # First check camera manager is available
                         if not self.camera_manager:
                             logger.error(f"Cannot capture image from camera {camera_id} - camera manager is None")
@@ -830,20 +833,20 @@ class UnlookServer(EventEmitter):
                     except Exception as e:
                         logger.error(f"Errore nello streaming diretto della telecamera {camera_id}: {e}")
 
-            # Controlla inattività e rimuovi stream inattivi
+            # Check inactivity and remove inactive streams
             current_time = time.time()
             for i in range(len(self.active_direct_streams) - 1, -1, -1):
                 if current_time - self.active_direct_streams[i]["last_activity"] > 5.0:  # 5 secondi di inattività
                     logger.warning(f"Stream diretto inattivo rimosso: {self.active_direct_streams[i]['camera_id']}")
                     self.active_direct_streams.pop(i)
 
-            # Se non ci sono più stream attivi, esci dal loop
+            # If no more active streams, exit the loop
             if not self.active_direct_streams:
-                logger.info("Nessuno stream diretto attivo, terminazione thread")
+                logger.info("No direct streams active, terminating thread")
                 break
 
             # Attendi un breve intervallo per non sovraccaricare la CPU
-            # Usa un intervallo più breve per mantenere la reattività
+            # Use shorter interval to maintain responsiveness
             time.sleep(0.0005)  # 0.5ms
 
         logger.info("Thread di streaming diretto terminato")
@@ -1635,6 +1638,13 @@ class UnlookServer(EventEmitter):
 
         try:
             from .hardware.projector import Color, BorderEnable
+            
+            # Store current pattern info for reference capture detection
+            self._current_pattern_info = {
+                'pattern_type': pattern_type,
+                'color': message.payload.get("color", ""),
+                'timestamp': time.time()
+            }
 
             if pattern_type == "solid_field":
                 # Get color
@@ -1981,6 +1991,19 @@ class UnlookServer(EventEmitter):
             cameras = {}
             logger.info(f"Starting synchronized capture for {len(camera_ids)} cameras: {camera_ids}")
 
+            # Track if this is a reference pattern capture
+            current_pattern_info = getattr(self, '_current_pattern_info', None)
+            is_reference_capture = False
+            reference_type = None
+            
+            if current_pattern_info:
+                pattern_type = current_pattern_info.get('pattern_type')
+                color = current_pattern_info.get('color', '').lower()
+                if pattern_type == 'solid_field' and color in ['white', 'black']:
+                    is_reference_capture = True
+                    reference_type = color
+                    logger.info(f"Detected {reference_type} reference pattern capture")
+
             for camera_id in camera_ids:
                 # Capture image
                 logger.info(f"Capturing image from camera: {camera_id}")
@@ -1992,6 +2015,34 @@ class UnlookServer(EventEmitter):
                         f"Error capturing image from camera {camera_id}"
                     )
                 logger.info(f"Successfully captured image from {camera_id}: shape={image.shape}")
+                
+                # Store reference pattern if applicable
+                if is_reference_capture and self.gpu_preprocessor and reference_type:
+                    try:
+                        self.gpu_preprocessor.store_reference_pattern(image.copy(), camera_id, reference_type)
+                        logger.info(f"Stored {reference_type} reference pattern for camera {camera_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to store reference pattern: {e}")
+
+                # Apply preprocessing if enabled
+                roi_info = None
+                if self.enable_preprocessing and self.gpu_preprocessor:
+                    try:
+                        preprocess_result = self.gpu_preprocessor.preprocess_frame(
+                            image, camera_id,
+                            metadata={'pattern_type': 'capture'}
+                        )
+                        
+                        # Extract ROI information if available
+                        if 'roi' in preprocess_result:
+                            roi_info = preprocess_result['roi']
+                            logger.info(f"ROI detected for {camera_id}: {roi_info}")
+                        
+                        # Use preprocessed image
+                        image = preprocess_result.get('frame', image)
+                        
+                    except Exception as e:
+                        logger.error(f"Preprocessing failed for {camera_id}: {e}")
 
                 # Handle different compression formats
                 binary_data = None
@@ -2024,6 +2075,15 @@ class UnlookServer(EventEmitter):
                     "timestamp": time.time(),
                     "compression_format": compression_format
                 }
+                
+                # Add ROI information if available
+                if roi_info:
+                    camera_metadata["roi"] = {
+                        "x": roi_info[0],
+                        "y": roi_info[1],
+                        "width": roi_info[2],
+                        "height": roi_info[3]
+                    }
                 
                 # Add resolution if applicable
                 if resolution:

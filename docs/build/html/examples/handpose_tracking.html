@@ -1,0 +1,1455 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Handpose Tracking Examples &mdash; Unlook SDK 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=e323ea24" />
+
+  
+    <link rel="shortcut icon" href="../_static/favicon.ico"/>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=df1a032d"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Real-time Scanning Example" href="realtime_scanning.html" />
+    <link rel="prev" title="Basic Connection" href="basic_connection.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2980B9" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/unlook_logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../getting_started.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting_started.html#quick-installation">Quick Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting_started.html#basic-usage">Basic Usage</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../getting_started.html#connect-to-a-scanner">Connect to a Scanner</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting_started.html#real-time-scanning">Real-time Scanning</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../getting_started.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#basic-installation">Basic Installation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../installation.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../installation.html#core-installation">Core Installation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#gpu-acceleration-setup">GPU Acceleration Setup</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../installation.html#nvidia-gpus">NVIDIA GPUs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../installation.html#amd-gpus">AMD GPUs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../installation.html#cpu-only-fallback">CPU-only Fallback</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#open3d-and-open3d-ml">Open3D and Open3D-ML</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#verifying-installation">Verifying Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#server-installation-raspberry-pi">Server Installation (Raspberry Pi)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#troubleshooting">Troubleshooting</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../installation.html#common-issues">Common Issues</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../installation.html#getting-help">Getting Help</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#updating">Updating</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/index.html">User Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/overview.html">Overview</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/overview.html#system-architecture">System Architecture</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/overview.html#key-components">Key Components</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/overview.html#core-components">Core Components</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/overview.html#client-components">Client Components</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/overview.html#server-components">Server Components</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/overview.html#scanning-technologies">Scanning Technologies</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/overview.html#hardware-support">Hardware Support</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/overview.html#getting-started">Getting Started</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/protocol_v2_migration.html">Protocol V2 Migration Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#overview">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#key-differences">Key Differences</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#network-protocol">Network Protocol</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#message-types">Message Types</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#api-changes">API Changes</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#client-initialization">Client Initialization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#multi-camera-capture">Multi-Camera Capture</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#server-configuration">Server Configuration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#preprocessing-configuration">Preprocessing Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#migration-steps">Migration Steps</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#step-1-update-server">Step 1: Update Server</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#step-2-update-client-code">Step 2: Update Client Code</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#step-3-test-performance">Step 3: Test Performance</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#compatibility">Compatibility</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#backward-compatibility">Backward Compatibility</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#version-detection">Version Detection</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#troubleshooting">Troubleshooting</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#common-migration-issues">Common Migration Issues</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#performance-monitoring">Performance Monitoring</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#expected-improvements">Expected Improvements</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/handpose_setup.html">Handpose Setup and Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#overview">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#system-requirements">System Requirements</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#hardware-requirements">Hardware Requirements</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#software-requirements">Software Requirements</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#initial-setup">Initial Setup</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#scanner-connection">1. Scanner Connection</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#camera-configuration">2. Camera Configuration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#led-controller-setup">3. LED Controller Setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#calibration-verification">4. Calibration Verification</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#quick-test">Quick Test</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#basic-hand-detection-test">Basic Hand Detection Test</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#camera-calibration">Camera Calibration</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#calibration-requirements">Calibration Requirements</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#calibration-process">Calibration Process</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#performance-optimization">Performance Optimization</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#lighting-optimization">Lighting Optimization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#tracking-parameters">Tracking Parameters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#image-processing">Image Processing</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#troubleshooting-common-issues">Troubleshooting Common Issues</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#no-hand-detection">No Hand Detection</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#no-3d-tracking">No 3D Tracking</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#poor-gesture-recognition">Poor Gesture Recognition</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#performance-issues">Performance Issues</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#advanced-configuration">Advanced Configuration</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#multi-camera-setup">Multi-Camera Setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#high-frequency-tracking">High-Frequency Tracking</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#integration-with-other-systems">Integration with Other Systems</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#running-the-enhanced-demo">Running the Enhanced Demo</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#next-steps">Next Steps</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/realtime_scanning.html">Real-time Scanning</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#key-features">Key Features</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#basic-usage">Basic Usage</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#quality-presets">Quality Presets</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#camera-focus-check">Camera Focus Check</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#configuration-options">Configuration Options</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#visualization">Visualization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#recording-scan-data">Recording Scan Data</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#performance-optimization">Performance Optimization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#troubleshooting">Troubleshooting</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/camera_configuration.html">Camera Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#basic-configuration">Basic Configuration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#setting-image-quality">Setting Image Quality</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#using-different-image-formats">Using Different Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#controlling-image-size">Controlling Image Size</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#using-color-modes">Using Color Modes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#exposure-and-gain-control">Exposure and Gain Control</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#image-processing-options">Image Processing Options</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#configuration-presets">Configuration Presets</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#advanced-usage-in-3d-scanning">Advanced Usage in 3D Scanning</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#example-optimizing-for-different-scenarios">Example: Optimizing for Different Scenarios</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/camera_configuration.html#high-detail-scanning">High Detail Scanning</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/camera_configuration.html#fast-scanning">Fast Scanning</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/camera_configuration.html#color-texture-capture">Color Texture Capture</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#troubleshooting">Troubleshooting</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/pattern_sequences.html">Pattern Sequences</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/pattern_sequences.html#overview">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/pattern_sequences.html#basic-usage">Basic Usage</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/pattern_sequences.html#creating-and-starting-a-pattern-sequence">Creating and Starting a Pattern Sequence</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/pattern_sequences.html#stopping-a-pattern-sequence">Stopping a Pattern Sequence</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/pattern_sequences.html#manual-stepping-through-a-sequence">Manual Stepping Through a Sequence</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/pattern_sequences.html#event-callbacks">Event Callbacks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/pattern_sequences.html#helper-methods">Helper Methods</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/pattern_sequences.html#creating-structured-light-sequences">Creating Structured Light Sequences</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/pattern_sequences.html#creating-pattern-definitions">Creating Pattern Definitions</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/pattern_sequences.html#available-pattern-types">Available Pattern Types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/pattern_sequences.html#camera-synchronization">Camera Synchronization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/pattern_sequences.html#complete-example">Complete Example</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/focus_checking.html">Camera Focus Checking</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#importance-of-camera-focus">Importance of Camera Focus</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#the-focus-checking-api">The Focus Checking API</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#interactive-focus-adjustment">Interactive Focus Adjustment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#using-region-of-interest-roi">Using Region of Interest (ROI)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#focus-quality-levels">Focus Quality Levels</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#integration-with-real-time-scanning">Integration with Real-time Scanning</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#how-focus-is-measured">How Focus is Measured</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#tips-for-achieving-good-focus">Tips for Achieving Good Focus</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#custom-focus-thresholds">Custom Focus Thresholds</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#focus-checking-api-reference">Focus Checking API Reference</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/gpu_acceleration.html">GPU Acceleration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/gpu_acceleration.html#overview">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/gpu_acceleration.html#requirements">Requirements</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/gpu_acceleration.html#installation">Installation</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/gpu_acceleration.html#install-base-requirements">1. Install Base Requirements</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/gpu_acceleration.html#install-cuda-toolkit">2. Install CUDA Toolkit</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/gpu_acceleration.html#install-cupy">3. Install CuPy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/gpu_acceleration.html#verify-installation">4. Verify Installation</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/gpu_acceleration.html#configuring-gpu-usage">Configuring GPU Usage</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/gpu_acceleration.html#troubleshooting">Troubleshooting</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/gpu_acceleration.html#related-documentation">Related Documentation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/cpu_optimizations.html">CPU Optimizations for ARM and Mobile Devices</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#overview">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#target-platforms">Target Platforms</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#key-features">Key Features</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#spatial-hash-table">Spatial Hash Table</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#roi-based-processing">ROI-Based Processing</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#hierarchical-matching">Hierarchical Matching</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#early-termination">Early Termination</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#simd-optimizations">SIMD Optimizations</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#performance-tuning">Performance Tuning</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#arm-specific-settings">ARM-Specific Settings</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#memory-optimization">Memory Optimization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#correspondence-validation">Correspondence Validation</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#adaptive-pattern-selection">Adaptive Pattern Selection</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#performance-monitoring">Performance Monitoring</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#expected-results">Expected Results</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#troubleshooting">Troubleshooting</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#common-issues">Common Issues</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/iso_compliance.html">ISO/ASTM 52902 Compliance</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/iso_compliance.html#overview">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/iso_compliance.html#uncertainty-measurement">Uncertainty Measurement</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/iso_compliance.html#calibration-validation">Calibration Validation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/iso_compliance.html#certification-reporting">Certification Reporting</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/iso_compliance.html#integration-with-scanning">Integration with Scanning</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/iso_compliance.html#related-documentation">Related Documentation</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../api_reference/index.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../api_reference/index.html#core-modules">Core Modules</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api_reference/client.html">Client API</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/client.html#unlookclient">UnlookClient</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/client.html#key-classes">Key Classes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/client.html#example-usage">Example Usage</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api_reference/camera.html">Camera API</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/camera.html#cameraclient">CameraClient</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/camera.html#cameraconfig">CameraConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/camera.html#focus-checking-api">Focus Checking API</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/camera.html#enumerations">Enumerations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/camera.html#example-usage">Example Usage</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../api_reference/index.html#d-scanning">3D Scanning</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api_reference/triangulator.html">Triangulator Module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/triangulator.html#overview">Overview</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/triangulator.html#classes">Classes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/triangulator.html#usage-example">Usage Example</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/triangulator.html#iso-astm-52902-compliance">ISO/ASTM 52902 Compliance</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/triangulator.html#migration-from-legacy-code">Migration from Legacy Code</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/triangulator.html#performance-considerations">Performance Considerations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/triangulator.html#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api_reference/pattern_decoder.html">Pattern Decoder Module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/pattern_decoder.html#overview">Overview</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/pattern_decoder.html#classes">Classes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/pattern_decoder.html#pattern-decoding-methods">Pattern Decoding Methods</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/pattern_decoder.html#image-requirements">Image Requirements</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/pattern_decoder.html#debug-visualization">Debug Visualization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/pattern_decoder.html#example-workflow">Example Workflow</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/pattern_decoder.html#best-practices">Best Practices</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/pattern_decoder.html#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api_reference/cpu_optimizations.html">CPU Optimizations API</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/cpu_optimizations.html#improved-correspondence-matcher">Improved Correspondence Matcher</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/cpu_optimizations.html#simd-optimizations">SIMD Optimizations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/cpu_optimizations.html#adaptive-pattern-strategies">Adaptive Pattern Strategies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/cpu_optimizations.html#classes-and-enums">Classes and Enums</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/cpu_optimizations.html#utility-functions">Utility Functions</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../api_reference/index.html#hand-tracking">Hand Tracking</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api_reference/handpose.html">Handpose Module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/handpose.html#overview">Overview</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/handpose.html#core-components">Core Components</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/handpose.html#led-controller-integration">LED Controller Integration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/handpose.html#coordinate-systems">Coordinate Systems</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/handpose.html#stereo-camera-setup">Stereo Camera Setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/handpose.html#performance-optimization">Performance Optimization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/handpose.html#error-handling">Error Handling</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/handpose.html#integration-examples">Integration Examples</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/handpose.html#troubleshooting">Troubleshooting</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/handpose.html#best-practices">Best Practices</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/handpose.html#see-also">See Also</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../api_reference/index.html#utilities">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api_reference/logging_config.html">Logging Configuration</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/logging_config.html#overview">Overview</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/logging_config.html#classes">Classes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/logging_config.html#quick-start">Quick Start</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/logging_config.html#debug-mode">Debug Mode</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/logging_config.html#module-specific-levels">Module-Specific Levels</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/logging_config.html#logging-guidelines">Logging Guidelines</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/logging_config.html#best-practices">Best Practices</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/logging_config.html#configuration-file">Configuration File</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/logging_config.html#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api_reference/exceptions.html">Exception Handling</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/exceptions.html#overview">Overview</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/exceptions.html#exception-hierarchy">Exception Hierarchy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/exceptions.html#base-exception">Base Exception</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/exceptions.html#connection-errors">Connection Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/exceptions.html#camera-errors">Camera Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/exceptions.html#calibration-errors">Calibration Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/exceptions.html#projector-errors">Projector Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/exceptions.html#scanning-errors">Scanning Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/exceptions.html#streaming-errors">Streaming Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/exceptions.html#other-errors">Other Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/exceptions.html#usage-examples">Usage Examples</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/exceptions.html#best-practices">Best Practices</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/exceptions.html#creating-custom-exceptions">Creating Custom Exceptions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api_reference/exceptions.html#see-also">See Also</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Examples</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="basic_connection.html">Basic Connection</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="basic_connection.html#discovering-and-connecting-to-scanners">Discovering and Connecting to Scanners</a></li>
+<li class="toctree-l3"><a class="reference internal" href="basic_connection.html#connecting-to-a-known-scanner">Connecting to a Known Scanner</a></li>
+<li class="toctree-l3"><a class="reference internal" href="basic_connection.html#connection-callbacks">Connection Callbacks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="basic_connection.html#full-example">Full Example</a></li>
+</ul>
+</li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Handpose Tracking Examples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#basic-hand-tracking">Basic Hand Tracking</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#simple-3d-hand-detection">Simple 3D Hand Detection</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#enhanced-hand-tracking-with-visualization">Enhanced Hand Tracking with Visualization</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#led-enhanced-hand-tracking">LED-Enhanced Hand Tracking</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#using-point-projection-for-better-accuracy">Using Point Projection for Better Accuracy</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#gesture-recognition-examples">Gesture Recognition Examples</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#real-time-gesture-classification">Real-time Gesture Classification</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#advanced-applications">Advanced Applications</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#hand-computer-interaction">Hand-Computer Interaction</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#performance-optimization">Performance Optimization</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#optimized-real-time-tracking">Optimized Real-time Tracking</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#configuration-tips">Configuration Tips</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#camera-setup">Camera Setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#led-optimization">LED Optimization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#performance-tuning">Performance Tuning</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="realtime_scanning.html">Real-time Scanning Example</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="realtime_scanning.html#basic-real-time-scanning">Basic Real-time Scanning</a></li>
+<li class="toctree-l3"><a class="reference internal" href="realtime_scanning.html#using-focus-check-before-scanning">Using Focus Check Before Scanning</a></li>
+<li class="toctree-l3"><a class="reference internal" href="realtime_scanning.html#running-the-examples">Running the Examples</a></li>
+<li class="toctree-l3"><a class="reference internal" href="realtime_scanning.html#example-command-line-tool">Example Command-line Tool</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="camera_focus.html">Camera Focus Examples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="camera_focus.html#basic-focus-check">Basic Focus Check</a></li>
+<li class="toctree-l3"><a class="reference internal" href="camera_focus.html#interactive-focus-adjustment">Interactive Focus Adjustment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="camera_focus.html#running-the-examples">Running the Examples</a></li>
+<li class="toctree-l3"><a class="reference internal" href="camera_focus.html#advanced-usage-notes">Advanced Usage Notes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="camera_calibration.html">Camera Calibration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="camera_calibration.html#overview">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="camera_calibration.html#basic-calibration-process">Basic Calibration Process</a></li>
+<li class="toctree-l3"><a class="reference internal" href="camera_calibration.html#loading-and-using-calibration">Loading and Using Calibration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="camera_calibration.html#verifying-calibration">Verifying Calibration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="camera_calibration.html#full-example">Full Example</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced/index.html">Advanced Topics</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../troubleshooting.html">Troubleshooting</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../troubleshooting.html#connection-issues">Connection Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#scanner-not-found">Scanner Not Found</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#connection-timeouts">Connection Timeouts</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../troubleshooting.html#camera-issues">Camera Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#camera-not-available">Camera Not Available</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#camera-images-dark-blurry">Camera Images Dark/Blurry</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../troubleshooting.html#projector-issues">Projector Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#projector-not-working">Projector Not Working</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#patterns-not-synchronized">Patterns Not Synchronized</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../troubleshooting.html#scanning-issues">Scanning Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#poor-point-cloud-quality">Poor Point Cloud Quality</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#reconstruction-errors">Reconstruction Errors</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../troubleshooting.html#performance-issues">Performance Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#slow-scanning">Slow Scanning</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#memory-leaks">Memory Leaks</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../troubleshooting.html#system-logs">System Logs</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#accessing-logs">Accessing Logs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#log-file-location">Log File Location</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../troubleshooting.html#getting-help">Getting Help</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../roadmap.html">Roadmap</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../roadmap.html#short-term-q1-2025">Short Term (Q1 2025)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../roadmap.html#medium-term-q2-q3-2025">Medium Term (Q2-Q3 2025)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../roadmap.html#long-term-q4-2025-and-beyond">Long Term (Q4 2025 and beyond)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../roadmap.html#contributing-to-the-roadmap">Contributing to the Roadmap</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing.html">Contributing</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../contributing.html#getting-started">Getting Started</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../contributing.html#types-of-contributions">Types of Contributions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../contributing.html#development-guidelines">Development Guidelines</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../contributing.html#community-guidelines">Community Guidelines</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../contributing.html#recognition">Recognition</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../contributing.html#getting-help">Getting Help</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Changelog</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../changelog.html#version-2-0-0-2025-01-xx">Version 2.0.0 (2025-01-XX)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../changelog.html#version-1-1-0-2024-xx-xx">Version 1.1.0 (2024-XX-XX)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../changelog.html#version-1-0-0-2024-xx-xx">Version 1.0.0 (2024-XX-XX)</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2980B9" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Unlook SDK</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content style-external-links">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Examples</a></li>
+      <li class="breadcrumb-item active">Handpose Tracking Examples</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/examples/handpose_tracking.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="basic_connection.html" class="btn btn-neutral float-left" title="Basic Connection" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="realtime_scanning.html" class="btn btn-neutral float-right" title="Real-time Scanning Example" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="handpose-tracking-examples">
+<h1>Handpose Tracking Examples<a class="headerlink" href="#handpose-tracking-examples" title="Link to this heading"></a></h1>
+<p>This section provides comprehensive examples for implementing hand tracking and gesture recognition using the UnLook SDK.</p>
+<section id="basic-hand-tracking">
+<h2>Basic Hand Tracking<a class="headerlink" href="#basic-hand-tracking" title="Link to this heading"></a></h2>
+<section id="simple-3d-hand-detection">
+<h3>Simple 3D Hand Detection<a class="headerlink" href="#simple-3d-hand-detection" title="Link to this heading"></a></h3>
+<p>This example demonstrates basic 3D hand tracking with stereo cameras:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/usr/bin/env python3</span>
+<span class="sd">&quot;&quot;&quot;Basic 3D hand tracking example.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">cv2</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unlook</span><span class="w"> </span><span class="kn">import</span> <span class="n">UnlookClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unlook.client.scanning.handpose</span><span class="w"> </span><span class="kn">import</span> <span class="n">HandTracker</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="c1"># Connect to UnLook scanner</span>
+    <span class="n">client</span> <span class="o">=</span> <span class="n">UnlookClient</span><span class="p">()</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">start_discovery</span><span class="p">()</span>
+    <span class="n">scanners</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">get_discovered_scanners</span><span class="p">()</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">scanners</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+    <span class="c1"># Initialize hand tracker</span>
+    <span class="n">tracker</span> <span class="o">=</span> <span class="n">HandTracker</span><span class="p">(</span>
+        <span class="n">calibration_file</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>  <span class="c1"># Auto-load calibration</span>
+        <span class="n">max_num_hands</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="n">detection_confidence</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span>
+        <span class="n">tracking_confidence</span><span class="o">=</span><span class="mf">0.6</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Get camera IDs</span>
+    <span class="n">cameras</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">get_cameras</span><span class="p">()</span>
+    <span class="n">left_camera_id</span> <span class="o">=</span> <span class="n">cameras</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+    <span class="n">right_camera_id</span> <span class="o">=</span> <span class="n">cameras</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Starting basic hand tracking...&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Press &#39;q&#39; to quit&quot;</span><span class="p">)</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="c1"># Capture stereo frames</span>
+        <span class="n">left_frame</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">capture</span><span class="p">(</span><span class="n">left_camera_id</span><span class="p">)</span>
+        <span class="n">right_frame</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">capture</span><span class="p">(</span><span class="n">right_camera_id</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">left_frame</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">right_frame</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Track hands in 3D</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">tracker</span><span class="o">.</span><span class="n">track_hands_3d</span><span class="p">(</span><span class="n">left_frame</span><span class="p">,</span> <span class="n">right_frame</span><span class="p">)</span>
+
+        <span class="c1"># Display results</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Detected </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;3d_keypoints&#39;</span><span class="p">])</span><span class="si">}</span><span class="s2"> hands&quot;</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">keypoints_3d</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;3d_keypoints&#39;</span><span class="p">]):</span>
+            <span class="n">wrist_pos</span> <span class="o">=</span> <span class="n">keypoints_3d</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># Wrist is landmark 0</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Hand </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2"> wrist: (</span><span class="si">{</span><span class="n">wrist_pos</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">wrist_pos</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">wrist_pos</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">) mm&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Simple visualization</span>
+        <span class="n">display_frame</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">([</span><span class="n">left_frame</span><span class="p">,</span> <span class="n">right_frame</span><span class="p">])</span>
+        <span class="n">cv2</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="s1">&#39;Stereo View&#39;</span><span class="p">,</span> <span class="n">display_frame</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">cv2</span><span class="o">.</span><span class="n">waitKey</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xFF</span> <span class="o">==</span> <span class="nb">ord</span><span class="p">(</span><span class="s1">&#39;q&#39;</span><span class="p">):</span>
+            <span class="k">break</span>
+
+    <span class="c1"># Cleanup</span>
+    <span class="n">tracker</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">disconnect</span><span class="p">()</span>
+    <span class="n">cv2</span><span class="o">.</span><span class="n">destroyAllWindows</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+</div>
+</section>
+<section id="enhanced-hand-tracking-with-visualization">
+<h3>Enhanced Hand Tracking with Visualization<a class="headerlink" href="#enhanced-hand-tracking-with-visualization" title="Link to this heading"></a></h3>
+<p>This example adds hand skeleton visualization and gesture display:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/usr/bin/env python3</span>
+<span class="sd">&quot;&quot;&quot;Enhanced hand tracking with visualization.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">cv2</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unlook</span><span class="w"> </span><span class="kn">import</span> <span class="n">UnlookClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unlook.client.scanning.handpose</span><span class="w"> </span><span class="kn">import</span> <span class="n">HandTracker</span><span class="p">,</span> <span class="n">GestureRecognizer</span><span class="p">,</span> <span class="n">GestureType</span>
+
+<span class="c1"># Hand skeleton connections</span>
+<span class="n">HAND_CONNECTIONS</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="c1"># Thumb</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span>
+    <span class="c1"># Index finger</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">],</span> <span class="p">[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span> <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">],</span> <span class="p">[</span><span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">],</span>
+    <span class="c1"># Middle finger</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">9</span><span class="p">],</span> <span class="p">[</span><span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">11</span><span class="p">],</span> <span class="p">[</span><span class="mi">11</span><span class="p">,</span> <span class="mi">12</span><span class="p">],</span>
+    <span class="c1"># Ring finger</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">13</span><span class="p">],</span> <span class="p">[</span><span class="mi">13</span><span class="p">,</span> <span class="mi">14</span><span class="p">],</span> <span class="p">[</span><span class="mi">14</span><span class="p">,</span> <span class="mi">15</span><span class="p">],</span> <span class="p">[</span><span class="mi">15</span><span class="p">,</span> <span class="mi">16</span><span class="p">],</span>
+    <span class="c1"># Pinky</span>
+    <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">17</span><span class="p">],</span> <span class="p">[</span><span class="mi">17</span><span class="p">,</span> <span class="mi">18</span><span class="p">],</span> <span class="p">[</span><span class="mi">18</span><span class="p">,</span> <span class="mi">19</span><span class="p">],</span> <span class="p">[</span><span class="mi">19</span><span class="p">,</span> <span class="mi">20</span><span class="p">],</span>
+    <span class="c1"># Palm</span>
+    <span class="p">[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">9</span><span class="p">],</span> <span class="p">[</span><span class="mi">9</span><span class="p">,</span> <span class="mi">13</span><span class="p">],</span> <span class="p">[</span><span class="mi">13</span><span class="p">,</span> <span class="mi">17</span><span class="p">]</span>
+<span class="p">]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">draw_hand_skeleton</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">keypoints_2d</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="mi">0</span><span class="p">)):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Draw hand skeleton on image.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">keypoints_2d</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">keypoints_2d</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">21</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="n">h</span><span class="p">,</span> <span class="n">w</span> <span class="o">=</span> <span class="n">image</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span>
+
+    <span class="c1"># Convert normalized coordinates to pixels</span>
+    <span class="n">pixel_coords</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">kp</span> <span class="ow">in</span> <span class="n">keypoints_2d</span><span class="p">:</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">kp</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">w</span><span class="p">)</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">kp</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">h</span><span class="p">)</span>
+        <span class="n">pixel_coords</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">))</span>
+
+    <span class="c1"># Draw connections</span>
+    <span class="k">for</span> <span class="n">connection</span> <span class="ow">in</span> <span class="n">HAND_CONNECTIONS</span><span class="p">:</span>
+        <span class="n">start_point</span> <span class="o">=</span> <span class="n">pixel_coords</span><span class="p">[</span><span class="n">connection</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
+        <span class="n">end_point</span> <span class="o">=</span> <span class="n">pixel_coords</span><span class="p">[</span><span class="n">connection</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
+        <span class="n">cv2</span><span class="o">.</span><span class="n">line</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">start_point</span><span class="p">,</span> <span class="n">end_point</span><span class="p">,</span> <span class="n">color</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+
+    <span class="c1"># Draw landmarks</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">point</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">pixel_coords</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">i</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">20</span><span class="p">]:</span>  <span class="c1"># Fingertips</span>
+            <span class="n">cv2</span><span class="o">.</span><span class="n">circle</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">point</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">cv2</span><span class="o">.</span><span class="n">circle</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">point</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="n">color</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="c1"># Setup</span>
+    <span class="n">client</span> <span class="o">=</span> <span class="n">UnlookClient</span><span class="p">()</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">start_discovery</span><span class="p">()</span>
+    <span class="n">scanners</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">get_discovered_scanners</span><span class="p">()</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">scanners</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+    <span class="n">tracker</span> <span class="o">=</span> <span class="n">HandTracker</span><span class="p">()</span>
+    <span class="n">gesture_recognizer</span> <span class="o">=</span> <span class="n">GestureRecognizer</span><span class="p">()</span>
+
+    <span class="n">cameras</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">get_cameras</span><span class="p">()</span>
+    <span class="n">left_camera_id</span> <span class="o">=</span> <span class="n">cameras</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+    <span class="n">right_camera_id</span> <span class="o">=</span> <span class="n">cameras</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Enhanced hand tracking with visualization&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Supported gestures: Open Palm, Fist, Pointing, Peace, Thumbs Up/Down, OK, Rock, Pinch&quot;</span><span class="p">)</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="c1"># Capture frames</span>
+        <span class="n">left_frame</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">capture</span><span class="p">(</span><span class="n">left_camera_id</span><span class="p">)</span>
+        <span class="n">right_frame</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">capture</span><span class="p">(</span><span class="n">right_camera_id</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">left_frame</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">right_frame</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Track hands</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">tracker</span><span class="o">.</span><span class="n">track_hands_3d</span><span class="p">(</span><span class="n">left_frame</span><span class="p">,</span> <span class="n">right_frame</span><span class="p">)</span>
+
+        <span class="c1"># Create display copies</span>
+        <span class="n">left_display</span> <span class="o">=</span> <span class="n">left_frame</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">right_display</span> <span class="o">=</span> <span class="n">right_frame</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="c1"># Draw hand skeletons</span>
+        <span class="k">for</span> <span class="n">keypoints_2d</span> <span class="ow">in</span> <span class="n">results</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;2d_left&#39;</span><span class="p">,</span> <span class="p">[]):</span>
+            <span class="n">draw_hand_skeleton</span><span class="p">(</span><span class="n">left_display</span><span class="p">,</span> <span class="n">keypoints_2d</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+
+        <span class="k">for</span> <span class="n">keypoints_2d</span> <span class="ow">in</span> <span class="n">results</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;2d_right&#39;</span><span class="p">,</span> <span class="p">[]):</span>
+            <span class="n">draw_hand_skeleton</span><span class="p">(</span><span class="n">right_display</span><span class="p">,</span> <span class="n">keypoints_2d</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">))</span>
+
+        <span class="c1"># Recognize and display gestures</span>
+        <span class="n">gesture_text</span> <span class="o">=</span> <span class="s2">&quot;No gesture&quot;</span>
+        <span class="k">if</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;3d_keypoints&#39;</span><span class="p">]:</span>
+            <span class="k">for</span> <span class="n">keypoints_3d</span> <span class="ow">in</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;3d_keypoints&#39;</span><span class="p">]:</span>
+                <span class="n">gesture_type</span><span class="p">,</span> <span class="n">confidence</span> <span class="o">=</span> <span class="n">gesture_recognizer</span><span class="o">.</span><span class="n">recognize_gestures_3d</span><span class="p">(</span><span class="n">keypoints_3d</span><span class="p">)</span>
+
+                <span class="k">if</span> <span class="n">gesture_type</span> <span class="o">!=</span> <span class="n">GestureType</span><span class="o">.</span><span class="n">UNKNOWN</span> <span class="ow">and</span> <span class="n">confidence</span> <span class="o">&gt;</span> <span class="mf">0.7</span><span class="p">:</span>
+                    <span class="n">gesture_name</span> <span class="o">=</span> <span class="n">gesture_type</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;_&#39;</span><span class="p">,</span> <span class="s1">&#39; &#39;</span><span class="p">)</span><span class="o">.</span><span class="n">title</span><span class="p">()</span>
+                    <span class="n">gesture_text</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">gesture_name</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">confidence</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">)&quot;</span>
+                    <span class="k">break</span>
+
+        <span class="c1"># Add text overlay</span>
+        <span class="n">cv2</span><span class="o">.</span><span class="n">putText</span><span class="p">(</span><span class="n">left_display</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;Gesture: </span><span class="si">{</span><span class="n">gesture_text</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">30</span><span class="p">),</span>
+                   <span class="n">cv2</span><span class="o">.</span><span class="n">FONT_HERSHEY_SIMPLEX</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="p">(</span><span class="mi">255</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="mi">255</span><span class="p">),</span> <span class="mi">2</span><span class="p">)</span>
+
+        <span class="n">cv2</span><span class="o">.</span><span class="n">putText</span><span class="p">(</span><span class="n">left_display</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;Hands: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;3d_keypoints&#39;</span><span class="p">])</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">60</span><span class="p">),</span>
+                   <span class="n">cv2</span><span class="o">.</span><span class="n">FONT_HERSHEY_SIMPLEX</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="p">(</span><span class="mi">255</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="mi">255</span><span class="p">),</span> <span class="mi">2</span><span class="p">)</span>
+
+        <span class="c1"># Display</span>
+        <span class="n">display_frame</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">([</span><span class="n">left_display</span><span class="p">,</span> <span class="n">right_display</span><span class="p">])</span>
+        <span class="n">cv2</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="s1">&#39;Enhanced Hand Tracking&#39;</span><span class="p">,</span> <span class="n">display_frame</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">cv2</span><span class="o">.</span><span class="n">waitKey</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xFF</span> <span class="o">==</span> <span class="nb">ord</span><span class="p">(</span><span class="s1">&#39;q&#39;</span><span class="p">):</span>
+            <span class="k">break</span>
+
+    <span class="c1"># Cleanup</span>
+    <span class="n">tracker</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">disconnect</span><span class="p">()</span>
+    <span class="n">cv2</span><span class="o">.</span><span class="n">destroyAllWindows</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="led-enhanced-hand-tracking">
+<h2>LED-Enhanced Hand Tracking<a class="headerlink" href="#led-enhanced-hand-tracking" title="Link to this heading"></a></h2>
+<section id="using-point-projection-for-better-accuracy">
+<h3>Using Point Projection for Better Accuracy<a class="headerlink" href="#using-point-projection-for-better-accuracy" title="Link to this heading"></a></h3>
+<p>This example demonstrates how to use LED illumination for enhanced hand tracking:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/usr/bin/env python3</span>
+<span class="sd">&quot;&quot;&quot;LED-enhanced hand tracking with point projection.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unlook</span><span class="w"> </span><span class="kn">import</span> <span class="n">UnlookClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unlook.client.scanning.handpose</span><span class="w"> </span><span class="kn">import</span> <span class="n">HandTracker</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unlook.client.projector</span><span class="w"> </span><span class="kn">import</span> <span class="n">LEDController</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="c1"># Connect to scanner</span>
+    <span class="n">client</span> <span class="o">=</span> <span class="n">UnlookClient</span><span class="p">()</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">start_discovery</span><span class="p">()</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+    <span class="n">scanners</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">get_discovered_scanners</span><span class="p">()</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">scanners</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+    <span class="c1"># Initialize LED controller</span>
+    <span class="n">led_controller</span> <span class="o">=</span> <span class="n">LEDController</span><span class="p">(</span><span class="n">client</span><span class="p">)</span>
+
+    <span class="c1"># Configure optimal LED settings for hand tracking</span>
+    <span class="k">if</span> <span class="n">led_controller</span><span class="o">.</span><span class="n">led_available</span><span class="p">:</span>
+        <span class="c1"># LED1: Point projection for enhanced triangulation</span>
+        <span class="c1"># LED2: Flood illumination for general detection</span>
+        <span class="n">led_controller</span><span class="o">.</span><span class="n">set_intensity</span><span class="p">(</span>
+            <span class="n">led1</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>   <span class="c1"># Point projection</span>
+            <span class="n">led2</span><span class="o">=</span><span class="mi">50</span>    <span class="c1"># Flood illumination</span>
+        <span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;LED illumination configured:&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;  LED1: 50mA (point projection)&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;  LED2: 50mA (flood illumination)&quot;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;LED control not available&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Initialize hand tracker</span>
+    <span class="n">tracker</span> <span class="o">=</span> <span class="n">HandTracker</span><span class="p">(</span>
+        <span class="n">max_num_hands</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>           <span class="c1"># Focus on single hand for precision</span>
+        <span class="n">detection_confidence</span><span class="o">=</span><span class="mf">0.7</span><span class="p">,</span>  <span class="c1"># Higher confidence with LED illumination</span>
+        <span class="n">tracking_confidence</span><span class="o">=</span><span class="mf">0.7</span>
+    <span class="p">)</span>
+
+    <span class="n">cameras</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">get_cameras</span><span class="p">()</span>
+    <span class="n">left_camera_id</span> <span class="o">=</span> <span class="n">cameras</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+    <span class="n">right_camera_id</span> <span class="o">=</span> <span class="n">cameras</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Starting LED-enhanced hand tracking...&quot;</span><span class="p">)</span>
+
+    <span class="n">frame_count</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="c1"># Capture frames</span>
+            <span class="n">left_frame</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">capture</span><span class="p">(</span><span class="n">left_camera_id</span><span class="p">)</span>
+            <span class="n">right_frame</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">capture</span><span class="p">(</span><span class="n">right_camera_id</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">left_frame</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">right_frame</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="c1"># Track hands with LED enhancement</span>
+            <span class="n">results</span> <span class="o">=</span> <span class="n">tracker</span><span class="o">.</span><span class="n">track_hands_3d</span><span class="p">(</span><span class="n">left_frame</span><span class="p">,</span> <span class="n">right_frame</span><span class="p">)</span>
+
+            <span class="c1"># Display tracking results</span>
+            <span class="k">if</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;3d_keypoints&#39;</span><span class="p">]:</span>
+                <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">keypoints_3d</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;3d_keypoints&#39;</span><span class="p">]):</span>
+                    <span class="n">wrist</span> <span class="o">=</span> <span class="n">keypoints_3d</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="n">fingertip</span> <span class="o">=</span> <span class="n">keypoints_3d</span><span class="p">[</span><span class="mi">8</span><span class="p">]</span>  <span class="c1"># Index fingertip</span>
+
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Hand </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">:&quot;</span><span class="p">)</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Wrist: (</span><span class="si">{</span><span class="n">wrist</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">wrist</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">wrist</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">) mm&quot;</span><span class="p">)</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Index tip: (</span><span class="si">{</span><span class="n">fingertip</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">fingertip</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">fingertip</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">) mm&quot;</span><span class="p">)</span>
+
+                    <span class="c1"># Calculate hand size (wrist to middle fingertip)</span>
+                    <span class="n">middle_tip</span> <span class="o">=</span> <span class="n">keypoints_3d</span><span class="p">[</span><span class="mi">12</span><span class="p">]</span>
+                    <span class="n">hand_size</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">middle_tip</span> <span class="o">-</span> <span class="n">wrist</span><span class="p">)</span>
+                    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Hand size: </span><span class="si">{</span><span class="n">hand_size</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2"> mm&quot;</span><span class="p">)</span>
+
+            <span class="n">frame_count</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="c1"># Print FPS every 30 frames</span>
+            <span class="k">if</span> <span class="n">frame_count</span> <span class="o">%</span> <span class="mi">30</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">elapsed</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+                <span class="n">fps</span> <span class="o">=</span> <span class="n">frame_count</span> <span class="o">/</span> <span class="n">elapsed</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;FPS: </span><span class="si">{</span><span class="n">fps</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.033</span><span class="p">)</span>  <span class="c1"># ~30 FPS</span>
+
+    <span class="k">except</span> <span class="ne">KeyboardInterrupt</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Stopping...&quot;</span><span class="p">)</span>
+
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="c1"># Turn off LEDs</span>
+        <span class="k">if</span> <span class="n">led_controller</span><span class="o">.</span><span class="n">led_available</span><span class="p">:</span>
+            <span class="n">led_controller</span><span class="o">.</span><span class="n">set_intensity</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;LEDs turned off&quot;</span><span class="p">)</span>
+
+        <span class="n">tracker</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">client</span><span class="o">.</span><span class="n">disconnect</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="gesture-recognition-examples">
+<h2>Gesture Recognition Examples<a class="headerlink" href="#gesture-recognition-examples" title="Link to this heading"></a></h2>
+<section id="real-time-gesture-classification">
+<h3>Real-time Gesture Classification<a class="headerlink" href="#real-time-gesture-classification" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/usr/bin/env python3</span>
+<span class="sd">&quot;&quot;&quot;Real-time gesture recognition example.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">cv2</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">deque</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unlook</span><span class="w"> </span><span class="kn">import</span> <span class="n">UnlookClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unlook.client.scanning.handpose</span><span class="w"> </span><span class="kn">import</span> <span class="n">HandTracker</span><span class="p">,</span> <span class="n">GestureRecognizer</span><span class="p">,</span> <span class="n">GestureType</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">GestureTracker</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">window_size</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gesture_history</span> <span class="o">=</span> <span class="n">deque</span><span class="p">(</span><span class="n">maxlen</span><span class="o">=</span><span class="n">window_size</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_stable_gesture</span> <span class="o">=</span> <span class="n">GestureType</span><span class="o">.</span><span class="n">UNKNOWN</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gesture_start_time</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">min_gesture_duration</span> <span class="o">=</span> <span class="mf">0.5</span>  <span class="c1"># seconds</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gesture_type</span><span class="p">,</span> <span class="n">confidence</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Update gesture history and return stable gesture.&quot;&quot;&quot;</span>
+        <span class="n">current_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+
+        <span class="c1"># Add to history</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gesture_history</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">gesture_type</span><span class="p">,</span> <span class="n">confidence</span><span class="p">,</span> <span class="n">current_time</span><span class="p">))</span>
+
+        <span class="c1"># Find most common gesture in recent history</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">gesture_history</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">5</span><span class="p">:</span>  <span class="c1"># Need at least 5 frames</span>
+            <span class="n">gesture_counts</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="n">total_confidence</span> <span class="o">=</span> <span class="p">{}</span>
+
+            <span class="k">for</span> <span class="n">g_type</span><span class="p">,</span> <span class="n">g_conf</span><span class="p">,</span> <span class="n">g_time</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">gesture_history</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">current_time</span> <span class="o">-</span> <span class="n">g_time</span> <span class="o">&lt;</span> <span class="mf">1.0</span><span class="p">:</span>  <span class="c1"># Only last 1 second</span>
+                    <span class="k">if</span> <span class="n">g_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">gesture_counts</span><span class="p">:</span>
+                        <span class="n">gesture_counts</span><span class="p">[</span><span class="n">g_type</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+                        <span class="n">total_confidence</span><span class="p">[</span><span class="n">g_type</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+                    <span class="n">gesture_counts</span><span class="p">[</span><span class="n">g_type</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">total_confidence</span><span class="p">[</span><span class="n">g_type</span><span class="p">]</span> <span class="o">+=</span> <span class="n">g_conf</span>
+
+            <span class="c1"># Find most frequent gesture with good confidence</span>
+            <span class="n">best_gesture</span> <span class="o">=</span> <span class="n">GestureType</span><span class="o">.</span><span class="n">UNKNOWN</span>
+            <span class="n">best_score</span> <span class="o">=</span> <span class="mi">0</span>
+
+            <span class="k">for</span> <span class="n">g_type</span><span class="p">,</span> <span class="n">count</span> <span class="ow">in</span> <span class="n">gesture_counts</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">avg_confidence</span> <span class="o">=</span> <span class="n">total_confidence</span><span class="p">[</span><span class="n">g_type</span><span class="p">]</span> <span class="o">/</span> <span class="n">count</span>
+                <span class="n">score</span> <span class="o">=</span> <span class="n">count</span> <span class="o">*</span> <span class="n">avg_confidence</span>
+
+                <span class="k">if</span> <span class="n">score</span> <span class="o">&gt;</span> <span class="n">best_score</span> <span class="ow">and</span> <span class="n">avg_confidence</span> <span class="o">&gt;</span> <span class="mf">0.6</span><span class="p">:</span>
+                    <span class="n">best_gesture</span> <span class="o">=</span> <span class="n">g_type</span>
+                    <span class="n">best_score</span> <span class="o">=</span> <span class="n">score</span>
+
+            <span class="c1"># Check if gesture changed</span>
+            <span class="k">if</span> <span class="n">best_gesture</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_stable_gesture</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">last_stable_gesture</span> <span class="o">=</span> <span class="n">best_gesture</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">gesture_start_time</span> <span class="o">=</span> <span class="n">current_time</span>
+                <span class="k">return</span> <span class="n">best_gesture</span><span class="p">,</span> <span class="kc">True</span>  <span class="c1"># New gesture</span>
+            <span class="k">elif</span> <span class="n">current_time</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">gesture_start_time</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">min_gesture_duration</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">best_gesture</span><span class="p">,</span> <span class="kc">False</span>  <span class="c1"># Stable gesture</span>
+
+        <span class="k">return</span> <span class="n">GestureType</span><span class="o">.</span><span class="n">UNKNOWN</span><span class="p">,</span> <span class="kc">False</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="c1"># Setup</span>
+    <span class="n">client</span> <span class="o">=</span> <span class="n">UnlookClient</span><span class="p">()</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">start_discovery</span><span class="p">()</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">scanners</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">get_discovered_scanners</span><span class="p">()</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">scanners</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+    <span class="n">tracker</span> <span class="o">=</span> <span class="n">HandTracker</span><span class="p">()</span>
+    <span class="n">gesture_recognizer</span> <span class="o">=</span> <span class="n">GestureRecognizer</span><span class="p">(</span><span class="n">gesture_threshold</span><span class="o">=</span><span class="mf">0.6</span><span class="p">)</span>
+    <span class="n">gesture_tracker</span> <span class="o">=</span> <span class="n">GestureTracker</span><span class="p">()</span>
+
+    <span class="n">cameras</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">get_cameras</span><span class="p">()</span>
+    <span class="n">left_camera_id</span> <span class="o">=</span> <span class="n">cameras</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+    <span class="n">right_camera_id</span> <span class="o">=</span> <span class="n">cameras</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Real-time Gesture Recognition&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">40</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Supported gestures:&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">gesture_type</span> <span class="ow">in</span> <span class="n">GestureType</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">gesture_type</span> <span class="o">!=</span> <span class="n">GestureType</span><span class="o">.</span><span class="n">UNKNOWN</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  - </span><span class="si">{</span><span class="n">gesture_type</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;_&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39; &#39;</span><span class="p">)</span><span class="o">.</span><span class="n">title</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">40</span><span class="p">)</span>
+
+    <span class="n">last_gesture_name</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="c1"># Capture and process</span>
+        <span class="n">left_frame</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">capture</span><span class="p">(</span><span class="n">left_camera_id</span><span class="p">)</span>
+        <span class="n">right_frame</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">capture</span><span class="p">(</span><span class="n">right_camera_id</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">left_frame</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">right_frame</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="n">results</span> <span class="o">=</span> <span class="n">tracker</span><span class="o">.</span><span class="n">track_hands_3d</span><span class="p">(</span><span class="n">left_frame</span><span class="p">,</span> <span class="n">right_frame</span><span class="p">)</span>
+
+        <span class="c1"># Process gestures</span>
+        <span class="n">current_gesture</span> <span class="o">=</span> <span class="n">GestureType</span><span class="o">.</span><span class="n">UNKNOWN</span>
+        <span class="n">current_confidence</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+        <span class="k">if</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;3d_keypoints&#39;</span><span class="p">]:</span>
+            <span class="k">for</span> <span class="n">keypoints_3d</span> <span class="ow">in</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;3d_keypoints&#39;</span><span class="p">]:</span>
+                <span class="n">gesture_type</span><span class="p">,</span> <span class="n">confidence</span> <span class="o">=</span> <span class="n">gesture_recognizer</span><span class="o">.</span><span class="n">recognize_gestures_3d</span><span class="p">(</span><span class="n">keypoints_3d</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">confidence</span> <span class="o">&gt;</span> <span class="n">current_confidence</span><span class="p">:</span>
+                    <span class="n">current_gesture</span> <span class="o">=</span> <span class="n">gesture_type</span>
+                    <span class="n">current_confidence</span> <span class="o">=</span> <span class="n">confidence</span>
+
+        <span class="c1"># Update gesture tracker</span>
+        <span class="n">stable_gesture</span><span class="p">,</span> <span class="n">is_new</span> <span class="o">=</span> <span class="n">gesture_tracker</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">current_gesture</span><span class="p">,</span> <span class="n">current_confidence</span><span class="p">)</span>
+
+        <span class="c1"># Display stable gestures</span>
+        <span class="k">if</span> <span class="n">stable_gesture</span> <span class="o">!=</span> <span class="n">GestureType</span><span class="o">.</span><span class="n">UNKNOWN</span><span class="p">:</span>
+            <span class="n">gesture_name</span> <span class="o">=</span> <span class="n">stable_gesture</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;_&#39;</span><span class="p">,</span> <span class="s1">&#39; &#39;</span><span class="p">)</span><span class="o">.</span><span class="n">title</span><span class="p">()</span>
+
+            <span class="k">if</span> <span class="n">is_new</span> <span class="ow">or</span> <span class="n">gesture_name</span> <span class="o">!=</span> <span class="n">last_gesture_name</span><span class="p">:</span>
+                <span class="n">timestamp</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s2">&quot;%H:%M:%S&quot;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[</span><span class="si">{</span><span class="n">timestamp</span><span class="si">}</span><span class="s2">] Gesture: </span><span class="si">{</span><span class="n">gesture_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="n">last_gesture_name</span> <span class="o">=</span> <span class="n">gesture_name</span>
+
+        <span class="c1"># Simple visualization</span>
+        <span class="k">if</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;2d_left&#39;</span><span class="p">]:</span>
+            <span class="n">left_display</span> <span class="o">=</span> <span class="n">left_frame</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">h</span><span class="p">,</span> <span class="n">w</span> <span class="o">=</span> <span class="n">left_display</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span>
+
+            <span class="c1"># Draw simple hand indicator</span>
+            <span class="k">for</span> <span class="n">keypoints_2d</span> <span class="ow">in</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;2d_left&#39;</span><span class="p">]:</span>
+                <span class="n">wrist</span> <span class="o">=</span> <span class="n">keypoints_2d</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">wrist</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">w</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">wrist</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">h</span><span class="p">)</span>
+                <span class="n">cv2</span><span class="o">.</span><span class="n">circle</span><span class="p">(</span><span class="n">left_display</span><span class="p">,</span> <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">),</span> <span class="mi">10</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+            <span class="c1"># Add gesture text</span>
+            <span class="n">gesture_display</span> <span class="o">=</span> <span class="n">last_gesture_name</span> <span class="k">if</span> <span class="n">last_gesture_name</span> <span class="k">else</span> <span class="s2">&quot;No Gesture&quot;</span>
+            <span class="n">cv2</span><span class="o">.</span><span class="n">putText</span><span class="p">(</span><span class="n">left_display</span><span class="p">,</span> <span class="n">gesture_display</span><span class="p">,</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">30</span><span class="p">),</span>
+                       <span class="n">cv2</span><span class="o">.</span><span class="n">FONT_HERSHEY_SIMPLEX</span><span class="p">,</span> <span class="mf">0.8</span><span class="p">,</span> <span class="p">(</span><span class="mi">255</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="mi">255</span><span class="p">),</span> <span class="mi">2</span><span class="p">)</span>
+
+            <span class="n">cv2</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="s1">&#39;Gesture Recognition&#39;</span><span class="p">,</span> <span class="n">left_display</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">cv2</span><span class="o">.</span><span class="n">waitKey</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xFF</span> <span class="o">==</span> <span class="nb">ord</span><span class="p">(</span><span class="s1">&#39;q&#39;</span><span class="p">):</span>
+            <span class="k">break</span>
+
+    <span class="c1"># Cleanup</span>
+    <span class="n">tracker</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">disconnect</span><span class="p">()</span>
+    <span class="n">cv2</span><span class="o">.</span><span class="n">destroyAllWindows</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="advanced-applications">
+<h2>Advanced Applications<a class="headerlink" href="#advanced-applications" title="Link to this heading"></a></h2>
+<section id="hand-computer-interaction">
+<h3>Hand-Computer Interaction<a class="headerlink" href="#hand-computer-interaction" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/usr/bin/env python3</span>
+<span class="sd">&quot;&quot;&quot;Hand-computer interaction example using gestures.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">cv2</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pyautogui</span>  <span class="c1"># pip install pyautogui</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unlook</span><span class="w"> </span><span class="kn">import</span> <span class="n">UnlookClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unlook.client.scanning.handpose</span><span class="w"> </span><span class="kn">import</span> <span class="n">HandTracker</span><span class="p">,</span> <span class="n">GestureRecognizer</span><span class="p">,</span> <span class="n">GestureType</span>
+
+<span class="c1"># Disable pyautogui failsafe</span>
+<span class="n">pyautogui</span><span class="o">.</span><span class="n">FAILSAFE</span> <span class="o">=</span> <span class="kc">False</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">HandController</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">screen_width</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">screen_height</span> <span class="o">=</span> <span class="n">pyautogui</span><span class="o">.</span><span class="n">size</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_gesture</span> <span class="o">=</span> <span class="n">GestureType</span><span class="o">.</span><span class="n">UNKNOWN</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cursor_smoothing</span> <span class="o">=</span> <span class="mf">0.3</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_cursor_pos</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">map_hand_to_screen</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">hand_pos_3d</span><span class="p">,</span> <span class="n">workspace_bounds</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Map 3D hand position to screen coordinates.&quot;&quot;&quot;</span>
+        <span class="c1"># Define workspace bounds in mm</span>
+        <span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span> <span class="o">=</span> <span class="n">workspace_bounds</span><span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">]</span>
+        <span class="n">y_min</span><span class="p">,</span> <span class="n">y_max</span> <span class="o">=</span> <span class="n">workspace_bounds</span><span class="p">[</span><span class="s1">&#39;y&#39;</span><span class="p">]</span>
+        <span class="n">z_min</span><span class="p">,</span> <span class="n">z_max</span> <span class="o">=</span> <span class="n">workspace_bounds</span><span class="p">[</span><span class="s1">&#39;z&#39;</span><span class="p">]</span>
+
+        <span class="c1"># Map to screen space</span>
+        <span class="n">screen_x</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">interp</span><span class="p">(</span><span class="n">hand_pos_3d</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="n">x_min</span><span class="p">,</span> <span class="n">x_max</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">screen_width</span><span class="p">]))</span>
+        <span class="n">screen_y</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">interp</span><span class="p">(</span><span class="n">hand_pos_3d</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="n">y_min</span><span class="p">,</span> <span class="n">y_max</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">screen_height</span><span class="p">]))</span>
+
+        <span class="c1"># Apply smoothing</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_cursor_pos</span><span class="p">:</span>
+            <span class="n">screen_x</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">last_cursor_pos</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor_smoothing</span><span class="p">)</span> <span class="o">+</span>
+                         <span class="n">screen_x</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor_smoothing</span><span class="p">)</span>
+            <span class="n">screen_y</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">last_cursor_pos</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor_smoothing</span><span class="p">)</span> <span class="o">+</span>
+                         <span class="n">screen_y</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">cursor_smoothing</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_cursor_pos</span> <span class="o">=</span> <span class="p">(</span><span class="n">screen_x</span><span class="p">,</span> <span class="n">screen_y</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">screen_x</span><span class="p">,</span> <span class="n">screen_y</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">handle_gesture</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gesture_type</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Handle gesture commands.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">gesture_type</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_gesture</span><span class="p">:</span>
+            <span class="k">return</span>  <span class="c1"># Ignore repeated gestures</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_gesture</span> <span class="o">=</span> <span class="n">gesture_type</span>
+
+        <span class="k">if</span> <span class="n">gesture_type</span> <span class="o">==</span> <span class="n">GestureType</span><span class="o">.</span><span class="n">POINTING</span><span class="p">:</span>
+            <span class="c1"># Move cursor</span>
+            <span class="k">pass</span>  <span class="c1"># Handled in main loop</span>
+        <span class="k">elif</span> <span class="n">gesture_type</span> <span class="o">==</span> <span class="n">GestureType</span><span class="o">.</span><span class="n">CLOSED_FIST</span><span class="p">:</span>
+            <span class="n">pyautogui</span><span class="o">.</span><span class="n">click</span><span class="p">()</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Click!&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">gesture_type</span> <span class="o">==</span> <span class="n">GestureType</span><span class="o">.</span><span class="n">PEACE</span><span class="p">:</span>
+            <span class="n">pyautogui</span><span class="o">.</span><span class="n">rightClick</span><span class="p">()</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Right click!&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">gesture_type</span> <span class="o">==</span> <span class="n">GestureType</span><span class="o">.</span><span class="n">THUMBS_UP</span><span class="p">:</span>
+            <span class="n">pyautogui</span><span class="o">.</span><span class="n">scroll</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Scroll up!&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">gesture_type</span> <span class="o">==</span> <span class="n">GestureType</span><span class="o">.</span><span class="n">THUMBS_DOWN</span><span class="p">:</span>
+            <span class="n">pyautogui</span><span class="o">.</span><span class="n">scroll</span><span class="p">(</span><span class="o">-</span><span class="mi">3</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Scroll down!&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">gesture_type</span> <span class="o">==</span> <span class="n">GestureType</span><span class="o">.</span><span class="n">OK</span><span class="p">:</span>
+            <span class="n">pyautogui</span><span class="o">.</span><span class="n">doubleClick</span><span class="p">()</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Double click!&quot;</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="c1"># Setup</span>
+    <span class="n">client</span> <span class="o">=</span> <span class="n">UnlookClient</span><span class="p">()</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">start_discovery</span><span class="p">()</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">scanners</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">get_discovered_scanners</span><span class="p">()</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">scanners</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+    <span class="n">tracker</span> <span class="o">=</span> <span class="n">HandTracker</span><span class="p">(</span><span class="n">max_num_hands</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">gesture_recognizer</span> <span class="o">=</span> <span class="n">GestureRecognizer</span><span class="p">()</span>
+    <span class="n">controller</span> <span class="o">=</span> <span class="n">HandController</span><span class="p">()</span>
+
+    <span class="n">cameras</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">get_cameras</span><span class="p">()</span>
+    <span class="n">left_camera_id</span> <span class="o">=</span> <span class="n">cameras</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+    <span class="n">right_camera_id</span> <span class="o">=</span> <span class="n">cameras</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+
+    <span class="c1"># Define interaction workspace (adjust based on your setup)</span>
+    <span class="n">workspace_bounds</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;x&#39;</span><span class="p">:</span> <span class="p">[</span><span class="o">-</span><span class="mi">100</span><span class="p">,</span> <span class="mi">100</span><span class="p">],</span>   <span class="c1"># mm left-right</span>
+        <span class="s1">&#39;y&#39;</span><span class="p">:</span> <span class="p">[</span><span class="o">-</span><span class="mi">50</span><span class="p">,</span> <span class="mi">50</span><span class="p">],</span>     <span class="c1"># mm up-down</span>
+        <span class="s1">&#39;z&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">400</span><span class="p">,</span> <span class="mi">600</span><span class="p">]</span>     <span class="c1"># mm distance from camera</span>
+    <span class="p">}</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Hand-Computer Interaction&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Gestures:&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;  Pointing - Move cursor&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;  Fist - Click&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;  Peace - Right click&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;  Thumbs Up - Scroll up&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;  Thumbs Down - Scroll down&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;  OK - Double click&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Press &#39;q&#39; to quit&quot;</span><span class="p">)</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="c1"># Capture and track</span>
+        <span class="n">left_frame</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">capture</span><span class="p">(</span><span class="n">left_camera_id</span><span class="p">)</span>
+        <span class="n">right_frame</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">capture</span><span class="p">(</span><span class="n">right_camera_id</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">left_frame</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">right_frame</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="n">results</span> <span class="o">=</span> <span class="n">tracker</span><span class="o">.</span><span class="n">track_hands_3d</span><span class="p">(</span><span class="n">left_frame</span><span class="p">,</span> <span class="n">right_frame</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;3d_keypoints&#39;</span><span class="p">]:</span>
+            <span class="n">keypoints_3d</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;3d_keypoints&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+
+            <span class="c1"># Get hand position (use wrist or index fingertip)</span>
+            <span class="n">hand_pos</span> <span class="o">=</span> <span class="n">keypoints_3d</span><span class="p">[</span><span class="mi">8</span><span class="p">]</span>  <span class="c1"># Index fingertip</span>
+
+            <span class="c1"># Recognize gesture</span>
+            <span class="n">gesture_type</span><span class="p">,</span> <span class="n">confidence</span> <span class="o">=</span> <span class="n">gesture_recognizer</span><span class="o">.</span><span class="n">recognize_gestures_3d</span><span class="p">(</span><span class="n">keypoints_3d</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">confidence</span> <span class="o">&gt;</span> <span class="mf">0.7</span><span class="p">:</span>
+                <span class="c1"># Map hand to screen coordinates</span>
+                <span class="k">if</span> <span class="n">gesture_type</span> <span class="o">==</span> <span class="n">GestureType</span><span class="o">.</span><span class="n">POINTING</span><span class="p">:</span>
+                    <span class="n">screen_x</span><span class="p">,</span> <span class="n">screen_y</span> <span class="o">=</span> <span class="n">controller</span><span class="o">.</span><span class="n">map_hand_to_screen</span><span class="p">(</span><span class="n">hand_pos</span><span class="p">,</span> <span class="n">workspace_bounds</span><span class="p">)</span>
+                    <span class="n">pyautogui</span><span class="o">.</span><span class="n">moveTo</span><span class="p">(</span><span class="n">screen_x</span><span class="p">,</span> <span class="n">screen_y</span><span class="p">)</span>
+
+                <span class="c1"># Handle other gestures</span>
+                <span class="n">controller</span><span class="o">.</span><span class="n">handle_gesture</span><span class="p">(</span><span class="n">gesture_type</span><span class="p">)</span>
+
+        <span class="c1"># Display tracking status</span>
+        <span class="k">if</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;2d_left&#39;</span><span class="p">]:</span>
+            <span class="n">left_display</span> <span class="o">=</span> <span class="n">left_frame</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">cv2</span><span class="o">.</span><span class="n">putText</span><span class="p">(</span><span class="n">left_display</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;Hands: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;3d_keypoints&#39;</span><span class="p">])</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">30</span><span class="p">),</span>
+                       <span class="n">cv2</span><span class="o">.</span><span class="n">FONT_HERSHEY_SIMPLEX</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="p">(</span><span class="mi">255</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="mi">255</span><span class="p">),</span> <span class="mi">2</span><span class="p">)</span>
+            <span class="n">cv2</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="s1">&#39;Hand Controller&#39;</span><span class="p">,</span> <span class="n">left_display</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">cv2</span><span class="o">.</span><span class="n">waitKey</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xFF</span> <span class="o">==</span> <span class="nb">ord</span><span class="p">(</span><span class="s1">&#39;q&#39;</span><span class="p">):</span>
+            <span class="k">break</span>
+
+    <span class="c1"># Cleanup</span>
+    <span class="n">tracker</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">disconnect</span><span class="p">()</span>
+    <span class="n">cv2</span><span class="o">.</span><span class="n">destroyAllWindows</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="performance-optimization">
+<h2>Performance Optimization<a class="headerlink" href="#performance-optimization" title="Link to this heading"></a></h2>
+<section id="optimized-real-time-tracking">
+<h3>Optimized Real-time Tracking<a class="headerlink" href="#optimized-real-time-tracking" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="ch">#!/usr/bin/env python3</span>
+<span class="sd">&quot;&quot;&quot;Performance-optimized hand tracking example.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">cv2</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">queue</span><span class="w"> </span><span class="kn">import</span> <span class="n">Queue</span><span class="p">,</span> <span class="n">Empty</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unlook</span><span class="w"> </span><span class="kn">import</span> <span class="n">UnlookClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unlook.client.scanning.handpose</span><span class="w"> </span><span class="kn">import</span> <span class="n">HandTracker</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">OptimizedHandTracker</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">client</span> <span class="o">=</span> <span class="n">client</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">frame_queue</span> <span class="o">=</span> <span class="n">Queue</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">result_queue</span> <span class="o">=</span> <span class="n">Queue</span><span class="p">(</span><span class="n">maxsize</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">processing_thread</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">running</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="c1"># Initialize tracker with optimized settings</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tracker</span> <span class="o">=</span> <span class="n">HandTracker</span><span class="p">(</span>
+            <span class="n">max_num_hands</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>           <span class="c1"># Single hand for speed</span>
+            <span class="n">detection_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>  <span class="c1"># Lower for faster detection</span>
+            <span class="n">tracking_confidence</span><span class="o">=</span><span class="mf">0.5</span>    <span class="c1"># Lower for faster tracking</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Get cameras</span>
+        <span class="n">cameras</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">get_cameras</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">left_camera_id</span> <span class="o">=</span> <span class="n">cameras</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">right_camera_id</span> <span class="o">=</span> <span class="n">cameras</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="s1">&#39;id&#39;</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">capture_worker</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Capture frames in background thread.&quot;&quot;&quot;</span>
+        <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">running</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">left_frame</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">capture</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">left_camera_id</span><span class="p">)</span>
+                <span class="n">right_frame</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">camera</span><span class="o">.</span><span class="n">capture</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">right_camera_id</span><span class="p">)</span>
+
+                <span class="k">if</span> <span class="n">left_frame</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">right_frame</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="c1"># Downsample for faster processing</span>
+                    <span class="n">left_small</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">resize</span><span class="p">(</span><span class="n">left_frame</span><span class="p">,</span> <span class="p">(</span><span class="mi">320</span><span class="p">,</span> <span class="mi">240</span><span class="p">))</span>
+                    <span class="n">right_small</span> <span class="o">=</span> <span class="n">cv2</span><span class="o">.</span><span class="n">resize</span><span class="p">(</span><span class="n">right_frame</span><span class="p">,</span> <span class="p">(</span><span class="mi">320</span><span class="p">,</span> <span class="mi">240</span><span class="p">))</span>
+
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">frame_queue</span><span class="o">.</span><span class="n">put</span><span class="p">((</span><span class="n">left_small</span><span class="p">,</span> <span class="n">right_small</span><span class="p">,</span> <span class="n">left_frame</span><span class="p">),</span> <span class="n">block</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                    <span class="k">except</span><span class="p">:</span>
+                        <span class="k">pass</span>  <span class="c1"># Queue full, skip frame</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Capture error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">processing_worker</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Process frames in background thread.&quot;&quot;&quot;</span>
+        <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">running</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">left_small</span><span class="p">,</span> <span class="n">right_small</span><span class="p">,</span> <span class="n">left_full</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">frame_queue</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+
+                <span class="c1"># Track hands on downsampled images</span>
+                <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+                <span class="n">results</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tracker</span><span class="o">.</span><span class="n">track_hands_3d</span><span class="p">(</span><span class="n">left_small</span><span class="p">,</span> <span class="n">right_small</span><span class="p">)</span>
+                <span class="n">processing_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+
+                <span class="c1"># Scale results back to full resolution</span>
+                <span class="n">scale_x</span> <span class="o">=</span> <span class="n">left_full</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="n">left_small</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">scale_y</span> <span class="o">=</span> <span class="n">left_full</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="n">left_small</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+                <span class="k">for</span> <span class="n">keypoints_list</span> <span class="ow">in</span> <span class="p">[</span><span class="n">results</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;2d_left&#39;</span><span class="p">,</span> <span class="p">[]),</span> <span class="n">results</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;2d_right&#39;</span><span class="p">,</span> <span class="p">[])]:</span>
+                    <span class="k">for</span> <span class="n">keypoints</span> <span class="ow">in</span> <span class="n">keypoints_list</span><span class="p">:</span>
+                        <span class="n">keypoints</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">*=</span> <span class="n">scale_x</span>
+                        <span class="n">keypoints</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">*=</span> <span class="n">scale_y</span>
+
+                <span class="c1"># Add timing info</span>
+                <span class="n">results</span><span class="p">[</span><span class="s1">&#39;processing_time&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">processing_time</span>
+                <span class="n">results</span><span class="p">[</span><span class="s1">&#39;full_frame&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">left_full</span>
+
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">result_queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">block</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                <span class="k">except</span><span class="p">:</span>
+                    <span class="k">pass</span>  <span class="c1"># Queue full, skip result</span>
+
+            <span class="k">except</span> <span class="n">Empty</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Processing error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">start</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Start background processing.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">running</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">capture_thread</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">capture_worker</span><span class="p">,</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">processing_thread</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">processing_worker</span><span class="p">,</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">capture_thread</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">processing_thread</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">stop</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Stop background processing.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">running</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">capture_thread</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">capture_thread</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">processing_thread</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">processing_thread</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tracker</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_latest_result</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get latest tracking result (non-blocking).&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">result_queue</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">block</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">Empty</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="c1"># Setup</span>
+    <span class="n">client</span> <span class="o">=</span> <span class="n">UnlookClient</span><span class="p">()</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">start_discovery</span><span class="p">()</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">scanners</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">get_discovered_scanners</span><span class="p">()</span>
+    <span class="n">client</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="n">scanners</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+    <span class="c1"># Create optimized tracker</span>
+    <span class="n">tracker</span> <span class="o">=</span> <span class="n">OptimizedHandTracker</span><span class="p">(</span><span class="n">client</span><span class="p">)</span>
+    <span class="n">tracker</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Optimized hand tracking started&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Performance metrics will be displayed&quot;</span><span class="p">)</span>
+
+    <span class="n">frame_count</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">fps_start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+    <span class="n">last_processing_time</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="c1"># Get latest result</span>
+            <span class="n">result</span> <span class="o">=</span> <span class="n">tracker</span><span class="o">.</span><span class="n">get_latest_result</span><span class="p">()</span>
+
+            <span class="k">if</span> <span class="n">result</span><span class="p">:</span>
+                <span class="n">frame_count</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">last_processing_time</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;processing_time&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+
+                <span class="c1"># Display frame with annotations</span>
+                <span class="n">display_frame</span> <span class="o">=</span> <span class="n">result</span><span class="p">[</span><span class="s1">&#39;full_frame&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+                <span class="c1"># Draw hand indicators</span>
+                <span class="k">for</span> <span class="n">keypoints_2d</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;2d_left&#39;</span><span class="p">,</span> <span class="p">[]):</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">keypoints_2d</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="n">h</span><span class="p">,</span> <span class="n">w</span> <span class="o">=</span> <span class="n">display_frame</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span>
+                        <span class="n">wrist</span> <span class="o">=</span> <span class="n">keypoints_2d</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                        <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">wrist</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="nb">int</span><span class="p">(</span><span class="n">wrist</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                        <span class="n">cv2</span><span class="o">.</span><span class="n">circle</span><span class="p">(</span><span class="n">display_frame</span><span class="p">,</span> <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">),</span> <span class="mi">10</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+                <span class="c1"># Add performance metrics</span>
+                <span class="n">current_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">frame_count</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">current_time</span> <span class="o">&gt;</span> <span class="n">fps_start</span><span class="p">:</span>
+                    <span class="n">fps</span> <span class="o">=</span> <span class="n">frame_count</span> <span class="o">/</span> <span class="p">(</span><span class="n">current_time</span> <span class="o">-</span> <span class="n">fps_start</span><span class="p">)</span>
+                    <span class="n">cv2</span><span class="o">.</span><span class="n">putText</span><span class="p">(</span><span class="n">display_frame</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;FPS: </span><span class="si">{</span><span class="n">fps</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">30</span><span class="p">),</span>
+                               <span class="n">cv2</span><span class="o">.</span><span class="n">FONT_HERSHEY_SIMPLEX</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="p">(</span><span class="mi">255</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="mi">255</span><span class="p">),</span> <span class="mi">2</span><span class="p">)</span>
+                    <span class="n">cv2</span><span class="o">.</span><span class="n">putText</span><span class="p">(</span><span class="n">display_frame</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;Process: </span><span class="si">{</span><span class="n">last_processing_time</span><span class="o">*</span><span class="mi">1000</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">ms&quot;</span><span class="p">,</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">60</span><span class="p">),</span>
+                               <span class="n">cv2</span><span class="o">.</span><span class="n">FONT_HERSHEY_SIMPLEX</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="p">(</span><span class="mi">255</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="mi">255</span><span class="p">),</span> <span class="mi">2</span><span class="p">)</span>
+                    <span class="n">cv2</span><span class="o">.</span><span class="n">putText</span><span class="p">(</span><span class="n">display_frame</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;Hands: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;3d_keypoints&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">[]))</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">90</span><span class="p">),</span>
+                               <span class="n">cv2</span><span class="o">.</span><span class="n">FONT_HERSHEY_SIMPLEX</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="p">(</span><span class="mi">255</span><span class="p">,</span> <span class="mi">255</span><span class="p">,</span> <span class="mi">255</span><span class="p">),</span> <span class="mi">2</span><span class="p">)</span>
+
+                <span class="n">cv2</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="s1">&#39;Optimized Hand Tracking&#39;</span><span class="p">,</span> <span class="n">display_frame</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">cv2</span><span class="o">.</span><span class="n">waitKey</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xFF</span> <span class="o">==</span> <span class="nb">ord</span><span class="p">(</span><span class="s1">&#39;q&#39;</span><span class="p">):</span>
+                <span class="k">break</span>
+
+    <span class="k">except</span> <span class="ne">KeyboardInterrupt</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Stopping...&quot;</span><span class="p">)</span>
+
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">tracker</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+        <span class="n">client</span><span class="o">.</span><span class="n">disconnect</span><span class="p">()</span>
+        <span class="n">cv2</span><span class="o">.</span><span class="n">destroyAllWindows</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="configuration-tips">
+<h2>Configuration Tips<a class="headerlink" href="#configuration-tips" title="Link to this heading"></a></h2>
+<section id="camera-setup">
+<h3>Camera Setup<a class="headerlink" href="#camera-setup" title="Link to this heading"></a></h3>
+<p><strong>Optimal Camera Configuration:</strong></p>
+<ul class="simple">
+<li><p><strong>Distance</strong>: 40-80cm from hands</p></li>
+<li><p><strong>Baseline</strong>: 6-12cm between cameras</p></li>
+<li><p><strong>Resolution</strong>: 640x480 or higher</p></li>
+<li><p><strong>Frame Rate</strong>: 30 FPS recommended</p></li>
+<li><p><strong>Exposure</strong>: Fixed exposure for consistent lighting</p></li>
+</ul>
+<p><strong>Calibration Requirements:</strong></p>
+<ul class="simple">
+<li><p>Use checkerboard pattern calibration</p></li>
+<li><p>Capture 20+ image pairs from different angles</p></li>
+<li><p>Ensure good coverage of the field of view</p></li>
+<li><p>Validate reprojection error &lt; 0.5 pixels</p></li>
+</ul>
+</section>
+<section id="led-optimization">
+<h3>LED Optimization<a class="headerlink" href="#led-optimization" title="Link to this heading"></a></h3>
+<p><strong>Recommended Settings:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># For optimal hand tracking</span>
+<span class="n">led_controller</span><span class="o">.</span><span class="n">set_intensity</span><span class="p">(</span>
+    <span class="n">led1</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>   <span class="c1"># Point projection - enhances triangulation</span>
+    <span class="n">led2</span><span class="o">=</span><span class="mi">50</span>    <span class="c1"># Flood illumination - improves detection</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>Lighting Considerations:</strong></p>
+<ul class="simple">
+<li><p>Avoid harsh shadows</p></li>
+<li><p>Minimize reflections on skin</p></li>
+<li><p>Use consistent ambient lighting</p></li>
+<li><p>Consider IR illumination for low-light scenarios</p></li>
+</ul>
+</section>
+<section id="performance-tuning">
+<h3>Performance Tuning<a class="headerlink" href="#performance-tuning" title="Link to this heading"></a></h3>
+<p><strong>Speed vs Accuracy Trade-offs:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># High speed configuration</span>
+<span class="n">tracker</span> <span class="o">=</span> <span class="n">HandTracker</span><span class="p">(</span>
+    <span class="n">max_num_hands</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+    <span class="n">detection_confidence</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
+    <span class="n">tracking_confidence</span><span class="o">=</span><span class="mf">0.5</span>
+<span class="p">)</span>
+
+<span class="c1"># High accuracy configuration</span>
+<span class="n">tracker</span> <span class="o">=</span> <span class="n">HandTracker</span><span class="p">(</span>
+    <span class="n">max_num_hands</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+    <span class="n">detection_confidence</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span>
+    <span class="n">tracking_confidence</span><span class="o">=</span><span class="mf">0.8</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>Memory Optimization:</strong></p>
+<ul class="simple">
+<li><p>Limit history buffer sizes</p></li>
+<li><p>Use appropriate image resolution</p></li>
+<li><p>Clean up resources properly</p></li>
+<li><p>Monitor memory usage in long-running applications</p></li>
+</ul>
+</section>
+</section>
+<section id="see-also">
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="../api_reference/handpose.html"><span class="doc">Handpose Module</span></a> - Complete API documentation</p></li>
+<li><p><a class="reference internal" href="camera_calibration.html"><span class="doc">Camera Calibration</span></a> - Stereo calibration guide</p></li>
+<li><p><a class="reference internal" href="../user_guide/camera_configuration.html"><span class="doc">Camera Configuration</span></a> - Camera setup</p></li>
+<li><p><a class="reference internal" href="../troubleshooting.html"><span class="doc">Troubleshooting</span></a> - Common issues and solutions</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="basic_connection.html" class="btn btn-neutral float-left" title="Basic Connection" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="realtime_scanning.html" class="btn btn-neutral float-right" title="Real-time Scanning Example" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Supernova Industries.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

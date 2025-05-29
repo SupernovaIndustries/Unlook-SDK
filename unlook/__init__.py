@@ -8,7 +8,13 @@ Quick start:
     quick_scan('object.ply')   # 3D scan
 """
 
-__version__ = "2.0.0"
+# Import version from pyproject.toml to maintain single source of truth
+try:
+    import importlib.metadata
+    __version__ = importlib.metadata.version("unlook-sdk")
+except (ImportError, importlib.metadata.PackageNotFoundError):
+    # Fallback for development installs
+    __version__ = "2.0.0"
 __author__ = "UnLook Team"
 
 # Core components

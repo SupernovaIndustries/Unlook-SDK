@@ -1,0 +1,674 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Real-time Scanner API &mdash; Unlook SDK 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=e323ea24" />
+
+  
+    <link rel="shortcut icon" href="../_static/favicon.ico"/>
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=df1a032d"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #2980B9" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/unlook_logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started.html">Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../getting_started.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting_started.html#quick-installation">Quick Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../getting_started.html#basic-usage">Basic Usage</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../getting_started.html#connect-to-a-scanner">Connect to a Scanner</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting_started.html#real-time-scanning">Real-time Scanning</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../getting_started.html#next-steps">Next Steps</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#basic-installation">Basic Installation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../installation.html#prerequisites">Prerequisites</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../installation.html#core-installation">Core Installation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#gpu-acceleration-setup">GPU Acceleration Setup</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../installation.html#nvidia-gpus">NVIDIA GPUs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../installation.html#amd-gpus">AMD GPUs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../installation.html#cpu-only-fallback">CPU-only Fallback</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#open3d-and-open3d-ml">Open3D and Open3D-ML</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#verifying-installation">Verifying Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#server-installation-raspberry-pi">Server Installation (Raspberry Pi)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#troubleshooting">Troubleshooting</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../installation.html#common-issues">Common Issues</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../installation.html#getting-help">Getting Help</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../installation.html#updating">Updating</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/index.html">User Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/overview.html">Overview</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/overview.html#system-architecture">System Architecture</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/overview.html#key-components">Key Components</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/overview.html#core-components">Core Components</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/overview.html#client-components">Client Components</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/overview.html#server-components">Server Components</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/overview.html#scanning-technologies">Scanning Technologies</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/overview.html#hardware-support">Hardware Support</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/overview.html#getting-started">Getting Started</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/protocol_v2_migration.html">Protocol V2 Migration Guide</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#overview">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#key-differences">Key Differences</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#network-protocol">Network Protocol</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#message-types">Message Types</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#api-changes">API Changes</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#client-initialization">Client Initialization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#multi-camera-capture">Multi-Camera Capture</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#server-configuration">Server Configuration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#preprocessing-configuration">Preprocessing Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#migration-steps">Migration Steps</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#step-1-update-server">Step 1: Update Server</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#step-2-update-client-code">Step 2: Update Client Code</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#step-3-test-performance">Step 3: Test Performance</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#compatibility">Compatibility</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#backward-compatibility">Backward Compatibility</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#version-detection">Version Detection</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#troubleshooting">Troubleshooting</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#common-migration-issues">Common Migration Issues</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#performance-monitoring">Performance Monitoring</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#expected-improvements">Expected Improvements</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/protocol_v2_migration.html#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/handpose_setup.html">Handpose Setup and Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#overview">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#system-requirements">System Requirements</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#hardware-requirements">Hardware Requirements</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#software-requirements">Software Requirements</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#initial-setup">Initial Setup</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#scanner-connection">1. Scanner Connection</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#camera-configuration">2. Camera Configuration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#led-controller-setup">3. LED Controller Setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#calibration-verification">4. Calibration Verification</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#quick-test">Quick Test</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#basic-hand-detection-test">Basic Hand Detection Test</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#camera-calibration">Camera Calibration</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#calibration-requirements">Calibration Requirements</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#calibration-process">Calibration Process</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#performance-optimization">Performance Optimization</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#lighting-optimization">Lighting Optimization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#tracking-parameters">Tracking Parameters</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#image-processing">Image Processing</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#troubleshooting-common-issues">Troubleshooting Common Issues</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#no-hand-detection">No Hand Detection</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#no-3d-tracking">No 3D Tracking</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#poor-gesture-recognition">Poor Gesture Recognition</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#performance-issues">Performance Issues</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#advanced-configuration">Advanced Configuration</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#multi-camera-setup">Multi-Camera Setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#high-frequency-tracking">High-Frequency Tracking</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/handpose_setup.html#integration-with-other-systems">Integration with Other Systems</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#running-the-enhanced-demo">Running the Enhanced Demo</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#next-steps">Next Steps</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/handpose_setup.html#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/realtime_scanning.html">Real-time Scanning</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#key-features">Key Features</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#basic-usage">Basic Usage</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#quality-presets">Quality Presets</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#camera-focus-check">Camera Focus Check</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#configuration-options">Configuration Options</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#visualization">Visualization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#recording-scan-data">Recording Scan Data</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#performance-optimization">Performance Optimization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/realtime_scanning.html#troubleshooting">Troubleshooting</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/camera_configuration.html">Camera Configuration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#basic-configuration">Basic Configuration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#setting-image-quality">Setting Image Quality</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#using-different-image-formats">Using Different Image Formats</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#controlling-image-size">Controlling Image Size</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#using-color-modes">Using Color Modes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#exposure-and-gain-control">Exposure and Gain Control</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#image-processing-options">Image Processing Options</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#configuration-presets">Configuration Presets</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#advanced-usage-in-3d-scanning">Advanced Usage in 3D Scanning</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#example-optimizing-for-different-scenarios">Example: Optimizing for Different Scenarios</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/camera_configuration.html#high-detail-scanning">High Detail Scanning</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/camera_configuration.html#fast-scanning">Fast Scanning</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/camera_configuration.html#color-texture-capture">Color Texture Capture</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/camera_configuration.html#troubleshooting">Troubleshooting</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/pattern_sequences.html">Pattern Sequences</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/pattern_sequences.html#overview">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/pattern_sequences.html#basic-usage">Basic Usage</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/pattern_sequences.html#creating-and-starting-a-pattern-sequence">Creating and Starting a Pattern Sequence</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/pattern_sequences.html#stopping-a-pattern-sequence">Stopping a Pattern Sequence</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/pattern_sequences.html#manual-stepping-through-a-sequence">Manual Stepping Through a Sequence</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/pattern_sequences.html#event-callbacks">Event Callbacks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/pattern_sequences.html#helper-methods">Helper Methods</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/pattern_sequences.html#creating-structured-light-sequences">Creating Structured Light Sequences</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/pattern_sequences.html#creating-pattern-definitions">Creating Pattern Definitions</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/pattern_sequences.html#available-pattern-types">Available Pattern Types</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/pattern_sequences.html#camera-synchronization">Camera Synchronization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/pattern_sequences.html#complete-example">Complete Example</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/focus_checking.html">Camera Focus Checking</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#importance-of-camera-focus">Importance of Camera Focus</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#the-focus-checking-api">The Focus Checking API</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#interactive-focus-adjustment">Interactive Focus Adjustment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#using-region-of-interest-roi">Using Region of Interest (ROI)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#focus-quality-levels">Focus Quality Levels</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#integration-with-real-time-scanning">Integration with Real-time Scanning</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#how-focus-is-measured">How Focus is Measured</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#tips-for-achieving-good-focus">Tips for Achieving Good Focus</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#custom-focus-thresholds">Custom Focus Thresholds</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/focus_checking.html#focus-checking-api-reference">Focus Checking API Reference</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/gpu_acceleration.html">GPU Acceleration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/gpu_acceleration.html#overview">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/gpu_acceleration.html#requirements">Requirements</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/gpu_acceleration.html#installation">Installation</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/gpu_acceleration.html#install-base-requirements">1. Install Base Requirements</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/gpu_acceleration.html#install-cuda-toolkit">2. Install CUDA Toolkit</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/gpu_acceleration.html#install-cupy">3. Install CuPy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/gpu_acceleration.html#verify-installation">4. Verify Installation</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/gpu_acceleration.html#configuring-gpu-usage">Configuring GPU Usage</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/gpu_acceleration.html#troubleshooting">Troubleshooting</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/gpu_acceleration.html#related-documentation">Related Documentation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/cpu_optimizations.html">CPU Optimizations for ARM and Mobile Devices</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#overview">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#target-platforms">Target Platforms</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#key-features">Key Features</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#spatial-hash-table">Spatial Hash Table</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#roi-based-processing">ROI-Based Processing</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#hierarchical-matching">Hierarchical Matching</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#early-termination">Early Termination</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#simd-optimizations">SIMD Optimizations</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#performance-tuning">Performance Tuning</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#arm-specific-settings">ARM-Specific Settings</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#memory-optimization">Memory Optimization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#correspondence-validation">Correspondence Validation</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#adaptive-pattern-selection">Adaptive Pattern Selection</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#performance-monitoring">Performance Monitoring</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#expected-results">Expected Results</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#troubleshooting">Troubleshooting</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../user_guide/cpu_optimizations.html#common-issues">Common Issues</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/cpu_optimizations.html#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../user_guide/iso_compliance.html">ISO/ASTM 52902 Compliance</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/iso_compliance.html#overview">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/iso_compliance.html#uncertainty-measurement">Uncertainty Measurement</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/iso_compliance.html#calibration-validation">Calibration Validation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/iso_compliance.html#certification-reporting">Certification Reporting</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/iso_compliance.html#integration-with-scanning">Integration with Scanning</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../user_guide/iso_compliance.html#related-documentation">Related Documentation</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="index.html">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="index.html#core-modules">Core Modules</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="client.html">Client API</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="client.html#unlookclient">UnlookClient</a></li>
+<li class="toctree-l4"><a class="reference internal" href="client.html#key-classes">Key Classes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="client.html#example-usage">Example Usage</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="camera.html">Camera API</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="camera.html#cameraclient">CameraClient</a></li>
+<li class="toctree-l4"><a class="reference internal" href="camera.html#cameraconfig">CameraConfig</a></li>
+<li class="toctree-l4"><a class="reference internal" href="camera.html#focus-checking-api">Focus Checking API</a></li>
+<li class="toctree-l4"><a class="reference internal" href="camera.html#enumerations">Enumerations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="camera.html#example-usage">Example Usage</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#d-scanning">3D Scanning</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="triangulator.html">Triangulator Module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="triangulator.html#overview">Overview</a></li>
+<li class="toctree-l4"><a class="reference internal" href="triangulator.html#classes">Classes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="triangulator.html#usage-example">Usage Example</a></li>
+<li class="toctree-l4"><a class="reference internal" href="triangulator.html#iso-astm-52902-compliance">ISO/ASTM 52902 Compliance</a></li>
+<li class="toctree-l4"><a class="reference internal" href="triangulator.html#migration-from-legacy-code">Migration from Legacy Code</a></li>
+<li class="toctree-l4"><a class="reference internal" href="triangulator.html#performance-considerations">Performance Considerations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="triangulator.html#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="pattern_decoder.html">Pattern Decoder Module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="pattern_decoder.html#overview">Overview</a></li>
+<li class="toctree-l4"><a class="reference internal" href="pattern_decoder.html#classes">Classes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="pattern_decoder.html#pattern-decoding-methods">Pattern Decoding Methods</a></li>
+<li class="toctree-l4"><a class="reference internal" href="pattern_decoder.html#image-requirements">Image Requirements</a></li>
+<li class="toctree-l4"><a class="reference internal" href="pattern_decoder.html#debug-visualization">Debug Visualization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="pattern_decoder.html#example-workflow">Example Workflow</a></li>
+<li class="toctree-l4"><a class="reference internal" href="pattern_decoder.html#best-practices">Best Practices</a></li>
+<li class="toctree-l4"><a class="reference internal" href="pattern_decoder.html#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="cpu_optimizations.html">CPU Optimizations API</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="cpu_optimizations.html#improved-correspondence-matcher">Improved Correspondence Matcher</a></li>
+<li class="toctree-l4"><a class="reference internal" href="cpu_optimizations.html#simd-optimizations">SIMD Optimizations</a></li>
+<li class="toctree-l4"><a class="reference internal" href="cpu_optimizations.html#adaptive-pattern-strategies">Adaptive Pattern Strategies</a></li>
+<li class="toctree-l4"><a class="reference internal" href="cpu_optimizations.html#classes-and-enums">Classes and Enums</a></li>
+<li class="toctree-l4"><a class="reference internal" href="cpu_optimizations.html#utility-functions">Utility Functions</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#hand-tracking">Hand Tracking</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="handpose.html">Handpose Module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="handpose.html#overview">Overview</a></li>
+<li class="toctree-l4"><a class="reference internal" href="handpose.html#core-components">Core Components</a></li>
+<li class="toctree-l4"><a class="reference internal" href="handpose.html#led-controller-integration">LED Controller Integration</a></li>
+<li class="toctree-l4"><a class="reference internal" href="handpose.html#coordinate-systems">Coordinate Systems</a></li>
+<li class="toctree-l4"><a class="reference internal" href="handpose.html#stereo-camera-setup">Stereo Camera Setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="handpose.html#performance-optimization">Performance Optimization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="handpose.html#error-handling">Error Handling</a></li>
+<li class="toctree-l4"><a class="reference internal" href="handpose.html#integration-examples">Integration Examples</a></li>
+<li class="toctree-l4"><a class="reference internal" href="handpose.html#troubleshooting">Troubleshooting</a></li>
+<li class="toctree-l4"><a class="reference internal" href="handpose.html#best-practices">Best Practices</a></li>
+<li class="toctree-l4"><a class="reference internal" href="handpose.html#see-also">See Also</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#utilities">Utilities</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="logging_config.html">Logging Configuration</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="logging_config.html#overview">Overview</a></li>
+<li class="toctree-l4"><a class="reference internal" href="logging_config.html#classes">Classes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="logging_config.html#quick-start">Quick Start</a></li>
+<li class="toctree-l4"><a class="reference internal" href="logging_config.html#debug-mode">Debug Mode</a></li>
+<li class="toctree-l4"><a class="reference internal" href="logging_config.html#module-specific-levels">Module-Specific Levels</a></li>
+<li class="toctree-l4"><a class="reference internal" href="logging_config.html#logging-guidelines">Logging Guidelines</a></li>
+<li class="toctree-l4"><a class="reference internal" href="logging_config.html#best-practices">Best Practices</a></li>
+<li class="toctree-l4"><a class="reference internal" href="logging_config.html#configuration-file">Configuration File</a></li>
+<li class="toctree-l4"><a class="reference internal" href="logging_config.html#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="exceptions.html">Exception Handling</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="exceptions.html#overview">Overview</a></li>
+<li class="toctree-l4"><a class="reference internal" href="exceptions.html#exception-hierarchy">Exception Hierarchy</a></li>
+<li class="toctree-l4"><a class="reference internal" href="exceptions.html#base-exception">Base Exception</a></li>
+<li class="toctree-l4"><a class="reference internal" href="exceptions.html#connection-errors">Connection Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="exceptions.html#camera-errors">Camera Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="exceptions.html#calibration-errors">Calibration Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="exceptions.html#projector-errors">Projector Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="exceptions.html#scanning-errors">Scanning Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="exceptions.html#streaming-errors">Streaming Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="exceptions.html#other-errors">Other Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="exceptions.html#usage-examples">Usage Examples</a></li>
+<li class="toctree-l4"><a class="reference internal" href="exceptions.html#best-practices">Best Practices</a></li>
+<li class="toctree-l4"><a class="reference internal" href="exceptions.html#creating-custom-exceptions">Creating Custom Exceptions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="exceptions.html#see-also">See Also</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/index.html">Examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../examples/basic_connection.html">Basic Connection</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../examples/basic_connection.html#discovering-and-connecting-to-scanners">Discovering and Connecting to Scanners</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/basic_connection.html#connecting-to-a-known-scanner">Connecting to a Known Scanner</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/basic_connection.html#connection-callbacks">Connection Callbacks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/basic_connection.html#full-example">Full Example</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/handpose_tracking.html">Handpose Tracking Examples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../examples/handpose_tracking.html#basic-hand-tracking">Basic Hand Tracking</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../examples/handpose_tracking.html#simple-3d-hand-detection">Simple 3D Hand Detection</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../examples/handpose_tracking.html#enhanced-hand-tracking-with-visualization">Enhanced Hand Tracking with Visualization</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/handpose_tracking.html#led-enhanced-hand-tracking">LED-Enhanced Hand Tracking</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../examples/handpose_tracking.html#using-point-projection-for-better-accuracy">Using Point Projection for Better Accuracy</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/handpose_tracking.html#gesture-recognition-examples">Gesture Recognition Examples</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../examples/handpose_tracking.html#real-time-gesture-classification">Real-time Gesture Classification</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/handpose_tracking.html#advanced-applications">Advanced Applications</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../examples/handpose_tracking.html#hand-computer-interaction">Hand-Computer Interaction</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/handpose_tracking.html#performance-optimization">Performance Optimization</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../examples/handpose_tracking.html#optimized-real-time-tracking">Optimized Real-time Tracking</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/handpose_tracking.html#configuration-tips">Configuration Tips</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../examples/handpose_tracking.html#camera-setup">Camera Setup</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../examples/handpose_tracking.html#led-optimization">LED Optimization</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../examples/handpose_tracking.html#performance-tuning">Performance Tuning</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/handpose_tracking.html#see-also">See Also</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/realtime_scanning.html">Real-time Scanning Example</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../examples/realtime_scanning.html#basic-real-time-scanning">Basic Real-time Scanning</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/realtime_scanning.html#using-focus-check-before-scanning">Using Focus Check Before Scanning</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/realtime_scanning.html#running-the-examples">Running the Examples</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/realtime_scanning.html#example-command-line-tool">Example Command-line Tool</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/camera_focus.html">Camera Focus Examples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../examples/camera_focus.html#basic-focus-check">Basic Focus Check</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/camera_focus.html#interactive-focus-adjustment">Interactive Focus Adjustment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/camera_focus.html#running-the-examples">Running the Examples</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/camera_focus.html#advanced-usage-notes">Advanced Usage Notes</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../examples/camera_calibration.html">Camera Calibration</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../examples/camera_calibration.html#overview">Overview</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/camera_calibration.html#basic-calibration-process">Basic Calibration Process</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/camera_calibration.html#loading-and-using-calibration">Loading and Using Calibration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/camera_calibration.html#verifying-calibration">Verifying Calibration</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../examples/camera_calibration.html#full-example">Full Example</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../advanced/index.html">Advanced Topics</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../troubleshooting.html">Troubleshooting</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../troubleshooting.html#connection-issues">Connection Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#scanner-not-found">Scanner Not Found</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#connection-timeouts">Connection Timeouts</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../troubleshooting.html#camera-issues">Camera Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#camera-not-available">Camera Not Available</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#camera-images-dark-blurry">Camera Images Dark/Blurry</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../troubleshooting.html#projector-issues">Projector Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#projector-not-working">Projector Not Working</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#patterns-not-synchronized">Patterns Not Synchronized</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../troubleshooting.html#scanning-issues">Scanning Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#poor-point-cloud-quality">Poor Point Cloud Quality</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#reconstruction-errors">Reconstruction Errors</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../troubleshooting.html#performance-issues">Performance Issues</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#slow-scanning">Slow Scanning</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#memory-leaks">Memory Leaks</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../troubleshooting.html#system-logs">System Logs</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#accessing-logs">Accessing Logs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../troubleshooting.html#log-file-location">Log File Location</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../troubleshooting.html#getting-help">Getting Help</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../roadmap.html">Roadmap</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../roadmap.html#short-term-q1-2025">Short Term (Q1 2025)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../roadmap.html#medium-term-q2-q3-2025">Medium Term (Q2-Q3 2025)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../roadmap.html#long-term-q4-2025-and-beyond">Long Term (Q4 2025 and beyond)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../roadmap.html#contributing-to-the-roadmap">Contributing to the Roadmap</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing.html">Contributing</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../contributing.html#getting-started">Getting Started</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../contributing.html#types-of-contributions">Types of Contributions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../contributing.html#development-guidelines">Development Guidelines</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../contributing.html#community-guidelines">Community Guidelines</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../contributing.html#recognition">Recognition</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../contributing.html#getting-help">Getting Help</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Changelog</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../changelog.html#version-2-0-0-2025-01-xx">Version 2.0.0 (2025-01-XX)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../changelog.html#version-1-1-0-2024-xx-xx">Version 1.1.0 (2024-XX-XX)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../changelog.html#version-1-0-0-2024-xx-xx">Version 1.0.0 (2024-XX-XX)</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #2980B9" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Unlook SDK</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content style-external-links">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Real-time Scanner API</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api_reference/realtime_scanner.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="real-time-scanner-api">
+<h1>Real-time Scanner API<a class="headerlink" href="#real-time-scanner-api" title="Link to this heading"></a></h1>
+<p>The real-time scanner API provides functionality for performing continuous, high-speed 3D scanning.</p>
+<section id="realtimescanner">
+<h2>RealTimeScanner<a class="headerlink" href="#realtimescanner" title="Link to this heading"></a></h2>
+</section>
+<section id="realtimescanconfig">
+<h2>RealTimeScanConfig<a class="headerlink" href="#realtimescanconfig" title="Link to this heading"></a></h2>
+</section>
+<section id="factory-function">
+<h2>Factory Function<a class="headerlink" href="#factory-function" title="Link to this heading"></a></h2>
+</section>
+<section id="example-usage">
+<h2>Example Usage<a class="headerlink" href="#example-usage" title="Link to this heading"></a></h2>
+<p>Basic Real-time Scanning:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">unlook</span><span class="w"> </span><span class="kn">import</span> <span class="n">UnlookClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">unlook.client.realtime_scanner</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_realtime_scanner</span>
+
+<span class="c1"># Connect to scanner</span>
+<span class="n">client</span> <span class="o">=</span> <span class="n">UnlookClient</span><span class="p">()</span>
+<span class="c1"># ... connect to a scanner ...</span>
+
+<span class="c1"># Create real-time scanner</span>
+<span class="n">scanner</span> <span class="o">=</span> <span class="n">create_realtime_scanner</span><span class="p">(</span>
+    <span class="n">client</span><span class="o">=</span><span class="n">client</span><span class="p">,</span>
+    <span class="n">quality</span><span class="o">=</span><span class="s2">&quot;medium&quot;</span><span class="p">,</span>  <span class="c1"># Options: &quot;fast&quot;, &quot;medium&quot;, &quot;high&quot;, &quot;ultra&quot;</span>
+<span class="p">)</span>
+
+<span class="c1"># Start scanning</span>
+<span class="n">scanner</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+<span class="c1"># Process scanning results in a loop</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="c1"># Get the latest point cloud</span>
+        <span class="n">point_cloud</span> <span class="o">=</span> <span class="n">scanner</span><span class="o">.</span><span class="n">get_current_point_cloud</span><span class="p">()</span>
+
+        <span class="c1"># Process or visualize the point cloud</span>
+        <span class="k">if</span> <span class="n">point_cloud</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;New point cloud with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">point_cloud</span><span class="o">.</span><span class="n">points</span><span class="p">)</span><span class="si">}</span><span class="s2"> points&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Get current performance metrics</span>
+        <span class="n">fps</span> <span class="o">=</span> <span class="n">scanner</span><span class="o">.</span><span class="n">get_fps</span><span class="p">()</span>
+        <span class="n">scan_count</span> <span class="o">=</span> <span class="n">scanner</span><span class="o">.</span><span class="n">get_scan_count</span><span class="p">()</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;FPS: </span><span class="si">{</span><span class="n">fps</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">, Scans: </span><span class="si">{</span><span class="n">scan_count</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Brief pause to avoid CPU overuse</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+<span class="k">finally</span><span class="p">:</span>
+    <span class="c1"># Always stop scanning</span>
+    <span class="n">scanner</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>Custom Configuration:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">unlook.client.realtime_scanner</span><span class="w"> </span><span class="kn">import</span> <span class="n">RealTimeScanConfig</span>
+
+<span class="c1"># Create custom configuration</span>
+<span class="n">config</span> <span class="o">=</span> <span class="n">RealTimeScanConfig</span><span class="p">()</span>
+
+<span class="c1"># Configure scanning parameters</span>
+<span class="n">config</span><span class="o">.</span><span class="n">use_gpu</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># Use GPU acceleration if available</span>
+<span class="n">config</span><span class="o">.</span><span class="n">use_neural_network</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># Use neural network enhancement</span>
+<span class="n">config</span><span class="o">.</span><span class="n">max_fps</span> <span class="o">=</span> <span class="mi">15</span>  <span class="c1"># Target maximum FPS</span>
+<span class="n">config</span><span class="o">.</span><span class="n">moving_average_frames</span> <span class="o">=</span> <span class="mi">5</span>  <span class="c1"># Temporal smoothing frames</span>
+<span class="n">config</span><span class="o">.</span><span class="n">downsample_voxel_size</span> <span class="o">=</span> <span class="mf">2.0</span>  <span class="c1"># Point cloud downsampling (mm)</span>
+<span class="n">config</span><span class="o">.</span><span class="n">num_gray_codes</span> <span class="o">=</span> <span class="mi">6</span>  <span class="c1"># Number of Gray code bits</span>
+<span class="n">config</span><span class="o">.</span><span class="n">pattern_interval</span> <span class="o">=</span> <span class="mf">0.1</span>  <span class="c1"># Time between patterns (seconds)</span>
+
+<span class="c1"># Create scanner with custom config</span>
+<span class="n">scanner</span> <span class="o">=</span> <span class="n">create_realtime_scanner</span><span class="p">(</span><span class="n">client</span><span class="o">=</span><span class="n">client</span><span class="p">,</span> <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Using a Callback Function:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Define callback for new frames</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">on_new_frame</span><span class="p">(</span><span class="n">point_cloud</span><span class="p">,</span> <span class="n">scan_count</span><span class="p">,</span> <span class="n">fps</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;New frame: </span><span class="si">{</span><span class="n">scan_count</span><span class="si">}</span><span class="s2">, FPS: </span><span class="si">{</span><span class="n">fps</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">point_cloud</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Points: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">point_cloud</span><span class="o">.</span><span class="n">points</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Create scanner with callback</span>
+<span class="n">scanner</span> <span class="o">=</span> <span class="n">create_realtime_scanner</span><span class="p">(</span>
+    <span class="n">client</span><span class="o">=</span><span class="n">client</span><span class="p">,</span>
+    <span class="n">quality</span><span class="o">=</span><span class="s2">&quot;high&quot;</span><span class="p">,</span>
+    <span class="n">on_new_frame</span><span class="o">=</span><span class="n">on_new_frame</span>
+<span class="p">)</span>
+
+<span class="c1"># Start scanning - callback will be called for each new frame</span>
+<span class="n">scanner</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+<span class="c1"># Wait some time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">30</span><span class="p">)</span>
+
+<span class="c1"># Stop scanning</span>
+<span class="n">scanner</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+</pre></div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Supernova Industries.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
