@@ -143,6 +143,12 @@ def main():
             server_config['enable_sync'] = True
             server_config['sync_fps'] = args.sync_fps
             logger.info(f"Hardware sync enabled at {args.sync_fps} FPS")
+        else:
+            # Always enable software sync for better camera synchronization
+            server_config['enable_sync'] = True
+            server_config['sync_fps'] = 30.0
+            server_config['sync_mode'] = 'software'
+            logger.info("Software synchronization enabled for better multi-camera capture")
         
         # Handle protocol v2 setting
         enable_protocol_v2 = args.enable_protocol_v2 and not args.disable_protocol_v2

@@ -180,6 +180,10 @@ python enhanced_scanner_modular.py --process-only --input captured_data/experime
 1. **LED Turn-off Timing**: Moved LED deactivation to happen with projector turn-off
 2. **Triangulator Method**: Fixed `triangulate_points` → `triangulate` with proper parameters
 3. **Import Paths**: Corrected imports to use existing modules
+4. **ScannerInfo Attribute**: Fixed `scanner_info.ip` → `scanner_info.host` and added `port`
+5. **Missing Constant**: Removed dependency on non-existent `DEFAULT_PATTERN_BITS`
+6. **Connection Check**: Changed `is_connected()` → `connected` attribute
+7. **Enhanced Pattern Import**: Added graceful fallback when enhanced patterns not available
 
 ## 📊 **Benefits Achieved**
 

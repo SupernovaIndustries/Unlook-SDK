@@ -25,8 +25,9 @@ try:
         EnhancedPatternProcessor
     )
     PATTERNS_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     PATTERNS_AVAILABLE = False
+    logger.debug(f"Enhanced patterns not available: {e}")
 
 logger = logging.getLogger(__name__)
 
@@ -108,19 +109,27 @@ class PatternManager:
                 patterns = []
                 for idx, ep in enumerate(enhanced_patterns):
                     # Extract pattern info from enhanced format
+                    enhanced_pattern_type = ep.get("pattern_type", "vertical_lines")
+                    # Map enhanced pattern types to projector pattern types
+                    if enhanced_pattern_type == "gray_code":
+                        projector_pattern_type = "vertical_lines"
+                    else:
+                        projector_pattern_type = enhanced_pattern_type
+                    
                     pattern_info = PatternInfo(
-                        pattern_type=ep.get("pattern_type", "vertical_lines"),
+                        pattern_type=projector_pattern_type,
                         name=ep.get("name", f"pattern_{idx}"),
                         metadata={
                             "pattern_set": "gray_code",
                             "enhanced": True,
                             "index": idx,
                             "bit": ep.get("bit", -1),
-                            "inverted": ep.get("inverted", False)
+                            "inverted": ep.get("inverted", False),
+                            "original_type": enhanced_pattern_type
                         },
                         parameters={
                             "color": ep.get("color", "White"),
-                            "foreground_color": "Blue" if use_blue and ep.get("pattern_type") != "solid_field" else ep.get("foreground_color", "White"),
+                            "foreground_color": "Blue" if use_blue and projector_pattern_type != "solid_field" else ep.get("foreground_color", "White"),
                             "background_color": ep.get("background_color", "Black"),
                             "foreground_width": ep.get("stripe_width", 1),
                             "background_width": ep.get("stripe_width", 1)
@@ -169,8 +178,9 @@ class PatternManager:
         pattern_index = 2
         
         for bit in range(num_bits):
-            # Calculate stripe width for this bit
-            stripe_width = 2 ** (num_bits - bit - 1)
+            # Calculate stripe width for this bit - use thick stripes like phase shift
+            # Use similar thickness to phase shift (around 128px)
+            stripe_width = max(128, 2 ** (num_bits - bit - 1))
             
             # Normal pattern
             patterns.append(PatternInfo(
@@ -268,13 +278,16 @@ class PatternManager:
         ))
         pattern_index += 1
         
-        # Phase shift patterns for each frequency
+        # Phase shift patterns for each frequency - use vertical lines instead of sinusoidal
         for freq_idx, frequency in enumerate(frequencies):
             for step in range(num_steps):
                 phase = (step * 2 * np.pi) / num_steps
                 
+                # Convert frequency to stripe width for vertical lines
+                stripe_width = max(10, 1024 // (frequency * 8))  # Approximate conversion
+                
                 patterns.append(PatternInfo(
-                    pattern_type="sinusoidal",
+                    pattern_type="vertical_lines",
                     name=f"phase_shift_f{frequency}_s{step}",
                     metadata={
                         "pattern_set": "phase_shift",
@@ -287,11 +300,12 @@ class PatternManager:
                         "index": pattern_index
                     },
                     parameters={
+                        "foreground_color": "Blue" if use_blue else "White",
+                        "background_color": "Black",
+                        "foreground_width": stripe_width,
+                        "background_width": stripe_width,
                         "frequency": frequency,
-                        "phase": phase,
-                        "amplitude": 1.0,
-                        "offset": 0.5,
-                        "color_channel": "blue" if use_blue else "white"
+                        "phase": phase
                     }
                 ))
                 pattern_index += 1

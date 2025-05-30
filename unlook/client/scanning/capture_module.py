@@ -115,7 +115,8 @@ class CaptureModule:
             # Store scanner info
             self.session_metadata['scanner_info'] = {
                 'name': scanner_info.name,
-                'ip': scanner_info.ip,
+                'host': scanner_info.host,
+                'port': scanner_info.port,
                 'preprocessing_version': preprocessing_version
             }
             
@@ -223,7 +224,7 @@ class CaptureModule:
         Returns:
             Tuple of (success, capture_info)
         """
-        if not self.client or not self.client.is_connected():
+        if not self.client or not self.client.connected:
             logger.error("Not connected to scanner")
             return False, {"error": "Not connected"}
         
@@ -275,12 +276,28 @@ class CaptureModule:
                 logger.error(f"Failed to project pattern {idx}")
                 continue
             
-            # Wait for pattern to stabilize
+            # Wait for pattern to stabilize - extra time for sync
             time.sleep(pattern_switch_delay)
+            
+            # Additional stabilization for critical patterns
+            if pattern.pattern_type == "vertical_lines":
+                time.sleep(0.1)  # Extra time for structured light patterns
+            
+            # Flush camera buffers before capture for better sync
+            if hasattr(self.client.camera, 'flush_buffers'):
+                self.client.camera.flush_buffers(camera_ids)
             
             # Capture synchronized images
             try:
-                images = self.client.camera.capture_multi(camera_ids)
+                # Try multiple times if sync fails
+                images = None
+                for attempt in range(3):
+                    images = self.client.camera.capture_multi(camera_ids)
+                    if images and len(images) == 2:
+                        break
+                    if attempt < 2:
+                        logger.warning(f"Sync attempt {attempt+1} failed, retrying...")
+                        time.sleep(0.05)
                 
                 if images and len(images) == 2:
                     # Extract left and right images
@@ -379,18 +396,24 @@ class CaptureModule:
     def _save_calibration(self) -> Optional[str]:
         """Save calibration data to session directory."""
         try:
-            # Try to get calibration from client or use default path
-            calibration_path = Path("unlook/calibration/custom/stereo_calibration_fixed.json")
-            if calibration_path.exists():
-                # Copy to session directory
-                import shutil
-                dest_path = self.session_dir / "calibration.json"
-                shutil.copy(calibration_path, dest_path)
-                logger.info(f"Saved calibration to {dest_path}")
-                return str(dest_path)
-            else:
-                logger.warning("No calibration file found")
-                return None
+            # Try multiple calibration paths
+            calibration_paths = [
+                Path("unlook/calibration/custom/stereo_calibration_fixed.json"),
+                Path("unlook/calibration/custom/stereo_calibration.json"), 
+                Path("unlook/calibration/default/default_stereo.json")
+            ]
+            
+            for calibration_path in calibration_paths:
+                if calibration_path.exists():
+                    # Copy to session directory
+                    import shutil
+                    dest_path = self.session_dir / "calibration.json"
+                    shutil.copy(calibration_path, dest_path)
+                    logger.info(f"Saved calibration from {calibration_path} to {dest_path}")
+                    return str(dest_path)
+            
+            logger.warning("No calibration file found in any default location")
+            return None
         except Exception as e:
             logger.error(f"Error saving calibration: {e}")
             return None

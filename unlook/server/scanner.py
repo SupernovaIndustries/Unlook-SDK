@@ -2004,17 +2004,47 @@ class UnlookServer(EventEmitter):
                     reference_type = color
                     logger.info(f"Detected {reference_type} reference pattern capture")
 
-            for camera_id in camera_ids:
-                # Capture image
-                logger.info(f"Capturing image from camera: {camera_id}")
-                image = self.camera_manager.capture_image(camera_id)
-                if image is None:
-                    logger.error(f"Failed to capture image from camera {camera_id}")
-                    return Message.create_error(
-                        message,
-                        f"Error capturing image from camera {camera_id}"
-                    )
-                logger.info(f"Successfully captured image from {camera_id}: shape={image.shape}")
+            # Use synchronized capture instead of sequential
+            logger.info(f"Attempting synchronized capture for cameras: {camera_ids}")
+            
+            # Try synchronized capture first
+            sync_result = None
+            if hasattr(self.camera_manager, 'capture_synchronized'):
+                try:
+                    sync_result = self.camera_manager.capture_synchronized(camera_ids, timeout=2.0)
+                    logger.info(f"Synchronized capture successful: {len(sync_result) if sync_result else 0} images")
+                except Exception as e:
+                    logger.warning(f"Synchronized capture failed, falling back to sequential: {e}")
+                    sync_result = None
+            
+            # If sync capture worked, use those images
+            if sync_result and len(sync_result) == len(camera_ids):
+                for camera_id in camera_ids:
+                    if camera_id not in sync_result:
+                        logger.error(f"Missing image from synchronized capture for camera {camera_id}")
+                        return Message.create_error(message, f"Synchronized capture missing camera {camera_id}")
+                    
+                    image = sync_result[camera_id]
+                    logger.info(f"Successfully captured synchronized image from {camera_id}: shape={image.shape}")
+                    cameras[camera_id] = image
+            else:
+                # Fallback to sequential capture with minimal delay
+                logger.warning("Using sequential capture fallback")
+                for camera_id in camera_ids:
+                    # Capture image
+                    logger.info(f"Capturing image from camera: {camera_id}")
+                    image = self.camera_manager.capture_image(camera_id)
+                    if image is None:
+                        logger.error(f"Failed to capture image from camera {camera_id}")
+                        return Message.create_error(
+                            message,
+                            f"Error capturing image from camera {camera_id}"
+                        )
+                    logger.info(f"Successfully captured image from {camera_id}: shape={image.shape}")
+                    cameras[camera_id] = image
+            
+            # Process all captured images
+            for camera_id, image in cameras.items():
                 
                 # Store reference pattern if applicable
                 if is_reference_capture and self.gpu_preprocessor and reference_type:
