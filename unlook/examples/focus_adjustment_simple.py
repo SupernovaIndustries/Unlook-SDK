@@ -83,30 +83,29 @@ def main():
     client = UnlookClient("SimpleFocusTool", auto_discover=True)
     focus_assessment = FocusAssessment()
     
-    # Connect to scanner
+    # Connect to scanner (using same pattern as enhanced_scanner)
     logger.info("Connecting to scanner...")
-    time.sleep(2)  # Wait for discovery
+    time.sleep(3)  # Wait for discovery (same as enhanced_scanner)
     
     scanners = client.get_discovered_scanners()
     if not scanners:
-        logger.error("No scanners found. Make sure scanner is running.")
+        logger.error("No scanners found. Make sure scanner server is running with:")
+        logger.error("python unlook/server_bootstrap.py --enable-protocol-v2 --enable-pattern-preprocessing --enable-sync")
         return
     
-    success = client.connect(scanners[0], timeout=5000)
-    if not success:
+    # Connect to first available scanner
+    scanner_info = scanners[0]
+    logger.info(f"Connecting to: {scanner_info.name}")
+    
+    if not client.connect(scanner_info):
         logger.error("Failed to connect to scanner")
         return
     
     logger.info("Connected to scanner successfully")
     
-    # Configure cameras for real-time preview
-    camera_config = CameraConfig.create_preset("streaming")
-    camera_config.compression_format = CompressionFormat.JPEG
-    camera_config.jpeg_quality = 75
-    camera_config.color_mode = ColorMode.GRAYSCALE  # Grayscale for focus assessment
-    camera_config.resolution = (640, 480)  # Medium size for good balance
-    
-    client.camera.set_config(camera_config)
+    # For this simple tool, we'll use capture_multi with direct parameters
+    # instead of trying to configure cameras individually
+    logger.info("Using direct capture parameters for better compatibility")
     
     # Pattern cycling
     projector_enabled = True
@@ -120,25 +119,52 @@ def main():
     last_pattern_time = time.time()
     pattern_interval = 2.0  # seconds
     
-    # Start projector
+    # Start projector with vertical lines (like in the working example)
     if projector_enabled:
-        client.projector.project_horizontal_lines(spacing=20)
+        try:
+            success = client.projector.show_vertical_lines(
+                foreground_color="White",
+                background_color="Black", 
+                foreground_width=20,
+                background_width=20
+            )
+            logger.info(f"Projector started: {success}")
+        except Exception as e:
+            logger.error(f"Error starting projector: {e}")
+            projector_enabled = False
     
     logger.info("Focus adjustment tool started. Controls: Q=quit, SPACE=toggle projector, R=reset history")
     
     try:
         while True:
-            # Capture images
+            # Capture images using simplified approach
             try:
-                images = client.camera.capture_multi(['left', 'right'])
+                # Get camera list first (same as enhanced_scanner)
+                cameras = client.camera.get_cameras()
+                if len(cameras) < 2:
+                    logger.error("Need at least 2 cameras")
+                    continue
+                    
+                # Use same camera selection as enhanced_scanner
+                camera_ids = [cam['id'] for cam in cameras[:2]]
+                logger.debug(f"Using cameras: {camera_ids}")
                 
-                if images and 'left' in images and 'right' in images:
-                    left_image = images['left']
-                    right_image = images['right']
+                # Capture using same method as enhanced_scanner
+                images = client.camera.capture_multi(camera_ids)
+                
+                if images and len(images) == 2:
+                    # Extract left and right images (same as enhanced_scanner)
+                    left_image = images[camera_ids[0]]
+                    right_image = images[camera_ids[1]]
+                    
+                    # Check if images are valid
+                    if left_image is None or right_image is None:
+                        logger.warning("One or more images are None, skipping frame")
+                        continue
                     
                     # Assess focus
-                    left_focus = focus_assessment.assess_camera_focus(left_image, 'left')
-                    right_focus = focus_assessment.assess_camera_focus(right_image, 'right')
+                    left_focus = focus_assessment.assess_camera_focus(left_image, camera_ids[0])
+                    right_focus = focus_assessment.assess_camera_focus(right_image, camera_ids[1])
                     
                     # Assess projector focus from left camera (if projector is on)
                     projector_focus = {}
@@ -146,8 +172,8 @@ def main():
                         projector_focus = focus_assessment.assess_projector_focus(left_image, 'lines')
                     
                     # Create display images with overlays
-                    left_display = create_focus_overlay(left_image, left_focus, "Left Camera")
-                    right_display = create_focus_overlay(right_image, right_focus, "Right Camera")
+                    left_display = create_focus_overlay(left_image, left_focus, f"Camera {camera_ids[0]}")
+                    right_display = create_focus_overlay(right_image, right_focus, f"Camera {camera_ids[1]}")
                     
                     # Combine images side by side
                     combined = np.hstack([left_display, right_display])
@@ -195,15 +221,25 @@ def main():
                         pattern_type, spacing = pattern_cycle[current_pattern]
                         
                         if pattern_type == 'horizontal_lines':
-                            client.projector.project_horizontal_lines(spacing=spacing)
+                            # Use solid field for horizontal (simpler pattern)
+                            client.projector.show_solid_field("White")
+                            time.sleep(0.5)
+                            client.projector.show_solid_field("Black")
                         else:
-                            client.projector.project_vertical_lines(spacing=spacing)
+                            client.projector.show_vertical_lines(
+                                foreground_color="White",
+                                background_color="Black",
+                                foreground_width=spacing,
+                                background_width=spacing
+                            )
                         
                         last_pattern_time = time.time()
                         logger.debug(f"Switched to {pattern_type} pattern with spacing {spacing}")
                 
                 else:
-                    logger.warning("Failed to capture images")
+                    logger.warning(f"Failed to capture images - got {len(images) if images else 0} images, expected 2")
+                    if images:
+                        logger.debug(f"Image keys: {list(images.keys())}")
                     
             except Exception as e:
                 logger.error(f"Error during capture: {e}")
@@ -218,12 +254,17 @@ def main():
                 projector_enabled = not projector_enabled
                 if projector_enabled:
                     logger.info("Projector enabled")
-                    client.projector.project_horizontal_lines(spacing=20)
+                    client.projector.show_vertical_lines(
+                        foreground_color="White",
+                        background_color="Black",
+                        foreground_width=20,
+                        background_width=20
+                    )
                     current_pattern = 0
                     last_pattern_time = time.time()
                 else:
                     logger.info("Projector disabled")
-                    client.projector.turn_off()
+                    client.projector.show_solid_field("Black")  # Turn off by showing black
             elif key == ord('r') or key == ord('R'):
                 logger.info("Resetting focus history")
                 focus_assessment.focus_history = {'left': [], 'right': [], 'projector': []}
@@ -237,7 +278,7 @@ def main():
         # Cleanup
         logger.info("Cleaning up...")
         try:
-            client.projector.turn_off()
+            client.projector.show_solid_field("Black")  # Turn off projector
             client.disconnect()
         except:
             pass

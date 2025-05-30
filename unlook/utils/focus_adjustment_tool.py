@@ -278,14 +278,18 @@ class FocusAdjustmentTool:
                 endpoint = f"tcp://{self.scanner_ip}:{self.scanner_port}"
                 success = self.client.connect(endpoint, timeout=5000)
             else:
-                # Auto-discovery
-                time.sleep(2)  # Wait for discovery
+                # Auto-discovery (match enhanced_scanner pattern)
+                time.sleep(3)  # Wait for discovery
                 scanners = self.client.get_discovered_scanners()
                 if not scanners:
-                    logger.error("No scanners found. Make sure scanner is running.")
+                    logger.error("No scanners found. Make sure scanner server is running with:")
+                    logger.error("python unlook/server_bootstrap.py --enable-protocol-v2 --enable-pattern-preprocessing --enable-sync")
                     return False
                 
-                success = self.client.connect(scanners[0], timeout=5000)
+                # Connect to first available scanner
+                scanner_info = scanners[0]
+                logger.info(f"Connecting to: {scanner_info.name}")
+                success = self.client.connect(scanner_info)
             
             if not success:
                 logger.error("Failed to connect to scanner")
@@ -293,14 +297,8 @@ class FocusAdjustmentTool:
             
             logger.info("Connected to scanner successfully")
             
-            # Configure cameras for fast preview
-            camera_config = CameraConfig.create_preset("streaming")
-            camera_config.compression_format = CompressionFormat.JPEG
-            camera_config.jpeg_quality = 70
-            camera_config.color_mode = ColorMode.GRAYSCALE  # Grayscale for focus assessment
-            camera_config.resolution = (640, 480)  # Medium size for fast processing
-            
-            self.client.camera.set_config(camera_config)
+            # For this tool, we'll use capture_multi with direct parameters
+            logger.info("Using direct capture parameters for better compatibility")
             return True
             
         except Exception as e:
@@ -325,18 +323,25 @@ class FocusAdjustmentTool:
                     time.sleep(0.1)
                     continue
                 
-                # Capture from both cameras
-                images = self.client.camera.capture_multi(['left', 'right'])
+                # Get available cameras and capture (match enhanced_scanner pattern)
+                cameras = self.client.camera.get_cameras()
+                if len(cameras) < 2:
+                    logger.debug("Not enough cameras available")
+                    continue
                 
-                if images and 'left' in images and 'right' in images:
+                camera_ids = [cam['id'] for cam in cameras[:2]]
+                images = self.client.camera.capture_multi(camera_ids)
+                
+                if images and len(images) == 2:
                     with self.lock:
-                        self.left_image = images['left']
-                        self.right_image = images['right']
+                        # Extract left and right images using camera_ids
+                        self.left_image = images[camera_ids[0]]
+                        self.right_image = images[camera_ids[1]]
                         
                         # Assess focus for both cameras
                         if self.left_image is not None:
                             self.focus_results['left'] = self.focus_assessment.assess_camera_focus(
-                                self.left_image, 'left'
+                                self.left_image, camera_ids[0]
                             )
                             
                             # If projector is on, also assess projector focus from left camera
@@ -347,7 +352,7 @@ class FocusAdjustmentTool:
                         
                         if self.right_image is not None:
                             self.focus_results['right'] = self.focus_assessment.assess_camera_focus(
-                                self.right_image, 'right'
+                                self.right_image, camera_ids[1]
                             )
                 
                 time.sleep(0.033)  # ~30 FPS
@@ -364,9 +369,15 @@ class FocusAdjustmentTool:
                     pattern = self.line_patterns[self.current_pattern]
                     
                     if pattern['type'] == 'horizontal_lines':
-                        self.client.projector.project_horizontal_lines(spacing=pattern['spacing'])
+                        self.client.projector.show_horizontal_lines(
+                            foreground_width=pattern['spacing'],
+                            background_width=pattern['spacing']
+                        )
                     elif pattern['type'] == 'vertical_lines':
-                        self.client.projector.project_vertical_lines(spacing=pattern['spacing'])
+                        self.client.projector.show_vertical_lines(
+                            foreground_width=pattern['spacing'],
+                            background_width=pattern['spacing']
+                        )
                     
                     # Next pattern
                     self.current_pattern = (self.current_pattern + 1) % len(self.line_patterns)
@@ -519,12 +530,18 @@ class FocusAdjustmentTool:
                     self.current_pattern = 0
                     pattern = self.line_patterns[self.current_pattern]
                     if pattern['type'] == 'horizontal_lines':
-                        self.client.projector.project_horizontal_lines(spacing=pattern['spacing'])
+                        self.client.projector.show_horizontal_lines(
+                            foreground_width=pattern['spacing'],
+                            background_width=pattern['spacing']
+                        )
                     else:
-                        self.client.projector.project_vertical_lines(spacing=pattern['spacing'])
+                        self.client.projector.show_vertical_lines(
+                            foreground_width=pattern['spacing'],
+                            background_width=pattern['spacing']
+                        )
                 else:
                     logger.info("Disabling projector")
-                    self.client.projector.turn_off()
+                    self.client.projector.show_solid_field("Black")
                     
         except Exception as e:
             logger.error(f"Error toggling projector: {e}")
@@ -560,7 +577,7 @@ class FocusAdjustmentTool:
         
         try:
             if self.client:
-                self.client.projector.turn_off()
+                self.client.projector.show_solid_field("Black")
                 self.client.disconnect()
         except:
             pass
@@ -601,7 +618,15 @@ class FocusAdjustmentTool:
             
             # Start projector with initial pattern
             if self.projector_enabled:
-                self.toggle_projector()
+                try:
+                    pattern = self.line_patterns[0]
+                    self.client.projector.show_horizontal_lines(
+                        foreground_width=pattern['spacing'],
+                        background_width=pattern['spacing']
+                    )
+                    logger.info("Started projector with initial pattern")
+                except Exception as e:
+                    logger.error(f"Error starting projector: {e}")
         
         # Start GUI event loop
         if GUI_BACKEND == 'qt':
