@@ -178,9 +178,10 @@ class PatternManager:
         pattern_index = 2
         
         for bit in range(num_bits):
-            # Calculate stripe width for this bit - use thick stripes like phase shift
-            # Use similar thickness to phase shift (around 128px)
-            stripe_width = max(128, 2 ** (num_bits - bit - 1))
+            # Calculate stripe width for this bit - make MUCH larger for hardware compatibility
+            # Use minimum 400px for the finest patterns - hardware needs very thick stripes
+            base_width = 2 ** (num_bits - bit - 1)
+            stripe_width = max(400, base_width * 32)  # Much thicker - 32x multiplier
             
             # Normal pattern
             patterns.append(PatternInfo(

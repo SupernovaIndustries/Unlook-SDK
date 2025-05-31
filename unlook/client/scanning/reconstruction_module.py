@@ -238,12 +238,38 @@ class ReconstructionModule:
             if len(left_images) < 4:  # Need at least reference + some patterns
                 raise ValueError("Not enough images for Gray code processing")
             
-            # Debug step: Save reference images  
+            # Debug step: Save reference images and analyze  
             if len(left_images) >= 2:
                 self._save_debug_step(session_dir, "02_reference_left_white", left_images[0], "Reference white pattern - left camera")
                 self._save_debug_step(session_dir, "02_reference_right_white", right_images[0], "Reference white pattern - right camera")
                 self._save_debug_step(session_dir, "03_reference_left_black", left_images[1], "Reference black pattern - left camera")
                 self._save_debug_step(session_dir, "03_reference_right_black", right_images[1], "Reference black pattern - right camera")
+                
+                # Additional analysis for correspondence debugging
+                left_white_stats = {
+                    'mean': float(left_images[0].mean()),
+                    'std': float(left_images[0].std()),
+                    'min': int(left_images[0].min()),
+                    'max': int(left_images[0].max())
+                }
+                right_white_stats = {
+                    'mean': float(right_images[0].mean()),
+                    'std': float(right_images[0].std()),
+                    'min': int(right_images[0].min()),
+                    'max': int(right_images[0].max())
+                }
+                
+                self._save_debug_step(session_dir, "03a_image_statistics", {
+                    'left_white': left_white_stats,
+                    'right_white': right_white_stats,
+                    'brightness_diff': abs(left_white_stats['mean'] - right_white_stats['mean']),
+                    'possible_sync_issue': abs(left_white_stats['mean'] - right_white_stats['mean']) > 50
+                }, "Image statistics to detect sync/exposure issues")
+                
+                # Focus analysis from capture metadata if available
+                focus_stats = self.session_metadata['capture'].get('focus_statistics', {})
+                if focus_stats:
+                    self._save_debug_step(session_dir, "03b_focus_analysis", focus_stats, "Focus quality analysis from capture session")
             
             # Process with pipeline
             if self.pipeline:

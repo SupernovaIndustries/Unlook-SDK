@@ -957,7 +957,7 @@ class FocusAssessment:
             pattern_regularity = np.sum(magnitude_spectrum[peaks_mask]) / np.sum(magnitude_spectrum)
             
             # Calculate contrast (important for projector focus)
-            min_val, max_val = np.min(gray), np.max(gray)
+            min_val, max_val = float(np.min(gray)), float(np.max(gray))
             contrast = (max_val - min_val) / (max_val + min_val + 1e-8)
             
             # Combined projector focus score
