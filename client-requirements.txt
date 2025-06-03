@@ -17,6 +17,7 @@ cgal>=5.3.0        # For professional-grade triangulation (optional but recommen
 pillow>=8.0.0      # Image processing
 tqdm>=4.60.0       # Progress bars
 scipy>=1.10.0      # Scientific computing
+psutil>=5.8.0      # System resource monitoring and CPU detection
 
 # GPU acceleration (required for optimal performance)
 # Uncomment the appropriate line based on your CUDA version:
