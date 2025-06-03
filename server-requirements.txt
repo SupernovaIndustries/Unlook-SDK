@@ -23,3 +23,8 @@ netifaces>=0.11.0  # Network interface discovery
 
 # LED flood illuminator control
 AS1170-Python>=0.1.0  # AS1170 LED driver control
+
+# ToF sensor support (MLX75027)
+# Note: V4L2 support is built into Linux kernel, no additional package needed
+# The following are for ToF data processing and visualization
+matplotlib>=3.3.0  # Optional: For ToF data visualization

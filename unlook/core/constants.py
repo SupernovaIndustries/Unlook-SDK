@@ -23,9 +23,9 @@ SERVICE_NAME = "UnLook Scanner"
 PROTOCOL_VERSION = "1.0"
 
 # ==================== IMAGE PROCESSING CONSTANTS ====================
-# Dimensioni immagine
-DEFAULT_IMAGE_WIDTH = 1280
-DEFAULT_IMAGE_HEIGHT = 720
+# Dimensioni immagine - UPGRADE A 2K per più dettaglio
+DEFAULT_IMAGE_WIDTH = 2048  # Upgraded from 1280 to 2K
+DEFAULT_IMAGE_HEIGHT = 1536  # Upgraded from 720 to 2K (4:3 ratio)
 
 # Compressione
 DEFAULT_JPEG_QUALITY = 85  # Increased from 80 for better quality
@@ -136,10 +136,16 @@ QUALITY_PRESETS = {
         'processing_threads': 4
     },
     'high': {
-        'pattern_resolution': (1024, 768),
+        'pattern_resolution': (2048, 1536),  # 2K resolution
         'num_patterns': 30,
         'voxel_size': 0.25,
         'processing_threads': 8
+    },
+    'ultra': {
+        'pattern_resolution': (2048, 1536),  # 2K resolution
+        'num_patterns': 50,
+        'voxel_size': 0.1,
+        'processing_threads': 16
     }
 }
 

@@ -1,0 +1,9 @@
+# MLX75027 ToF Sensor Requirements
+# =================================
+
+# Core dependencies
+numpy>=1.19.0
+opencv-python>=4.5.0
+
+# Optional dependencies for enhanced functionality
+matplotlib>=3.3.0  # For advanced visualization in integration example

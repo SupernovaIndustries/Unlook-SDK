@@ -1,0 +1,275 @@
+# 🎯 PROMPT COMPLETO PER DEMO PREPARATION - UNLOOK SDK
+**DATA**: 6 Gennaio 2025 - Preparazione Demo Investitore (2 giorni)
+**OBIETTIVO**: Scansione perfetta ISO-compliant pronta per dimostrazione
+
+---
+
+## 📋 CONTEXT FILES DA LEGGERE PRIMA DI INIZIARE
+
+Leggi attentamente questi file per comprendere il contesto completo:
+
+1. **UNLOOK_COMPLETE_SOLUTION_GUIDE.md** - Panoramica completa delle soluzioni implementate
+2. **SURFACE_RECONSTRUCTION_SOLUTION.md** - Algoritmi ottimizzati per point cloud quality
+3. **PERFORMANCE_OPTIMIZATION_LOG.md** - Ottimizzazioni implementate e risultati
+4. **cleanup_plan.md** - Piano di pulizia repository 
+5. **CALIBRATION_FIX_SUMMARY.md** - Fix calibrazione baseline critico
+6. **DEEP_STEREO_RESEARCH_FINDINGS.md** - Ricerca algoritmi avanzati
+7. **DEEP_LEARNING_IMPLEMENTATION_PLAN.md** - Piano implementazione AI (reference)
+
+---
+
+## 🎯 TASK SEQUENCE - PRIORITÀ CRITICA
+
+### 🔥 **FASE 1: CALIBRAZIONE 2K (PRIORITY #1)**
+
+#### 1.1 Update Calibration Capture System
+- **File da aggiornare**: `archive_cleaned/fix_calibration_baseline.py`
+- **Obiettivo**: Modificare per acquisire immagini di calibrazione in 2K (2048x1536)
+- **Configurazione server**: Utilizzare `unlook_config_2k.json` esistente
+- **Pattern scacchiera**: 5x8 pattern come specificato
+- **Output**: Nuovo file calibrazione 2K accuracy
+
+#### 1.2 Implementare Pipeline V2 Calibration
+- **Creare nuovo file**: Pipeline automatizzata per acquisizione calibrazione 2K
+- **Integrazione**: Con protocol v2 esistente (`unlook/core/protocol_v2.py`)
+- **Pattern**: Utilizzo scacchiera 5x8 con detection automatica
+- **Validazione**: Controllo qualità automatico con metriche ISO-compliant
+
+#### 1.3 Advanced Stereo Calibration Algorithm
+- **Ricerca**: Nei file esistenti per i migliori metodi calibrazione stereo
+- **Implementazione**: Algoritmi avanzati per precision enhancement
+- **References**: 
+  - `unlook/client/scanning/calibration/camera_calibration.py`
+  - `unlook/client/scanning/calibration/stereo_rectification.py`
+- **Output**: Calibrazione ottimale con reprojection error <0.5 pixel
+
+#### 1.4 Deploy Calibration to Default Locations
+- **Files target**:
+  - `unlook/calibration/default/default_stereo.json`
+  - `unlook/server/calibration/default/default_stereo.json`
+- **Sync**: Entrambe le location devono avere identica calibrazione 2K
+- **Backup**: Mantenere versioni precedenti con suffix `_backup`
+
+### 🔥 **FASE 2: CAPTURE & PROCESSING 2K (PRIORITY #2)**
+
+#### 2.1 Capture 2K Images
+- **Script**: `capture_patterns.py` (verificare compatibilità 2K)
+- **Configurazione**: Server già configurato per 2K tramite `apply_2k_config.py`
+- **Pattern types**: Phase shift + structured light patterns
+- **Qualità**: JPEG 95%, focus ottimale, illuminazione controllata
+
+#### 2.2 Update Process Offline with All Improvements
+- **File principale**: `process_offline.py`
+- **Integrazioni da applicare**:
+  - Algoritmi ottimizzati da `SURFACE_RECONSTRUCTION_SOLUTION.md`
+  - StereoBM method (migliore per surface reconstruction)
+  - Correzioni calibrazione da `CALIBRATION_FIX_SUMMARY.md`
+  - Performance optimizations da `PERFORMANCE_OPTIMIZATION_LOG.md`
+- **Cambio libreria**: Da OpenCV a libreria alternativa specificata nei files
+- **Output**: Point cloud preciso, centrato, realistico
+
+#### 2.3 ISO/ASTM 52902 Compliance Implementation
+- **Standard reference**: `certifications/ISOASTM52902.33411 - Additive manufacturing — Test artifacts — Geometric capability assessment of additive manufacturing systems (1) (2).pdf`
+- **Componenti richiesti**:
+  - Measurement uncertainty quantification per point
+  - Statistical validation con reference objects
+  - Uncertainty heatmaps per visualization
+  - Automatic calibration drift detection
+  - Self-correction routines per maintenance
+  - Compliance reporting automatico
+- **Integration**: Nei moduli `unlook/client/scanning/compliance/`
+
+### 🔥 **FASE 3: REPOSITORY CLEANUP (PRIORITY #3)**
+
+#### 3.1 Remove Obsolete Files
+- **Reference**: `cleanup_plan.md` - sezione "FILES DA RIMUOVERE"
+- **Categories**:
+  - Debug & testing scripts non necessari
+  - Failed/incomplete approaches
+  - Outdated processing scripts  
+  - Debug analysis results (mantenere solo documentation)
+  - Backup calibrations (mantenere solo working version)
+
+#### 3.2 Preserve Essential Files
+- **Reference**: `cleanup_plan.md` - sezione "FILES DA MANTENERE"
+- **Core essentials**:
+  - `compare_reconstruction_methods.py` ⭐ MAIN SOLUTION
+  - `unlook_2k_scanner.py`
+  - `apply_2k_config.py`
+  - Calibrazione corretta: `unlook/calibration/custom/stereo_calibration_fixed.json`
+  - Documentation completa
+  - Best results: `comparison_results/method_stereobm.ply`
+
+#### 3.3 Update Documentation
+- **README.md**: Puntare alla main solution
+- **Examples**: Simplificare e mantenere solo esempi funzionanti
+- **API docs**: Aggiornare con nuove funzionalità ISO-compliant
+
+---
+
+## 🎯 SPECIFICHE TECNICHE CRITICHE
+
+### Hardware Configuration
+- **Resolution**: 2048x1536 (2K mode) - già configurato in `unlook_config_2k.json`
+- **Quality**: JPEG 95% compression
+- **FPS**: 15 FPS per stabilità 2K
+- **Processing**: GPU acceleration dove disponibile
+
+### Algorithm Stack
+- **Calibration**: Advanced stereo calibration con validazione automatica
+- **Stereo matching**: StereoBM (provato migliore da `SURFACE_RECONSTRUCTION_SOLUTION.md`)
+- **Post-processing**: Pipeline ottimizzata da `PERFORMANCE_OPTIMIZATION_LOG.md`
+- **Surface reconstruction**: Algoritmi surface-aware invece di geometric puro
+
+### Quality Targets per Demo
+- **Point cloud density**: >100,000 punti per scansione
+- **Accuracy**: <1mm measurement uncertainty (ISO compliant)
+- **Processing time**: <30 secondi end-to-end
+- **Completeness**: >90% surface coverage
+- **Centering**: Automatico a (0,0,300)mm
+
+### ISO Compliance Requirements
+- **Uncertainty measurement**: Per-point uncertainty quantification
+- **Reference validation**: Automated testing con standard objects
+- **Drift detection**: Automatic calibration monitoring
+- **Reporting**: Compliance reports con metrics visualization
+- **Self-correction**: Automatic parameter adjustment
+
+---
+
+## 📊 SUCCESS CRITERIA PER DEMO
+
+### Technical Requirements
+1. **✅ Perfect Calibration**: Reprojection error <0.5 pixel a 2K resolution
+2. **✅ Realistic Point Clouds**: Object recognition immediato da investor
+3. **✅ Fast Processing**: <30 secondi total time per scan
+4. **✅ ISO Compliance**: Uncertainty reports automatici
+5. **✅ Clean Repository**: Solo file essenziali, no clutter
+
+### Demo Scenarios
+1. **Basic Object Scan**: Oggetto semplice (scatola, cilindro)
+2. **Complex Geometry**: Oggetto con dettagli fini
+3. **Quality Metrics**: Show uncertainty visualization
+4. **Compliance Report**: Generate automatic ISO report
+5. **Performance**: Demonstrate speed improvement
+
+### Investor Presentation Points
+1. **Technology Leadership**: Show advanced algorithms vs competitors
+2. **ISO Compliance**: Industrial-grade certification ready
+3. **Performance**: Speed competitive con sistemi commercial
+4. **Quality**: Point cloud accuracy professional-grade
+5. **Platform**: Scalable architecture per multiple applications
+
+---
+
+## 🚨 CRITICAL CONSTRAINTS
+
+### Time Constraint
+- **Deadline**: 2 giorni per demo preparation
+- **Priority**: Funzionalità working > perfection
+- **Focus**: Demo success > long-term optimization
+
+### Technical Constraints
+- **NO NEW LIBRARIES**: Usare solo librerie già testate
+- **NO EXPERIMENTAL**: Solo soluzioni validate dai files di ricerca
+- **MINIMAL RISK**: Prefer proven approaches da solution guides
+- **BACKWARD COMPATIBILITY**: Non rompere funzionalità esistenti
+
+### Quality Constraints
+- **ISO Compliance**: MANDATORY per investor credibility
+- **Visual Quality**: Point clouds devono essere impressive
+- **Performance**: Speed sufficient per live demo
+- **Reliability**: Zero crashes durante demo
+
+---
+
+## 📁 FILE STRUCTURE EXPECTATIONS
+
+### Dopo Cleanup
+```
+UnLook-SDK/
+├── compare_reconstruction_methods.py ⭐ MAIN SOLUTION
+├── unlook_2k_scanner.py
+├── apply_2k_config.py
+├── capture_patterns.py (updated per 2K)
+├── process_offline.py (updated con all improvements)
+├── unlook/
+│   ├── calibration/default/default_stereo.json (2K calibration)
+│   ├── server/calibration/default/default_stereo.json (sync)
+│   ├── client/scanning/compliance/ (ISO implementation)
+│   └── [existing structure]
+├── Documentation/ (updated)
+└── Demo Results/ (preparati per presentation)
+```
+
+### New Files Expected
+- **2K calibration pipeline** (automated acquisition)
+- **ISO compliance modules** (uncertainty, validation, reporting)
+- **Updated processing pipeline** (con tutte le optimizations)
+- **Demo preparation scripts** (automated demo setup)
+
+---
+
+## 🎯 METHODOLOGICAL APPROACH
+
+### Code Quality
+- **FOLLOW EXISTING PATTERNS**: Analizza code style dai file esistenti
+- **NO SHORTCUTS**: Implement proper error handling
+- **DOCUMENTATION**: Comprehensive docstrings per investor review
+- **TESTING**: Validate ogni component prima di integration
+
+### Problem Solving
+- **READ CONTEXT FIRST**: Understanding completo da files indicati
+- **LEVERAGE RESEARCH**: Use insights da deep learning research
+- **APPLY PROVEN SOLUTIONS**: Implement algorithms già validate
+- **SYSTEMATIC APPROACH**: Step-by-step implementation con validation
+
+### Integration Strategy
+- **MINIMAL DISRUPTION**: Updates should enhance, not replace
+- **BACKWARD COMPATIBILITY**: Existing workflows devono continuare a funzionare
+- **CONFIGURABLE**: New features optional via flags
+- **PERFORMANCE**: No degradation di existing functionality
+
+---
+
+## 📋 FINAL CHECKLIST
+
+### Before Starting
+- [ ] Read all context files thoroughly
+- [ ] Understand current solution state da COMPLETE_SOLUTION_GUIDE
+- [ ] Review algorithm recommendations da SURFACE_RECONSTRUCTION_SOLUTION
+- [ ] Check cleanup plan per repository organization
+
+### During Implementation
+- [ ] Follow proven algorithms da research findings
+- [ ] Implement ISO compliance requirements
+- [ ] Update calibration per 2K accuracy
+- [ ] Apply all optimizations da performance log
+- [ ] Clean repository per professional presentation
+
+### Before Demo
+- [ ] Test complete pipeline end-to-end
+- [ ] Validate ISO compliance reporting
+- [ ] Prepare demo objects e scenarios
+- [ ] Document investor presentation points
+- [ ] Create backup plans per potential issues
+
+---
+
+## 🎯 FINAL OBJECTIVES
+
+**PRIMARY**: Dimostrare all'investitore che UnLook SDK è ready per production con:
+- ISO-compliant accuracy
+- Commercial-grade performance  
+- Professional software quality
+- Scalable platform architecture
+
+**SUCCESS METRIC**: Investor confidence che il sistema può competere con scanner commerciali da $50,000+ ma a $600 price point.
+
+**REMEMBER**: Questo non è solo development - è preparation per business-critical demo che può determinare il future del progetto.
+
+---
+
+**FILE SAVE AS**: `COMPLETE_DEMO_PREPARATION_PROMPT.txt`
+
+Questo prompt è ready per essere utilizzato nella prossima conversazione per guided implementation di tutte le requirements con maximum precision e focus sul success della demo.

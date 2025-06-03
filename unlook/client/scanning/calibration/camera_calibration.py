@@ -374,8 +374,14 @@ class StereoCalibrator:
 
         # Save the baseline in mm (for ISO compliance documentation)
         # The baseline is the magnitude of the translation vector
-        self.baseline_mm = float(np.linalg.norm(self.T) * 1000.0)  # Convert to mm
+        # NOTE: T is already in the same units as the checkerboard square_size (mm)
+        self.baseline_mm = float(np.linalg.norm(self.T))
         logger.info(f"Stereo baseline: {self.baseline_mm:.2f}mm")
+        
+        # Sanity check for baseline
+        if self.baseline_mm < 50 or self.baseline_mm > 200:
+            logger.warning(f"Baseline {self.baseline_mm:.2f}mm seems unusual for stereo cameras")
+            logger.warning("Expected range is typically 50-200mm")
         
         # Prepare result dictionary
         result = {

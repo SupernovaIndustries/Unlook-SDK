@@ -200,6 +200,9 @@ class UnlookServer(EventEmitter):
             MessageType.SYNC_METRICS: self._handle_sync_metrics,
             MessageType.SYNC_ENABLE: self._handle_sync_enable,
             MessageType.SYSTEM_STATUS: self._handle_system_status,
+            
+            # Scanner configuration
+            MessageType.SCANNER_CONFIG: self._handle_scanner_config,
 
             # Altri handlers...
         }
@@ -1385,12 +1388,10 @@ class UnlookServer(EventEmitter):
         # Stop scanning if active
         self.stop_scan()
 
-        # Deactivate projector with improved shutdown sequence
+        # Deactivate projector - simplified shutdown without standby mode
         if self.projector:
             try:
-                from .hardware.projector import OperatingMode
-                
-                # First, show a black pattern as fallback to prevent bright light
+                # Show a black pattern to prevent bright light during shutdown
                 try:
                     from .hardware.projector import Color
                     self.projector.generate_solid_field(Color.Black)
@@ -1400,22 +1401,11 @@ class UnlookServer(EventEmitter):
                 except Exception as pattern_error:
                     logger.warning(f"Error setting black pattern during shutdown: {pattern_error}")
                 
-                # Then try to set standby mode
-                try:
-                    standby_result = self.projector.set_operating_mode(OperatingMode.Standby)
-                    if standby_result:
-                        logger.info("Projector set to standby mode")
-                    else:
-                        logger.warning("Failed to set projector to standby mode")
-                    # Small delay to ensure command is processed
-                    time.sleep(0.1)
-                except Exception as standby_error:
-                    logger.warning(f"Error setting projector to standby mode: {standby_error}")
-                
-                # Finally close the I2C bus
+                # Close the I2C bus without setting standby mode (which causes blocking)
                 self.projector.close()
                 # Clear the reference to prevent further use
                 self._projector = None
+                logger.info("Projector shutdown completed")
                 
             except Exception as e:
                 logger.error(f"Error during projector shutdown: {e}")
@@ -2325,6 +2315,27 @@ class UnlookServer(EventEmitter):
         signal.signal(signal.SIGTERM, self._signal_handler)
 
         logger.info(f"UnLook server started on port {self.control_port} (streaming: {self.stream_port})")
+        
+        # Project black pattern on startup to ensure projector is in a known state
+        try:
+            if self.projector:
+                logger.info("Projecting black reference pattern on startup")
+                black_pattern_data = {
+                    "pattern_type": "solid_field",
+                    "name": "reference_black",
+                    "metadata": {
+                        "pattern_set": "phase_shift",
+                        "reference": True,
+                        "index": 0
+                    },
+                    "parameters": {
+                        "color": "Black"
+                    }
+                }
+                self._apply_projector_pattern(black_pattern_data)
+                logger.info("Black reference pattern projected successfully")
+        except Exception as e:
+            logger.warning(f"Could not project black pattern on startup: {e}")
 
     def _signal_handler(self, sig, frame):
         """Handle termination signals."""
@@ -2981,6 +2992,77 @@ class UnlookServer(EventEmitter):
         except Exception as e:
             return Message.create_error(message, f"Failed to configure synchronization: {str(e)}")
 
+    def _handle_scanner_config(self, message: Message) -> Message:
+        """Handle SCANNER_CONFIG messages to apply 2K or other configurations."""
+        try:
+            config = message.payload.get("config", {})
+            if not config:
+                return Message.create_error(message, "No configuration provided")
+            
+            logger.info(f"Applying scanner configuration: {config}")
+            
+            # Handle camera configuration
+            if "camera" in config and self.camera_manager:
+                camera_config = config["camera"]
+                
+                # Apply resolution if specified
+                if "resolution" in camera_config:
+                    resolution = camera_config["resolution"]
+                    logger.info(f"Setting camera resolution to: {resolution}")
+                    for camera_id in self.camera_manager.get_cameras():
+                        try:
+                            self.camera_manager.set_camera_config(camera_id, {"resolution": resolution})
+                        except Exception as e:
+                            logger.warning(f"Failed to set resolution for camera {camera_id}: {e}")
+                
+                # Apply FPS if specified
+                if "fps" in camera_config:
+                    fps = camera_config["fps"]
+                    logger.info(f"Setting camera FPS to: {fps}")
+                    for camera_id in self.camera_manager.get_cameras():
+                        try:
+                            self.camera_manager.set_camera_config(camera_id, {"fps": fps})
+                        except Exception as e:
+                            logger.warning(f"Failed to set FPS for camera {camera_id}: {e}")
+                
+                # Apply other camera settings
+                for key, value in camera_config.items():
+                    if key not in ["resolution", "fps"]:
+                        for camera_id in self.camera_manager.get_cameras():
+                            try:
+                                self.camera_manager.set_camera_config(camera_id, {key: value})
+                            except Exception as e:
+                                logger.warning(f"Failed to set {key} for camera {camera_id}: {e}")
+            
+            # Handle projector configuration
+            if "projector" in config and self.projector:
+                projector_config = config["projector"]
+                logger.info(f"Applying projector configuration: {projector_config}")
+                # Apply projector settings as needed
+            
+            # Handle scanning configuration
+            if "scanning" in config:
+                scanning_config = config["scanning"]
+                logger.info(f"Applying scanning configuration: {scanning_config}")
+                # Store scanning configuration for later use
+                self.scanning_config = scanning_config
+            
+            # Store the full configuration for reference
+            self.current_config = config
+            
+            return Message.create_reply(
+                message,
+                {
+                    "success": True,
+                    "message": "Configuration applied successfully",
+                    "applied_config": config
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"Error applying scanner configuration: {e}")
+            return Message.create_error(message, str(e))
+    
     def _handle_system_status(self, message: Message) -> Message:
         """Handle SYSTEM_STATUS requests."""
         try:

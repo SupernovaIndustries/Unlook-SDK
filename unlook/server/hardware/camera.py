@@ -79,10 +79,12 @@ class PiCamera2Manager:
                             "name": f"Camera {i}",
                             "index": i,
                             "model": capabilities.get("Model", "Unknown"),
-                            "resolution": capabilities.get("MaxResolution", [1920, 1080]),
-                            "fps": 30,  # Default FPS
+                            "resolution": capabilities.get("MaxResolution", [2048, 1536]),  # 2K default
+                            "fps": 15,  # Reduced FPS for 2K to maintain stability
                             "capabilities": ["preview", "still", "video"],
-                            "raw_capabilities": capabilities
+                            "raw_capabilities": capabilities,
+                            "preferred_resolution": [2048, 1536],  # 2K for high quality
+                            "fallback_resolution": [1920, 1080]   # Fallback if 2K not supported
                         }
 
                         # Add to camera list

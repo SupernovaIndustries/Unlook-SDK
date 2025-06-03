@@ -101,6 +101,9 @@ class MessageType(enum.Enum):
     # Preprocessing version control
     PREPROCESSING_VERSION_SET = "preprocessing_version_set"  # Set preprocessing version
     PREPROCESSING_VERSION_GET = "preprocessing_version_get"  # Get current preprocessing version
+    
+    # Scanner configuration
+    SCANNER_CONFIG = "scanner_config"  # Set scanner configuration (e.g., 2K mode)
 
 
 class Message:
