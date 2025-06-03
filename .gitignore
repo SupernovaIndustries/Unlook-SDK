@@ -100,3 +100,5 @@ unlook/examples/__pycache__/test_vcsel_proj.cpython-312-pytest-8.3.5.pyc
 /captured_data
 test_epipolar_check.jpg
 *.jpg
+/epipolar_verification
+/test_scan_2k

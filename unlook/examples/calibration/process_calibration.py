@@ -42,7 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 class StereoCalibration2K:
     """Advanced stereo calibration processor for 2K resolution"""
     
-    def __init__(self, checkerboard_size=(8, 5), square_size_mm=24.0):
+    def __init__(self, checkerboard_size=(8, 5), square_size_mm=19.5):
         """
         Initialize calibration processor.
         
@@ -73,8 +73,30 @@ class StereoCalibration2K:
             tuple: (left_images, right_images, image_size)
         """
         input_path = Path(input_dir)
+        logger.info(f"Input directory: {input_path}")
+        logger.info(f"Input directory exists: {input_path.exists()}")
+        
+        # List all files in input directory for debugging
+        if input_path.exists():
+            all_files = list(input_path.iterdir())
+            logger.info(f"Files/folders in input directory: {[f.name for f in all_files]}")
+        
         left_dir = input_path / "left"
         right_dir = input_path / "right"
+        
+        logger.info(f"Looking for left images in: {left_dir}")
+        logger.info(f"Left directory exists: {left_dir.exists()}")
+        logger.info(f"Looking for right images in: {right_dir}")
+        logger.info(f"Right directory exists: {right_dir.exists()}")
+        
+        # List files in subdirectories if they exist
+        if left_dir.exists():
+            left_dir_files = list(left_dir.iterdir())
+            logger.info(f"Files in left directory: {[f.name for f in left_dir_files[:10]]}{'...' if len(left_dir_files) > 10 else ''}")
+        
+        if right_dir.exists():
+            right_dir_files = list(right_dir.iterdir())
+            logger.info(f"Files in right directory: {[f.name for f in right_dir_files[:10]]}{'...' if len(right_dir_files) > 10 else ''}")
         
         # Load calibration info
         info_path = input_path / "calibration_info.json"
@@ -82,10 +104,25 @@ class StereoCalibration2K:
             with open(info_path, 'r') as f:
                 calib_info = json.load(f)
                 logger.info(f"Loaded calibration info: {calib_info['resolution']}")
+        else:
+            logger.info(f"No calibration_info.json found at: {info_path}")
         
-        # Find image pairs
-        left_files = sorted(glob.glob(str(left_dir / "*.jpg")))
-        right_files = sorted(glob.glob(str(right_dir / "*.jpg")))
+        # Find image pairs - try both JPG and PNG
+        left_pattern_jpg = str(left_dir / "*.jpg")
+        left_pattern_png = str(left_dir / "*.png")
+        right_pattern_jpg = str(right_dir / "*.jpg")
+        right_pattern_png = str(right_dir / "*.png")
+        
+        logger.info(f"Searching for left JPG images: {left_pattern_jpg}")
+        logger.info(f"Searching for left PNG images: {left_pattern_png}")
+        logger.info(f"Searching for right JPG images: {right_pattern_jpg}")
+        logger.info(f"Searching for right PNG images: {right_pattern_png}")
+        
+        left_files = sorted(glob.glob(left_pattern_jpg) + glob.glob(left_pattern_png))
+        right_files = sorted(glob.glob(right_pattern_jpg) + glob.glob(right_pattern_png))
+        
+        logger.info(f"Found {len(left_files)} left images: {[Path(f).name for f in left_files[:5]]}{'...' if len(left_files) > 5 else ''}")
+        logger.info(f"Found {len(right_files)} right images: {[Path(f).name for f in right_files[:5]]}{'...' if len(right_files) > 5 else ''}")
         
         if len(left_files) != len(right_files):
             raise ValueError(f"Mismatched image counts: {len(left_files)} left, {len(right_files)} right")
@@ -211,23 +248,50 @@ class StereoCalibration2K:
                     flags=flags
                 )
                 
-                # Calculate baseline
-                baseline_mm = np.linalg.norm(T) * 1000
+                # Calculate baseline - T is already in mm since objp is in mm
+                baseline_mm = np.linalg.norm(T)
                 logger.info(f"Strategy {flag_idx}: RMS={ret_stereo:.3f}, Baseline={baseline_mm:.1f}mm")
                 
                 # Check if this is the best result
-                if ret_stereo < best_rms and abs(baseline_mm - self.target_baseline_mm) < 10:
+                baseline_error = abs(baseline_mm - self.target_baseline_mm)
+                logger.info(f"  Baseline error: {baseline_error:.1f}mm")
+                logger.info(f"  T vector: {T.ravel()}")
+                logger.info(f"  T magnitude: {np.linalg.norm(T)}")
+                
+                # Debug: show what we're calculating
+                logger.info(f"  T * 1000 = {np.linalg.norm(T) * 1000}")
+                
+                if ret_stereo < best_rms:
                     best_rms = ret_stereo
                     best_params = (K1_s, D1_s, K2_s, D2_s, R, T, E, F)
+                    logger.info(f"  -> New best calibration (RMS: {ret_stereo:.3f})")
                     
             except Exception as e:
                 logger.warning(f"Strategy {flag_idx} failed: {e}")
         
         if best_params is None:
+            logger.error("All calibration strategies failed!")
+            logger.error("Debug info:")
+            logger.error(f"  Target baseline: {self.target_baseline_mm}mm")
+            logger.error(f"  Square size used: {self.square_size_mm}mm")
+            logger.error("  This might be caused by:")
+            logger.error("  1. Incorrect square size measurement")
+            logger.error("  2. Poor image quality")
+            logger.error("  3. Insufficient camera separation")
+            logger.error("  4. Wrong checkerboard pattern size")
             raise ValueError("All calibration strategies failed")
         
         K1, D1, K2, D2, R, T, E, F = best_params
+        initial_baseline = np.linalg.norm(T)
         logger.info(f"Best calibration: RMS={best_rms:.3f}")
+        logger.info(f"Initial baseline from T vector: {initial_baseline:.1f}mm")
+        
+        # Check if we need to scale the square size based on baseline error
+        baseline_ratio = initial_baseline / self.target_baseline_mm
+        if baseline_ratio > 10 or baseline_ratio < 0.1:
+            logger.warning(f"Large baseline ratio detected: {baseline_ratio:.1f}")
+            logger.warning(f"This suggests the square size might be incorrect")
+            logger.warning(f"Actual square size might be: {self.square_size_mm * baseline_ratio:.1f}mm")
         
         # Stereo rectification
         logger.info("Computing stereo rectification...")
@@ -237,9 +301,11 @@ class StereoCalibration2K:
             newImageSize=image_size
         )
         
-        # Calculate final baseline
-        baseline_mm = abs(P2[0, 3] - P1[0, 3]) / K1[0, 0] * 1000
-        logger.info(f"Final baseline: {baseline_mm:.2f}mm (target: {self.target_baseline_mm}mm)")
+        # Calculate final baseline from projection matrices
+        baseline_mm = abs(P2[0, 3] - P1[0, 3]) / K1[0, 0]
+        logger.info(f"Final baseline from P matrices: {baseline_mm:.2f}mm")
+        logger.info(f"Target baseline: {self.target_baseline_mm}mm")
+        logger.info(f"Baseline error: {abs(baseline_mm - self.target_baseline_mm):.1f}mm")
         
         # Create calibration dictionary
         calibration = {
@@ -372,6 +438,308 @@ class StereoCalibration2K:
         
         logger.info(f"Calibration report saved to {report_path}")
         return report
+    
+    def save_verification_images(self, calibration, left_images, right_images, output_dir=".", num_samples=3):
+        """
+        Save rectified images and epipolar line visualizations for verification.
+        
+        Args:
+            calibration: Calibration data dictionary
+            left_images: List of left camera images
+            right_images: List of right camera images
+            output_dir: Directory to save verification images
+            num_samples: Number of sample images to process
+        """
+        logger.info("Generating verification images...")
+        
+        # Load calibration matrices
+        K1 = np.array(calibration['K1'])
+        D1 = np.array(calibration['D1'])
+        K2 = np.array(calibration['K2'])
+        D2 = np.array(calibration['D2'])
+        R1 = np.array(calibration['R1'])
+        R2 = np.array(calibration['R2'])
+        P1 = np.array(calibration['P1'])
+        P2 = np.array(calibration['P2'])
+        
+        image_size = tuple(calibration['image_size'])
+        
+        # Create rectification maps
+        map1x, map1y = cv2.initUndistortRectifyMap(K1, D1, R1, P1, image_size, cv2.CV_32FC1)
+        map2x, map2y = cv2.initUndistortRectifyMap(K2, D2, R2, P2, image_size, cv2.CV_32FC1)
+        
+        output_path = Path(output_dir)
+        output_path.mkdir(exist_ok=True)
+        
+        # Process sample images
+        num_samples = min(num_samples, len(left_images), len(right_images))
+        
+        for i in range(num_samples):
+            left_img = left_images[i]
+            right_img = right_images[i]
+            
+            # Rectify images
+            left_rect = cv2.remap(left_img, map1x, map1y, cv2.INTER_LINEAR)
+            right_rect = cv2.remap(right_img, map2x, map2y, cv2.INTER_LINEAR)
+            
+            # Save individual rectified images
+            cv2.imwrite(str(output_path / f"rectified_left_{i:02d}.jpg"), left_rect)
+            cv2.imwrite(str(output_path / f"rectified_right_{i:02d}.jpg"), right_rect)
+            
+            # Create side-by-side rectified comparison
+            rect_combined = np.hstack((left_rect, right_rect))
+            
+            # Draw horizontal epipolar lines every 50 pixels
+            h, w = left_rect.shape[:2]
+            for y in range(0, h, 50):
+                cv2.line(rect_combined, (0, y), (w*2, y), (0, 255, 0), 1)
+            
+            # Add text labels
+            cv2.putText(rect_combined, "LEFT (Rectified)", (10, 30), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            cv2.putText(rect_combined, "RIGHT (Rectified)", (w + 10, 30), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            cv2.putText(rect_combined, f"Baseline: {calibration['baseline_mm']:.1f}mm", 
+                       (10, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+            
+            cv2.imwrite(str(output_path / f"rectified_comparison_{i:02d}.jpg"), rect_combined)
+            
+            # Create epipolar line visualization on original images
+            orig_combined = np.hstack((left_img, right_img))
+            
+            # Find some feature points for epipolar line demonstration
+            gray_left = cv2.cvtColor(left_img, cv2.COLOR_BGR2GRAY)
+            gray_right = cv2.cvtColor(right_img, cv2.COLOR_BGR2GRAY)
+            
+            # Detect corners or feature points
+            corners_left = cv2.goodFeaturesToTrack(gray_left, maxCorners=20, 
+                                                  qualityLevel=0.01, minDistance=50)
+            
+            if corners_left is not None:
+                # Load fundamental matrix
+                F = np.array(calibration['F'])
+                
+                # Draw epipolar lines for a few points
+                for j, corner in enumerate(corners_left[:10]):  # Limit to 10 points
+                    pt = corner.ravel().astype(int)
+                    
+                    # Draw point on left image
+                    cv2.circle(orig_combined, tuple(pt), 5, (0, 0, 255), -1)
+                    
+                    # Calculate epipolar line on right image
+                    line = cv2.computeCorrespondEpilines(corner.reshape(-1, 1, 2), 1, F)
+                    line = line.reshape(-1, 3)[0]
+                    
+                    # Draw epipolar line on right image
+                    x0, y0 = map(int, [0, -line[2]/line[1]])
+                    x1, y1 = map(int, [right_img.shape[1], -(line[2] + line[0] * right_img.shape[1])/line[1]])
+                    
+                    # Offset for right image position
+                    x0 += left_img.shape[1]
+                    x1 += left_img.shape[1]
+                    
+                    # Ensure line coordinates are within image bounds
+                    if 0 <= y0 < orig_combined.shape[0] and 0 <= y1 < orig_combined.shape[0]:
+                        cv2.line(orig_combined, (x0, y0), (x1, y1), (0, 255, 0), 1)
+            
+            # Add labels to original epipolar visualization
+            cv2.putText(orig_combined, "LEFT (Original)", (10, 30), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            cv2.putText(orig_combined, "RIGHT (Original + Epipolar Lines)", 
+                       (left_img.shape[1] + 10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            
+            cv2.imwrite(str(output_path / f"epipolar_lines_{i:02d}.jpg"), orig_combined)
+            
+            # Create rectified epipolar verification (should show horizontal lines)
+            rect_epipolar = self._create_rectified_epipolar_check(left_rect, right_rect, i)
+            cv2.imwrite(str(output_path / f"rectified_epipolar_check_{i:02d}.jpg"), rect_epipolar)
+            
+            logger.info(f"Saved verification images for sample {i+1}")
+        
+        # Create a summary image showing calibration quality
+        self._create_calibration_summary(calibration, output_path)
+        
+        logger.info(f"Verification images saved to {output_path}")
+        logger.info("Generated files:")
+        logger.info("  - rectified_left_XX.jpg: Individual rectified left images")
+        logger.info("  - rectified_right_XX.jpg: Individual rectified right images") 
+        logger.info("  - rectified_comparison_XX.jpg: Side-by-side rectified with epipolar lines")
+        logger.info("  - epipolar_lines_XX.jpg: Original images with epipolar lines")
+        logger.info("  - rectified_epipolar_check_XX.jpg: Rectified epipolar correspondence verification")
+        logger.info("  - calibration_summary.jpg: Overall calibration quality summary")
+    
+    def _create_rectified_epipolar_check(self, left_rect, right_rect, sample_idx):
+        """
+        Create a detailed epipolar correspondence check on rectified images.
+        This should show perfectly horizontal correspondences if calibration is correct.
+        """
+        # Convert to grayscale for feature detection
+        gray_left = cv2.cvtColor(left_rect, cv2.COLOR_BGR2GRAY)
+        gray_right = cv2.cvtColor(right_rect, cv2.COLOR_BGR2GRAY)
+        
+        # Detect good features to track
+        corners_left = cv2.goodFeaturesToTrack(
+            gray_left, 
+            maxCorners=50, 
+            qualityLevel=0.01, 
+            minDistance=30,
+            blockSize=7
+        )
+        
+        # Create combined image
+        combined = np.hstack((left_rect, right_rect))
+        h, w = left_rect.shape[:2]
+        
+        if corners_left is not None:
+            # Use template matching to find correspondences in rectified images
+            correspondences = []
+            
+            for corner in corners_left:
+                x1, y1 = corner.ravel().astype(int)
+                
+                # Skip points too close to borders
+                if x1 < 20 or x1 > w-20 or y1 < 20 or y1 > h-20:
+                    continue
+                
+                # Extract template around the point
+                template_size = 21
+                half_size = template_size // 2
+                template = gray_left[y1-half_size:y1+half_size+1, x1-half_size:x1+half_size+1]
+                
+                if template.shape[0] != template_size or template.shape[1] != template_size:
+                    continue
+                
+                # Search along the same horizontal line in right image (epipolar constraint)
+                search_width = min(200, w - 40)  # Search range
+                search_y = y1  # Same Y coordinate (epipolar line is horizontal)
+                search_x_start = max(20, x1 - search_width//2)
+                search_x_end = min(w - 20, x1 + search_width//2)
+                
+                best_match_x = None
+                best_match_val = -1
+                
+                # Template matching along horizontal line
+                for search_x in range(search_x_start, search_x_end - template_size, 2):
+                    if search_x + template_size >= w or search_y + half_size >= h:
+                        continue
+                    
+                    search_template = gray_right[search_y-half_size:search_y+half_size+1, 
+                                                search_x-half_size:search_x+half_size+1]
+                    
+                    if search_template.shape == template.shape:
+                        # Normalized cross correlation
+                        result = cv2.matchTemplate(template, search_template, cv2.TM_CCOEFF_NORMED)
+                        match_val = result[0, 0]
+                        
+                        if match_val > best_match_val and match_val > 0.7:  # Threshold for good matches
+                            best_match_val = match_val
+                            best_match_x = search_x
+                
+                if best_match_x is not None:
+                    correspondences.append(((x1, y1), (best_match_x, search_y), best_match_val))
+            
+            # Draw correspondences
+            colors = [(0, 255, 0), (255, 0, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255), (0, 255, 255)]
+            
+            for i, ((x1, y1), (x2, y2), confidence) in enumerate(correspondences[:20]):  # Limit to 20 best
+                color = colors[i % len(colors)]
+                
+                # Draw points
+                cv2.circle(combined, (x1, y1), 4, color, -1)
+                cv2.circle(combined, (x2 + w, y2), 4, color, -1)
+                
+                # Draw horizontal line connecting the points
+                cv2.line(combined, (x1, y1), (x2 + w, y2), color, 1)
+                
+                # Calculate vertical disparity (should be near 0 for good calibration)
+                vertical_error = abs(y1 - y2)
+                
+                # Add text showing disparity info
+                if i < 10:  # Only label first 10 matches
+                    cv2.putText(combined, f"{i+1}: dy={vertical_error}px", 
+                              (x1 - 10, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+        
+        # Add grid lines every 50 pixels for reference
+        for y in range(0, h, 50):
+            cv2.line(combined, (0, y), (w*2, y), (128, 128, 128), 1)
+        
+        # Add labels
+        cv2.putText(combined, "LEFT (Rectified)", (10, 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.putText(combined, "RIGHT (Rectified)", (w + 10, 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.putText(combined, "Epipolar Check: Lines should be HORIZONTAL", (10, h - 40), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+        cv2.putText(combined, f"Found {len(correspondences) if corners_left is not None else 0} correspondences", 
+                   (10, h - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        
+        return combined
+    
+    def _create_calibration_summary(self, calibration, output_path):
+        """Create a summary image with calibration information."""
+        # Create a summary image (800x600)
+        summary_img = np.zeros((600, 800, 3), dtype=np.uint8)
+        summary_img.fill(50)  # Dark gray background
+        
+        # Add title
+        cv2.putText(summary_img, "STEREO CALIBRATION SUMMARY", (150, 50), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 2)
+        
+        # Add calibration metrics
+        y_pos = 120
+        line_height = 35
+        
+        metrics = [
+            f"RMS Error: {calibration['rms_error']:.3f} pixels",
+            f"Baseline: {calibration['baseline_mm']:.2f} mm",
+            f"Image Size: {calibration['image_size'][0]}x{calibration['image_size'][1]}",
+            f"Checkerboard: {calibration['checkerboard_size'][0]}x{calibration['checkerboard_size'][1]}",
+            f"Square Size: {calibration['square_size_mm']} mm",
+            f"Images Used: {calibration['num_images_used']}",
+            f"Timestamp: {calibration['timestamp'][:19]}"
+        ]
+        
+        for metric in metrics:
+            cv2.putText(summary_img, metric, (50, y_pos), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 1)
+            y_pos += line_height
+        
+        # Add quality indicators
+        y_pos += 20
+        cv2.putText(summary_img, "QUALITY ASSESSMENT:", (50, y_pos), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
+        y_pos += 40
+        
+        # RMS quality
+        rms_color = (0, 255, 0) if calibration['rms_error'] < 0.5 else (0, 165, 255) if calibration['rms_error'] < 1.0 else (0, 0, 255)
+        rms_text = "EXCELLENT" if calibration['rms_error'] < 0.5 else "GOOD" if calibration['rms_error'] < 1.0 else "FAIR"
+        cv2.putText(summary_img, f"RMS Quality: {rms_text}", (50, y_pos), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, rms_color, 2)
+        y_pos += line_height
+        
+        # Baseline quality
+        baseline_error = abs(calibration['baseline_mm'] - 80.0)  # Assuming 80mm target
+        baseline_color = (0, 255, 0) if baseline_error < 2.0 else (0, 165, 255) if baseline_error < 5.0 else (0, 0, 255)
+        baseline_text = "EXCELLENT" if baseline_error < 2.0 else "GOOD" if baseline_error < 5.0 else "POOR"
+        cv2.putText(summary_img, f"Baseline Quality: {baseline_text}", (50, y_pos), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, baseline_color, 2)
+        
+        # Add camera matrices info (simplified)
+        y_pos = 450
+        cv2.putText(summary_img, "CAMERA MATRICES:", (50, y_pos), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 1)
+        y_pos += 25
+        
+        K1 = np.array(calibration['K1'])
+        K2 = np.array(calibration['K2'])
+        
+        cv2.putText(summary_img, f"Left fx: {K1[0,0]:.1f}  fy: {K1[1,1]:.1f}", (50, y_pos), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        y_pos += 20
+        cv2.putText(summary_img, f"Right fx: {K2[0,0]:.1f}  fy: {K2[1,1]:.1f}", (50, y_pos), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        
+        cv2.imwrite(str(output_path / "calibration_summary.jpg"), summary_img)
 
 def deploy_calibration(calibration_file, deploy_to_default=True):
     """Deploy calibration to default UnLook locations"""
@@ -428,10 +796,26 @@ def main():
                         help='Save visualization images')
     parser.add_argument('--deploy', action='store_true',
                         help='Deploy to default calibration locations')
+    parser.add_argument('--save-verification', action='store_true',
+                        help='Save rectified images and epipolar line visualizations')
+    parser.add_argument('--verification-samples', type=int, default=3,
+                        help='Number of sample images for verification (default: 3)')
     
     args = parser.parse_args()
     
+    # Log command line arguments
+    logger.info("Starting calibration with parameters:")
+    logger.info(f"   Input directory: {args.input}")
+    logger.info(f"   Output file: {args.output}")
+    logger.info(f"   Checkerboard size: {args.checkerboard_columns}x{args.checkerboard_rows}")
+    logger.info(f"   Square size: {args.square_size} mm")
+    logger.info(f"   Visualize: {args.visualize}")
+    logger.info(f"   Deploy: {args.deploy}")
+    logger.info(f"   Save verification: {args.save_verification}")
+    logger.info(f"   Verification samples: {args.verification_samples}")
+    
     # Initialize calibration processor
+    logger.info("Initializing calibration processor...")
     calibrator = StereoCalibration2K(
         checkerboard_size=(args.checkerboard_columns, args.checkerboard_rows),
         square_size_mm=args.square_size
@@ -453,6 +837,15 @@ def main():
         logger.info(f"Calibration saved to {args.output}")
         
         report = calibrator.save_calibration_report(calibration, metrics, args.output)
+        
+        # Save verification images if requested
+        if args.save_verification:
+            output_dir = Path(args.output).parent / "verification_images"
+            calibrator.save_verification_images(
+                calibration, left_images, right_images, 
+                output_dir=str(output_dir),
+                num_samples=args.verification_samples
+            )
         
         # Deploy if requested
         if args.deploy:

@@ -125,25 +125,25 @@ class CaptureModule:
             
             # Check Protocol V2 status
             if self.client.is_protocol_v2_enabled():
-                logger.info("✅ Protocol V2 is enabled")
+                logger.info("Protocol V2 is enabled")
                 self.session_metadata['protocol_v2'] = True
             else:
-                logger.warning("⚠️ Protocol V2 is NOT enabled")
+                logger.warning("Protocol V2 is NOT enabled")
                 self.session_metadata['protocol_v2'] = False
             
             # Check preprocessing status
             preprocessing_info = self.client.get_preprocessing_info()
             if preprocessing_info:
-                logger.info(f"GPU preprocessing: {'✅' if preprocessing_info.get('gpu_available') else '❌'}")
+                logger.info(f"GPU preprocessing: {'YES' if preprocessing_info.get('gpu_available') else 'NO'}")
                 logger.info(f"Preprocessing level: {preprocessing_info.get('level', 'none')}")
                 self.session_metadata['preprocessing_info'] = preprocessing_info
             
             # Enable synchronization
             if self.client.enable_sync(enable=True, fps=30.0):
-                logger.info("✅ Hardware synchronization enabled")
+                logger.info("Hardware synchronization enabled")
                 self.session_metadata['sync_enabled'] = True
             else:
-                logger.warning("⚠️ Hardware synchronization not available")
+                logger.warning("Hardware synchronization not available")
                 self.session_metadata['sync_enabled'] = False
             
             # Initialize LED if enabled
@@ -159,7 +159,7 @@ class CaptureModule:
     def _setup_led_controller(self):
         """Initialize and configure the LED flood illuminator."""
         try:
-            logger.info("🔆 Initializing LED flood illuminator (AS1170)...")
+            logger.info("Initializing LED flood illuminator (AS1170)...")
             
             self.led_controller = LEDController(self.client)
             
@@ -170,14 +170,14 @@ class CaptureModule:
                 # Turn on LED2 (index 0 controls LED2 in AS1170)
                 if self.led_controller.set_intensity(0, led2_intensity):
                     self.led_active = True
-                    logger.info(f"✅ LED flood illuminator activated: LED2={led2_intensity}mA")
+                    logger.info(f"LED flood illuminator activated: LED2={led2_intensity}mA")
                     self.session_metadata['led_enabled'] = True
                     self.session_metadata['led_intensity'] = led2_intensity
                 else:
-                    logger.warning("⚠️ Failed to activate LED flood illuminator")
+                    logger.warning("Failed to activate LED flood illuminator")
                     self.led_controller = None
             else:
-                logger.warning("⚠️ LED flood illuminator not available")
+                logger.warning("LED flood illuminator not available")
                 self.led_controller = None
                 
         except Exception as e:
@@ -274,9 +274,9 @@ class CaptureModule:
                 logger.warning("LED not active, attempting to reactivate...")
                 if self.led_controller.set_intensity(0, 100):
                     self.led_active = True
-                    logger.info("🔆 LED2 reactivated at 100mA")
+                    logger.info("LED2 reactivated at 100mA")
             else:
-                logger.info("🔆 LED2 confirmed active at 100mA for capture sequence")
+                logger.info("LED2 confirmed active at 100mA for capture sequence")
         
         # Capture each pattern
         start_time = time.time()
@@ -333,10 +333,10 @@ class CaptureModule:
                     overall_focus = self.focus_assessment.get_overall_focus_status()
                     
                     # Log focus quality
-                    logger.info(f"📷 Focus Quality - Left: {left_focus['quality']} ({left_focus['smoothed_score']:.1f}), Right: {right_focus['quality']} ({right_focus['smoothed_score']:.1f})")
+                    logger.info(f"Focus Quality - Left: {left_focus['quality']} ({left_focus['smoothed_score']:.1f}), Right: {right_focus['quality']} ({right_focus['smoothed_score']:.1f})")
                     if projector_focus:
                         logger.info(f"🔍 Projector Focus: {projector_focus['quality']} (contrast: {projector_focus.get('contrast', 0):.2f})")
-                    logger.info(f"🎯 Overall Status: {overall_focus['message']}")
+                    logger.info(f"Overall Status: {overall_focus['message']}")
                     
                     # Save images
                     left_path = self._save_image(left_img, f"left_{idx:03d}_{pattern.name}")
@@ -409,20 +409,28 @@ class CaptureModule:
         logger.info(f"Success rate: {capture_info['success_rate']*100:.1f}%")
         
         # Log focus summary
-        logger.info("📷 FOCUS SUMMARY:")
-        logger.info(f"  Left Camera - Avg: {focus_stats['left_camera']['avg_score']:.1f} | Quality: {focus_stats['left_camera']['quality_distribution']}")
-        logger.info(f"  Right Camera - Avg: {focus_stats['right_camera']['avg_score']:.1f} | Quality: {focus_stats['right_camera']['quality_distribution']}")
+        logger.info("FOCUS SUMMARY:")
+        if 'left_camera' in focus_stats:
+            logger.info(f"  Left Camera - Avg: {focus_stats['left_camera']['avg_score']:.1f} | Quality: {focus_stats['left_camera']['quality_distribution']}")
+            if focus_stats['left_camera']['avg_score'] < 50:
+                logger.warning("LEFT CAMERA FOCUS IS POOR - Consider adjusting lens focus")
+        else:
+            logger.warning("  Left Camera - No data")
+            
+        if 'right_camera' in focus_stats:
+            logger.info(f"  Right Camera - Avg: {focus_stats['right_camera']['avg_score']:.1f} | Quality: {focus_stats['right_camera']['quality_distribution']}")
+            if focus_stats['right_camera']['avg_score'] < 50:
+                logger.warning("RIGHT CAMERA FOCUS IS POOR - Consider adjusting lens focus")
+        else:
+            logger.warning("  Right Camera - No data")
+            
         if focus_stats.get('projector'):
             logger.info(f"  Projector - Avg: {focus_stats['projector']['avg_score']:.1f} | Quality: {focus_stats['projector']['quality_distribution']}")
-        logger.info(f"  Overall Status: {focus_stats['overall_assessment']}")
-        
-        # Focus warnings if needed
-        if focus_stats['left_camera']['avg_score'] < 50:
-            logger.warning("⚠️ LEFT CAMERA FOCUS IS POOR - Consider adjusting lens focus")
-        if focus_stats['right_camera']['avg_score'] < 50:
-            logger.warning("⚠️ RIGHT CAMERA FOCUS IS POOR - Consider adjusting lens focus") 
-        if focus_stats.get('projector', {}).get('avg_score', 100) < 50:
-            logger.warning("⚠️ PROJECTOR FOCUS IS POOR - Consider adjusting projector focus")
+            if focus_stats.get('projector', {}).get('avg_score', 100) < 50:
+                logger.warning("PROJECTOR FOCUS IS POOR - Consider adjusting projector focus")
+                
+        if 'overall_assessment' in focus_stats:
+            logger.info(f"  Overall Status: {focus_stats['overall_assessment']}")
         
         return True, capture_info
     
@@ -612,7 +620,7 @@ class CaptureModule:
         if self.led_controller and self.led_active:
             try:
                 if self.led_controller.turn_off():
-                    logger.info("🔆 LED flood illuminator deactivated")
+                    logger.info("LED flood illuminator deactivated")
                     self.led_active = False
             except Exception as e:
                 logger.error(f"Error turning off LED: {e}")

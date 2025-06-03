@@ -2014,9 +2014,17 @@ class UnlookServer(EventEmitter):
                         logger.error(f"Missing image from synchronized capture for camera {camera_id}")
                         return Message.create_error(message, f"Synchronized capture missing camera {camera_id}")
                     
-                    image = sync_result[camera_id]
-                    logger.info(f"Successfully captured synchronized image from {camera_id}: shape={image.shape}")
-                    cameras[camera_id] = image
+                    capture_result = sync_result[camera_id]
+                    # Extract the actual image from the capture result
+                    if isinstance(capture_result, dict) and 'image' in capture_result:
+                        image = capture_result['image']
+                        logger.info(f"Successfully captured synchronized image from {camera_id}: shape={image.shape if hasattr(image, 'shape') else 'N/A'}")
+                        cameras[camera_id] = image
+                    else:
+                        # Handle case where result is the image directly
+                        image = capture_result
+                        logger.info(f"Successfully captured image from {camera_id}: shape={image.shape if hasattr(image, 'shape') else 'N/A'}")
+                        cameras[camera_id] = image
             else:
                 # Fallback to sequential capture with minimal delay
                 logger.warning("Using sequential capture fallback")
