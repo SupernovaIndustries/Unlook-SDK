@@ -38,6 +38,7 @@ class PreprocessingConfig:
     adaptive_quality: bool = True  # Enable adaptive quality levels
     edge_density_threshold: float = 0.1  # Threshold for edge density analysis
     max_downsampling_factor: float = 0.5  # Maximum downsampling (0.5 = half resolution)
+    force_full_resolution: bool = False  # Force full resolution (for 2K mode)
 
 
 class RaspberryProcessingV2:
@@ -239,6 +240,11 @@ class RaspberryProcessingV2:
                 'final_size': frame_cpu.shape[:2],
                 'downsampling_factor': 1.0
             }
+            
+            # Check if we should force full resolution (e.g., for 2K mode)
+            if self.config.force_full_resolution:
+                logger.debug("Force full resolution enabled - skipping downsampling")
+                return frame, quality_info
             
             if should_downsample:
                 # Simple scene - apply downsampling
@@ -460,6 +466,24 @@ class RaspberryProcessingV2:
         """Set calibration data for lens correction."""
         self.calibration_data = calibration_data
         logger.info(f"Calibration data set for {len(calibration_data)} cameras")
+    
+    def store_reference_pattern(self, image: np.ndarray, camera_id: str, reference_type: str):
+        """
+        Store reference pattern for pattern preprocessing.
+        
+        Args:
+            image: Reference pattern image
+            camera_id: Camera identifier
+            reference_type: Type of reference (e.g., 'white', 'black')
+        """
+        if not hasattr(self, 'reference_patterns'):
+            self.reference_patterns = {}
+        
+        if camera_id not in self.reference_patterns:
+            self.reference_patterns[camera_id] = {}
+        
+        self.reference_patterns[camera_id][reference_type] = image.copy()
+        logger.debug(f"Stored {reference_type} reference pattern for camera {camera_id}")
     
     def get_performance_stats(self) -> Dict[str, float]:
         """Get preprocessing performance statistics."""

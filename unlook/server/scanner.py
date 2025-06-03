@@ -1474,24 +1474,19 @@ class UnlookServer(EventEmitter):
                     resolution = self.camera_config.get('default_resolution')
                     if resolution:
                         logger.info(f"Applying camera resolution: {resolution[0]}x{resolution[1]}")
-                        # Set default resolution for all cameras
-                        for cam_id, cam in self._camera_manager.cameras.items():
-                            try:
-                                # Set resolution via configuration
-                                cam.configure(resolution=tuple(resolution))
-                                logger.info(f"Camera {cam_id} configured to {resolution[0]}x{resolution[1]}")
-                            except Exception as e:
-                                logger.warning(f"Could not set resolution for camera {cam_id}: {e}")
+                        # Update camera info with 2K resolution
+                        for cam_id in self._camera_manager.cameras:
+                            self._camera_manager.cameras[cam_id]['resolution'] = resolution
+                            self._camera_manager.cameras[cam_id]['preferred_resolution'] = resolution
+                            logger.info(f"Camera {cam_id} info updated to {resolution[0]}x{resolution[1]}")
                     
                     # Apply FPS if specified
                     fps = self.camera_config.get('fps')
                     if fps:
                         logger.info(f"Setting camera FPS to {fps}")
-                        for cam_id, cam in self._camera_manager.cameras.items():
-                            try:
-                                cam.configure(fps=fps)
-                            except Exception as e:
-                                logger.warning(f"Could not set FPS for camera {cam_id}: {e}")
+                        for cam_id in self._camera_manager.cameras:
+                            self._camera_manager.cameras[cam_id]['fps'] = fps
+                            logger.info(f"Camera {cam_id} FPS updated to {fps}")
                 
                 logger.info("Manager telecamere inizializzato")
             except Exception as e:
@@ -1536,6 +1531,12 @@ class UnlookServer(EventEmitter):
                     config.pattern_preprocessing = True
                     config.compression_level = "adaptive"
                     config.roi_detection = True
+                
+                # Check if 2K mode is enabled
+                if self.camera_config and self.camera_config.get('default_resolution') == [2048, 1536]:
+                    logger.info("2K mode detected - disabling adaptive downsampling")
+                    config.force_full_resolution = True
+                    config.max_downsampling_factor = 1.0  # No downsampling
                 
                 self._gpu_preprocessor = RaspberryProcessingV2(config)
                 logger.info(f"GPU preprocessor initialized at level: {self.preprocessing_level}")
