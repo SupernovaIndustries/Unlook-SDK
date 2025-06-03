@@ -49,7 +49,8 @@ class UnlookServer(EventEmitter):
             preprocessing_level: str = "basic",
             enable_sync: bool = False,
             sync_fps: float = 30.0,
-            enable_protocol_v2: bool = True
+            enable_protocol_v2: bool = True,
+            camera_config: Optional[Dict[str, Any]] = None
     ):
         """
         Inizializza il server UnLook.
@@ -84,6 +85,11 @@ class UnlookServer(EventEmitter):
         self.enable_sync = enable_sync
         self.sync_fps = sync_fps
         self.enable_protocol_v2 = enable_protocol_v2
+        
+        # Camera configuration (2K support)
+        self.camera_config = camera_config or {}
+        if self.camera_config.get('default_resolution') == [2048, 1536]:
+            logger.info("🔥 2K camera configuration detected - maximum resolution mode")
 
         # Inizializza contesto ZMQ
         self.zmq_context = zmq.Context()
@@ -1462,6 +1468,31 @@ class UnlookServer(EventEmitter):
                 # Import ritardato per evitare importazioni circolari
                 from .hardware.camera import PiCamera2Manager
                 self._camera_manager = PiCamera2Manager()
+                
+                # Apply camera configuration if available
+                if self.camera_config:
+                    resolution = self.camera_config.get('default_resolution')
+                    if resolution:
+                        logger.info(f"Applying camera resolution: {resolution[0]}x{resolution[1]}")
+                        # Set default resolution for all cameras
+                        for cam_id, cam in self._camera_manager.cameras.items():
+                            try:
+                                # Set resolution via configuration
+                                cam.configure(resolution=tuple(resolution))
+                                logger.info(f"Camera {cam_id} configured to {resolution[0]}x{resolution[1]}")
+                            except Exception as e:
+                                logger.warning(f"Could not set resolution for camera {cam_id}: {e}")
+                    
+                    # Apply FPS if specified
+                    fps = self.camera_config.get('fps')
+                    if fps:
+                        logger.info(f"Setting camera FPS to {fps}")
+                        for cam_id, cam in self._camera_manager.cameras.items():
+                            try:
+                                cam.configure(fps=fps)
+                            except Exception as e:
+                                logger.warning(f"Could not set FPS for camera {cam_id}: {e}")
+                
                 logger.info("Manager telecamere inizializzato")
             except Exception as e:
                 logger.error(f"Errore durante l'inizializzazione del manager telecamere: {e}")

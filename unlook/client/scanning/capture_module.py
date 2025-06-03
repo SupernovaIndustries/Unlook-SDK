@@ -388,8 +388,11 @@ class CaptureModule:
                 logger.error(f"Capture error for pattern {idx}: {e}")
         
         # Turn off projector and LED
+        logger.info("Waiting before turning off projector...")
+        time.sleep(2.0)  # Wait 2 seconds to ensure last pattern is properly captured
         logger.info("Turning off projector and LED...")
         self.client.projector.show_solid_field("Black")
+        time.sleep(0.5)  # Small delay after projector off
         self._cleanup_led()
         
         # Calculate capture statistics

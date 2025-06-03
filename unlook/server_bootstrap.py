@@ -113,12 +113,26 @@ def main():
         from unlook.server.scanner import UnlookServer
 
         # Load configuration
-        config_path = args.config or os.path.join(os.path.dirname(__file__), "unlook_config.json")
+        if args.config:
+            config_path = args.config
+        else:
+            # Try 2K config first, then fall back to regular config
+            config_2k_path = os.path.join(root_dir, "unlook_config_2k.json")
+            config_default_path = os.path.join(os.path.dirname(__file__), "unlook_config.json")
+            
+            if os.path.exists(config_2k_path):
+                config_path = config_2k_path
+            else:
+                config_path = config_default_path
 
         if os.path.exists(config_path):
             with open(config_path, 'r') as f:
                 config = json.load(f)
             logger.info(f"Configuration loaded from {config_path}")
+            
+            # Log if using 2K configuration
+            if "2K" in config.get("name", "") or config.get("camera", {}).get("default_resolution") == [2048, 1536]:
+                logger.info("🔥 Using 2K HIGH RESOLUTION configuration for maximum detail")
         else:
             logger.warning(f"Configuration file {config_path} not found, using default configuration")
             config = {
@@ -132,6 +146,12 @@ def main():
 
         # Extract server configuration
         server_config = config.get("server", {})
+        
+        # Pass camera configuration if available
+        camera_config = config.get("camera", {})
+        if camera_config:
+            server_config["camera_config"] = camera_config
+            logger.info(f"Camera configuration: {camera_config.get('default_resolution', 'default')} @ {camera_config.get('fps', 'default')} FPS")
         
         # Apply command-line overrides
         if args.enable_pattern_preprocessing:
@@ -173,7 +193,8 @@ def main():
             preprocessing_level=server_config.get('preprocessing_level', 'basic'),
             enable_sync=server_config.get('enable_sync', False),
             sync_fps=server_config.get('sync_fps', 30.0),
-            enable_protocol_v2=server_config.get('enable_protocol_v2', True)
+            enable_protocol_v2=server_config.get('enable_protocol_v2', True),
+            camera_config=server_config.get('camera_config', None)
         )
 
         logger.info("Server started successfully")
