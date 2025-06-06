@@ -790,7 +790,7 @@ def main():
                         help='Number of inner corners horizontally')
     parser.add_argument('--checkerboard-rows', type=int, default=5,
                         help='Number of inner corners vertically')
-    parser.add_argument('--square-size', type=float, default=24.0,
+    parser.add_argument('--square-size', type=float, default=19.5,
                         help='Size of checkerboard squares in mm')
     parser.add_argument('--visualize', action='store_true',
                         help='Save visualization images')

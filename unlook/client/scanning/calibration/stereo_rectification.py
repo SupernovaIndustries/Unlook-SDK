@@ -2,8 +2,9 @@
 Stereo rectification module for fixing distorted point clouds.
 
 This module applies stereo rectification to align epipolar lines horizontally,
-which is essential for accurate stereo matching and 3D reconstruction.
-"""
+which is essential for accurate stereo matching and 3D reconstruction
+
+  .venv/Scripts/python.exe unlook/examples/scanning/process_offline.py --input unlook/examples/scanning/captured_data/test1_2k/20250603_201954 --surface-reconstruction --use-cgal"""
 
 import logging
 import numpy as np
