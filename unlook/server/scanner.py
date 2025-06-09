@@ -1312,6 +1312,27 @@ class UnlookServer(EventEmitter):
                 logger.info("Generating colorbars")
                 return self.projector.generate_colorbars()
                 
+            # Add support for sinusoidal patterns (phase shift structured light)
+            elif pattern_type == "sinusoidal_pattern":
+                # Extract sinusoidal pattern parameters
+                frequency = pattern_data.get("frequency", 8)
+                phase = pattern_data.get("phase", 0.0)
+                amplitude = pattern_data.get("amplitude", 127.5)
+                offset = pattern_data.get("offset", 127.5)
+                orientation = pattern_data.get("orientation", "vertical")
+                
+                logger.info(f"Generating sinusoidal pattern: f={frequency}, phase={phase:.2f}rad, "
+                           f"orientation={orientation}, amp={amplitude}, offset={offset}")
+                
+                # Use the new sinusoidal pattern generation function
+                return self.projector.generate_sinusoidal_pattern(
+                    frequency=frequency,
+                    phase_shift=phase,
+                    orientation=orientation,
+                    amplitude=amplitude,
+                    offset=offset
+                )
+
             # Add support for our enhanced pattern types
             elif pattern_type in ["gray_code", "multi_scale", "variable_width", "multi_frequency", "phase_shift"]:
                 # These enhanced patterns need to be handled similarly

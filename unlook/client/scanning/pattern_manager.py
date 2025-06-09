@@ -232,7 +232,7 @@ class PatternManager:
                                    frequencies: List[int] = None,
                                    use_blue: bool = True) -> List[PatternInfo]:
         """
-        Create phase shift pattern sequence.
+        Create phase shift pattern sequence using proper sinusoidal patterns.
         
         Args:
             num_steps: Number of phase steps (default: 4)
@@ -279,16 +279,13 @@ class PatternManager:
         ))
         pattern_index += 1
         
-        # Phase shift patterns for each frequency - use vertical lines instead of sinusoidal
+        # Phase shift patterns for each frequency - USE PROPER SINUSOIDAL PATTERNS
         for freq_idx, frequency in enumerate(frequencies):
             for step in range(num_steps):
                 phase = (step * 2 * np.pi) / num_steps
                 
-                # Convert frequency to stripe width for vertical lines
-                stripe_width = max(10, 1024 // (frequency * 8))  # Approximate conversion
-                
                 patterns.append(PatternInfo(
-                    pattern_type="vertical_lines",
+                    pattern_type="sinusoidal_pattern",  # NEW: Use sinusoidal instead of vertical lines
                     name=f"phase_shift_f{frequency}_s{step}",
                     metadata={
                         "pattern_set": "phase_shift",
@@ -298,20 +295,24 @@ class PatternManager:
                         "step": step,
                         "phase": phase,
                         "num_steps": num_steps,
-                        "index": pattern_index
+                        "index": pattern_index,
+                        "orientation": "vertical"  # Vertical sinusoidal fringes
                     },
                     parameters={
                         "foreground_color": "Blue" if use_blue else "White",
                         "background_color": "Black",
-                        "foreground_width": stripe_width,
-                        "background_width": stripe_width,
                         "frequency": frequency,
-                        "phase": phase
+                        "phase": phase,
+                        "amplitude": 127.5,  # Half intensity for proper sinusoidal
+                        "offset": 127.5,     # DC offset for 0-255 range
+                        "orientation": "vertical",
+                        "width": 1920,      # Projector resolution
+                        "height": 1080
                     }
                 ))
                 pattern_index += 1
         
-        logger.info(f"Created {len(patterns)} phase shift patterns with {num_steps} steps and {len(frequencies)} frequencies")
+        logger.info(f"Created {len(patterns)} SINUSOIDAL phase shift patterns with {num_steps} steps and {len(frequencies)} frequencies")
         return patterns
     
     def create_mixed_patterns(self,

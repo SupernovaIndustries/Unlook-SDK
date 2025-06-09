@@ -354,6 +354,55 @@ class StereoCalibrator:
         self.reprojection_error = ret
         logger.info(f"Stereo calibration complete. Reprojection error (RMSE): {ret:.6f}")
         
+        # Apply bundle adjustment if available
+        try:
+            from .bundle_adjustment import StereoCalibrationOptimizer
+            
+            if ret > 0.5:  # Only apply if initial error is high
+                logger.info(f"RMS error {ret:.4f} > 0.5px threshold - applying bundle adjustment...")
+                
+                optimizer = StereoCalibrationOptimizer()
+                initial_params = {
+                    'K1': self.camera_matrix_left,
+                    'D1': self.dist_coeffs_left,
+                    'K2': self.camera_matrix_right,
+                    'D2': self.dist_coeffs_right,
+                    'R': self.R,
+                    'T': self.T
+                }
+                
+                optimized_params, summary = optimizer.optimize_stereo_calibration(
+                    self.imgpoints_left, self.imgpoints_right, self.objpoints,
+                    initial_params, self.image_size
+                )
+                
+                # Update parameters if optimization succeeded
+                if summary.get('rms_error', ret) < ret:
+                    logger.info("✅ Bundle adjustment improved calibration - updating parameters")
+                    self.camera_matrix_left = optimized_params['K1']
+                    self.dist_coeffs_left = optimized_params['D1']
+                    self.camera_matrix_right = optimized_params['K2']
+                    self.dist_coeffs_right = optimized_params['D2']
+                    self.R = optimized_params['R']
+                    self.T = optimized_params['T']
+                    self.reprojection_error = summary['rms_error']
+                    
+                    # Store bundle adjustment metadata
+                    self.bundle_adjustment_summary = summary
+                else:
+                    logger.warning("Bundle adjustment did not improve calibration - keeping original")
+                    self.bundle_adjustment_summary = None
+            else:
+                logger.info(f"RMS error {ret:.4f} already meets target - skipping bundle adjustment")
+                self.bundle_adjustment_summary = None
+                
+        except ImportError:
+            logger.warning("Bundle adjustment not available (Ceres Solver not installed)")
+            self.bundle_adjustment_summary = None
+        except Exception as e:
+            logger.warning(f"Bundle adjustment failed: {e}")
+            self.bundle_adjustment_summary = None
+        
         # Calculate rectification transforms with improved parameters
         # Use alpha=0.5 for balanced rectification (not too much distortion in both cameras)
         # ISO compliance: Using cv2.CALIB_ZERO_DISPARITY to ensure epipolar lines are aligned
@@ -403,8 +452,13 @@ class StereoCalibrator:
             "left_error": float(left_error),
             "right_error": float(right_error),
             "calibration_time": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "num_valid_pairs": valid_pairs
+            "num_valid_pairs": valid_pairs,
+            "bundle_adjustment_applied": self.bundle_adjustment_summary is not None
         }
+        
+        # Add bundle adjustment summary if available
+        if self.bundle_adjustment_summary:
+            result["bundle_adjustment"] = self.bundle_adjustment_summary
         
         return result
     

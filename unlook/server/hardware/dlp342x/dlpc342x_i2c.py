@@ -1,5 +1,6 @@
 import struct
 import time
+import numpy as np
 from enum import Enum
 from smbus2 import SMBus
 import logging
@@ -781,5 +782,211 @@ class DLPC342XController:
             return success
         except Exception as e:
             logger.error(f"Error setting LED enable: {e}")
+            self.summary["Successful"] = False
+            return False
+
+    def generate_sinusoidal_pattern(self, frequency, phase_shift=0.0, 
+                                   orientation="vertical", amplitude=127.5, offset=127.5):
+        """Generate sinusoidal pattern using approximation with vertical lines.
+        
+        Since the DLPC342X doesn't support true sinusoidal patterns, we approximate
+        them using variable-width vertical lines that create a sinusoidal intensity profile.
+        
+        Args:
+            frequency: Pattern frequency (cycles across projector width)
+            phase_shift: Phase shift in radians (0 to 2π)
+            orientation: "vertical" or "horizontal" 
+            amplitude: Sinusoidal amplitude (0-127.5 for proper range)
+            offset: DC offset (typically 127.5 for 0-255 range)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        self.summary["Command"] = "Generate Sinusoidal Pattern Approximation"
+        
+        try:
+            logger.info(f"Generating sinusoidal pattern approximation: f={frequency}, "
+                       f"phase={phase_shift:.2f}rad, orientation={orientation}")
+            
+            # For now, use a series of vertical lines with varying widths
+            # to approximate sinusoidal pattern
+            if orientation == "vertical":
+                # Calculate line widths based on sinusoidal function
+                # For frequency=1, we want one complete cycle across the projector
+                # For frequency=8, we want 8 cycles, etc.
+                
+                # Use different line patterns for different frequencies/phases
+                if frequency == 1:
+                    # Low frequency - wide pattern variations
+                    if 0 <= phase_shift < np.pi/2:
+                        fg_width, bg_width = 8, 24
+                    elif np.pi/2 <= phase_shift < np.pi:
+                        fg_width, bg_width = 16, 16
+                    elif np.pi <= phase_shift < 3*np.pi/2:
+                        fg_width, bg_width = 24, 8
+                    else:
+                        fg_width, bg_width = 16, 16
+                        
+                elif frequency <= 8:
+                    # Medium frequency - moderate variations
+                    if 0 <= phase_shift < np.pi/2:
+                        fg_width, bg_width = 4, 12
+                    elif np.pi/2 <= phase_shift < np.pi:
+                        fg_width, bg_width = 8, 8
+                    elif np.pi <= phase_shift < 3*np.pi/2:
+                        fg_width, bg_width = 12, 4
+                    else:
+                        fg_width, bg_width = 8, 8
+                        
+                else:
+                    # High frequency - fine patterns
+                    if 0 <= phase_shift < np.pi/2:
+                        fg_width, bg_width = 2, 6
+                    elif np.pi/2 <= phase_shift < np.pi:
+                        fg_width, bg_width = 4, 4
+                    elif np.pi <= phase_shift < 3*np.pi/2:
+                        fg_width, bg_width = 6, 2
+                    else:
+                        fg_width, bg_width = 4, 4
+                
+                # Calculate colors based on amplitude and offset
+                # For sinusoidal patterns, we vary between background and foreground
+                intensity_factor = (np.sin(phase_shift) + 1) / 2  # 0 to 1
+                
+                # Map to grayscale levels
+                bg_intensity = max(0, min(7, int((offset - amplitude) / 255 * 7)))
+                fg_intensity = max(0, min(7, int((offset + amplitude) / 255 * 7)))
+                
+                # Use Color enum values
+                bg_color = Color(bg_intensity) if bg_intensity < 8 else Color.White
+                fg_color = Color(fg_intensity) if fg_intensity < 8 else Color.White
+                
+                # Generate the vertical line pattern
+                success = self.generate_vertical_lines(
+                    background_color=bg_color,
+                    foreground_color=fg_color,
+                    foreground_line_width=fg_width,
+                    background_line_width=bg_width,
+                    border=BorderEnable.Disable
+                )
+                
+            else:  # horizontal orientation
+                # Similar logic for horizontal patterns
+                if frequency == 1:
+                    if 0 <= phase_shift < np.pi/2:
+                        fg_width, bg_width = 8, 24
+                    elif np.pi/2 <= phase_shift < np.pi:
+                        fg_width, bg_width = 16, 16
+                    elif np.pi <= phase_shift < 3*np.pi/2:
+                        fg_width, bg_width = 24, 8
+                    else:
+                        fg_width, bg_width = 16, 16
+                else:
+                    # Adjust for higher frequencies
+                    base_fg = max(1, 8 // frequency)
+                    base_bg = max(1, 16 // frequency)
+                    
+                    if 0 <= phase_shift < np.pi/2:
+                        fg_width, bg_width = base_fg, base_bg * 2
+                    elif np.pi/2 <= phase_shift < np.pi:
+                        fg_width, bg_width = base_fg * 2, base_bg
+                    elif np.pi <= phase_shift < 3*np.pi/2:
+                        fg_width, bg_width = base_fg * 3, base_bg // 2
+                    else:
+                        fg_width, bg_width = base_fg * 2, base_bg
+                
+                # Similar intensity calculation as vertical
+                intensity_factor = (np.sin(phase_shift) + 1) / 2
+                bg_intensity = max(0, min(7, int((offset - amplitude) / 255 * 7)))
+                fg_intensity = max(0, min(7, int((offset + amplitude) / 255 * 7)))
+                
+                bg_color = Color(bg_intensity) if bg_intensity < 8 else Color.White
+                fg_color = Color(fg_intensity) if fg_intensity < 8 else Color.White
+                
+                success = self.generate_horizontal_lines(
+                    background_color=bg_color,
+                    foreground_color=fg_color,
+                    foreground_line_width=fg_width,
+                    background_line_width=bg_width,
+                    border=BorderEnable.Disable
+                )
+            
+            self.summary["Successful"] = success
+            
+            if success:
+                logger.info(f"Sinusoidal pattern approximation generated successfully")
+            else:
+                logger.error(f"Failed to generate sinusoidal pattern approximation")
+                
+            return success
+            
+        except Exception as e:
+            logger.error(f"Error generating sinusoidal pattern: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            self.summary["Successful"] = False
+            return False
+
+    def generate_horizontal_ramp(self, start_intensity=0, end_intensity=255):
+        """Generate horizontal ramp pattern (can be used for sinusoidal approximation).
+        
+        Args:
+            start_intensity: Starting intensity (0-255)
+            end_intensity: Ending intensity (0-255)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        self.summary["Command"] = "Write Horizontal Ramp"
+        
+        try:
+            # Pack the data for horizontal ramp (pattern type 1)
+            packer.packerinit()
+            value = packer.setbits(1, 4, 0)  # Pattern type 1 = horizontal ramp
+            value = packer.setbits(0, 1, 7)  # No border
+            
+            # Build the command - ramp patterns may need intensity parameters
+            command_bytes = [11, value, start_intensity, end_intensity]
+            
+            # Send the command
+            success = self._write_command(command_bytes)
+            self.summary["Successful"] = success
+            
+            logger.info(f"Generate horizontal ramp ({start_intensity}->{end_intensity}): {'Success' if success else 'Failed'}")
+            return success
+        except Exception as e:
+            logger.error(f"Error generating horizontal ramp: {e}")
+            self.summary["Successful"] = False
+            return False
+
+    def generate_vertical_ramp(self, start_intensity=0, end_intensity=255):
+        """Generate vertical ramp pattern (can be used for sinusoidal approximation).
+        
+        Args:
+            start_intensity: Starting intensity (0-255)
+            end_intensity: Ending intensity (0-255)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        self.summary["Command"] = "Write Vertical Ramp"
+        
+        try:
+            # Pack the data for vertical ramp (pattern type 2)
+            packer.packerinit()
+            value = packer.setbits(2, 4, 0)  # Pattern type 2 = vertical ramp
+            value = packer.setbits(0, 1, 7)  # No border
+            
+            # Build the command
+            command_bytes = [11, value, start_intensity, end_intensity]
+            
+            # Send the command
+            success = self._write_command(command_bytes)
+            self.summary["Successful"] = success
+            
+            logger.info(f"Generate vertical ramp ({start_intensity}->{end_intensity}): {'Success' if success else 'Failed'}")
+            return success
+        except Exception as e:
+            logger.error(f"Error generating vertical ramp: {e}")
             self.summary["Successful"] = False
             return False

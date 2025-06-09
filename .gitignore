@@ -102,3 +102,9 @@ test_epipolar_check.jpg
 *.jpg
 /epipolar_verification
 /test_scan_2k
+/debug_test
+/demo_quality_multiframe
+/demo_sgbm_patterns
+/Open3D-ML
+/investor_demo
+/test_fix_debug

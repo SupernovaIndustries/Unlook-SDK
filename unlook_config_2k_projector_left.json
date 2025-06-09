@@ -1,0 +1,89 @@
+{
+  "version": "2.0",
+  "name": "UnLook 2K Projector-Left Camera-Right",
+  "description": "Single camera structured light configuration with projector on left",
+  
+  "camera": {
+    "default_resolution": [2048, 1536],
+    "max_resolution": [2048, 1536],
+    "preferred_resolution": [2048, 1536],
+    "fallback_resolution": [1920, 1080],
+    "fps": 15,
+    "format": "RGB",
+    "active_camera": "right",
+    "single_camera_mode": true,
+    "compression": {
+      "jpeg_quality": 95,
+      "png_compression": 6
+    },
+    "exposure": {
+      "auto": true,
+      "manual_value": 15000
+    },
+    "gain": {
+      "auto": true,
+      "manual_value": 1.0
+    },
+    "white_balance": {
+      "auto": true
+    },
+    "focus": {
+      "auto": false,
+      "manual_value": 0
+    }
+  },
+  
+  "projector": {
+    "resolution": [1920, 1080],
+    "brightness": 255,
+    "position": "left",
+    "baseline_mm": 80,
+    "patterns": {
+      "resolution": [1920, 1080],
+      "quality": "ultra",
+      "format": "RGB",
+      "compression": false,
+      "type": "sinusoidal"
+    }
+  },
+  
+  "scanning": {
+    "method": "phase_shift",
+    "quality_preset": "ultra",
+    "pattern_type": "sinusoidal_pattern",
+    "phase_frequencies": [1, 8, 64],
+    "phase_shift_steps": 4,
+    "pattern_count": 12,
+    "voxel_size": 0.1,
+    "max_depth": 2000,
+    "min_depth": 100,
+    "processing_threads": 16,
+    "single_camera": true,
+    "primary_camera": "right"
+  },
+  
+  "performance": {
+    "realtime_disabled": true,
+    "priority_quality": true,
+    "gpu_acceleration": true,
+    "memory_limit": "8GB"
+  },
+  
+  "calibration": {
+    "resolution": [2048, 1536],
+    "checkerboard_size": [9, 6],
+    "square_size_mm": 24.0,
+    "target_baseline_mm": 80.0,
+    "setup": "projector_camera",
+    "projector_position": "left",
+    "camera_position": "right"
+  },
+  
+  "notes": [
+    "Projector-camera structured light configuration",
+    "Projector on left, camera on right with 80mm baseline",
+    "Optimized for phase shift sinusoidal patterns",
+    "Single camera mode for pure structured light (no stereo)",
+    "Expected 200,000+ 3D points per scan"
+  ]
+}
