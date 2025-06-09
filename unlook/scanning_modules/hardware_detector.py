@@ -19,9 +19,10 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # I2C addresses
-AS1170_I2C_ADDRESS = 0x65  # AS1170 LED controller
+AS1170_I2C_ADDRESS = 0x30  # AS1170 LED controller (updated address)
 DLP342X_I2C_ADDRESS = 0x1B  # DLP342x projector
-I2C_BUS = 3  # Default I2C bus for UnLook hardware
+AS1170_I2C_BUS = 4  # AS1170 is on bus 4
+DLP342X_I2C_BUS = 3  # DLP342x is on bus 3
 
 # TOF sensor addresses (for future use)
 VL53L0X_I2C_ADDRESS = 0x29
@@ -119,8 +120,8 @@ class HardwareDetector:
         """
         i2c_devices = []
         
-        # Check multiple I2C buses (0, 1, 3 are common on Raspberry Pi)
-        for bus in [0, 1, 3]:
+        # Check multiple I2C buses (0, 1, 3, 4 are common on Raspberry Pi)
+        for bus in [0, 1, 3, 4]:
             try:
                 # Use i2cdetect to scan the bus
                 result = subprocess.run(
@@ -194,11 +195,11 @@ class HardwareDetector:
             True if AS1170 is detected, False otherwise
         """
         for device in self.hardware_config["i2c_devices"]:
-            if device["address_int"] == AS1170_I2C_ADDRESS and device["bus"] == I2C_BUS:
-                logger.info(f"AS1170 LED controller detected on bus {I2C_BUS}")
+            if device["address_int"] == AS1170_I2C_ADDRESS and device["bus"] == AS1170_I2C_BUS:
+                logger.info(f"AS1170 LED controller detected on bus {AS1170_I2C_BUS}, address {device['address']}")
                 return True
                 
-        logger.debug("AS1170 LED controller not detected")
+        logger.debug(f"AS1170 LED controller not detected (looking for address 0x{AS1170_I2C_ADDRESS:02x} on bus {AS1170_I2C_BUS})")
         return False
     
     def _check_projector(self) -> Optional[Dict[str, Any]]:
@@ -209,7 +210,7 @@ class HardwareDetector:
             Projector info dict if detected, None otherwise
         """
         for device in self.hardware_config["i2c_devices"]:
-            if device["address_int"] == DLP342X_I2C_ADDRESS and device["bus"] == I2C_BUS:
+            if device["address_int"] == DLP342X_I2C_ADDRESS and device["bus"] == DLP342X_I2C_BUS:
                 projector_info = {
                     "type": "DLP342x",
                     "address": device["address"],
@@ -220,7 +221,7 @@ class HardwareDetector:
                 logger.info(f"DLP342x projector detected on bus {device['bus']}, address {device['address']}")
                 return projector_info
                 
-        logger.debug("DLP342x projector not detected")
+        logger.debug(f"DLP342x projector not detected (looking for address 0x{DLP342X_I2C_ADDRESS:02x} on bus {DLP342X_I2C_BUS})")
         return None
     
     def _check_tof_sensor(self) -> Optional[Dict[str, Any]]:
