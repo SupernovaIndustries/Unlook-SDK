@@ -1,6 +1,28 @@
 UnLook Development Roadmap: Incremental Enhancement Strategy
 Executive Summary
 Roadmap di sviluppo incrementale per UnLook Scanner basato su validazione progressiva del mercato, mantenendo l'hardware esistente (Raspberry Pi CM4 8GB) e ottimizzando step-by-step verso capacità professionali.
+
+## Hardware Enhancements TODO
+
+### TOF Sensor Integration for Distance Measurement (Priority: HIGH)
+- **Purpose**: Add I2C TOF (Time-of-Flight) sensor for automatic distance measurement
+- **Benefits**: 
+  - Ensure object stays within optimal scanning range (30-60cm)
+  - Real-time distance feedback to user
+  - Auto-adjust pattern intensity based on distance
+  - Prevent out-of-focus scans
+  - Guide user to optimal scanning distance (45cm sweet spot)
+- **Suggested Sensors**:
+  - VL53L0X or VL53L1X (I2C, up to 2m range, low cost)
+  - VL53L5CX (8x8 multi-zone, better coverage)
+  - TMF8801 (more accurate, wider FOV)
+- **Implementation**: To be defined when ready
+- **Integration Points**:
+  - I2C bus connection to Raspberry Pi
+  - Real-time distance display in UI
+  - Auto-stop scanning if object moves out of range
+  - Distance-based pattern optimization
+
 Current Hardware Foundation
 yamlBase System: Raspberry Pi CM4 8GB (MANTIENI)
 Cameras: Stereo Global Shutter pair

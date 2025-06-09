@@ -206,3 +206,31 @@ def get_default_structured_light_module() -> Optional[ScanningModule]:
     """
     modules = load_module_specs("structured_light")
     return modules[0] if modules else None
+
+
+# Import autodiscovery components
+from .hardware_detector import HardwareDetector, detect_hardware
+from .module_selector import ModuleSelector, ScanningModule as ScanningModuleType, select_scanning_module
+from .scanning_config import (
+    ScanningConfig, PatternConfig, CalibrationConfig, 
+    ProcessingConfig, LEDConfig, create_scanning_config
+)
+
+__all__ = [
+    'ScanningModule',
+    'load_module_specs',
+    'get_module_by_id',
+    'get_default_structured_light_module',
+    # Autodiscovery exports
+    'HardwareDetector',
+    'detect_hardware',
+    'ModuleSelector',
+    'ScanningModuleType',
+    'select_scanning_module',
+    'ScanningConfig',
+    'PatternConfig',
+    'CalibrationConfig',
+    'ProcessingConfig',
+    'LEDConfig',
+    'create_scanning_config'
+]

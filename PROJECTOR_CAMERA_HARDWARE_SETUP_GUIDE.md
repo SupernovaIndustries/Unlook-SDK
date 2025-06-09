@@ -30,68 +30,82 @@ This guide explains how to configure a projector-camera structured light system 
 - **Best for**: Traditional stereo vision with pattern assistance
 - **Accuracy**: Good for textured surfaces
 
-## Recommended Setup for Your Hardware
+## Single Camera + Projector Setup (Option 1 Detailed)
 
-Given your configuration (2 cameras at 8cm + central projector), **Option 2** is optimal:
+### Physical Configuration
+```
+[Camera Left] -------- 8cm -------- [Projector]
+```
+- **Baseline**: 8cm between camera and projector
+- **Distance to Object**: 30-60cm for optimal results
+- **Projector Type**: DLP342x with native resolution 1280x720 (HD)
+- **Camera Resolution**: 2048x1536 (2K)
 
-### Physical Positioning
-1. **Central Projector**: Place DLP projector in the center
-2. **Left Camera**: 4cm to the left of projector
-3. **Right Camera**: 4cm to the right of projector
-4. **Baseline**: Total 8cm between cameras
-5. **Distance to Object**: 30-60cm for optimal results
+### Calibration Process for Single Camera + Projector
 
-### Calibration Requirements
+#### Understanding "Inverse Camera" Calibration
+- **Camera**: World 3D → Lens → Sensor (captures light)
+- **Projector**: Pattern → Lens → World 3D (emits light)
+- Mathematically equivalent with intrinsic (focal length, distortion) and extrinsic (position/rotation) parameters
 
-#### 1. Individual Camera Calibration
+#### Step 1: Camera Calibration
 ```bash
-# Calibrate each camera separately
+# First calibrate the camera using standard checkerboard images
 python unlook/examples/calibration/process_calibration.py --camera left
-python unlook/examples/calibration/process_calibration.py --camera right
 ```
 
-#### 2. Stereo Camera Calibration
+#### Step 2: Projector-Camera System Calibration
+The projector must project Gray code patterns ONTO the checkerboard:
+1. Position physical checkerboard (printed, not on tablet)
+2. Camera detects checkerboard corners
+3. Projector projects Gray code patterns on the same checkerboard
+4. Camera captures checkerboard + Gray code together
+5. Algorithm calculates which projector pixel illuminates each corner
+
 ```bash
-# Calibrate stereo pair
-python unlook/examples/calibration/process_calibration.py --stereo
+# Interactive calibration (recommended)
+python unlook/examples/calibration/calibrate_projector_camera.py \
+    --interactive \
+    --num-positions 10 \
+    --gray-bits 7 \
+    --projector-width 1280 \
+    --projector-height 720 \
+    --checkerboard-rows 9 \
+    --checkerboard-cols 6 \
+    --square-size 25
+
+# Or process existing images
+python unlook/examples/calibration/calibrate_projector_camera.py \
+    --input calibration_images/ \
+    --output projector_calibration.json \
+    --projector-width 1280 \
+    --projector-height 720
 ```
 
-#### 3. Projector Calibration (Critical for Phase Shift)
+#### Step 3: Verify Calibration
 ```bash
-# Calibrate projector as "inverse camera" using Gray code patterns
-python unlook/examples/calibration/calibrate_projector.py --camera left --projector-resolution 1920x1080
+python unlook/examples/calibration/check_epipolar_lines.py \
+    --calibration projector_calibration.json \
+    --mode projector-camera
 ```
 
 ### Configuration Files
 
-#### Server Configuration (unlook_config_2k.json)
+#### Single Camera Configuration (unlook_config_2k_projector_left.json)
 ```json
 {
-  "name": "UnLook 2K Dual Camera + Projector",
-  "server": {
-    "name": "UnLookScanner_2K",
-    "control_port": 5555,
-    "stream_port": 5556,
-    "direct_stream_port": 5557
-  },
+  "name": "UnLook 2K Single Camera + Projector",
   "camera": {
     "default_resolution": [2048, 1536],
-    "fps": 30,
-    "cameras": {
-      "left": {
-        "index": 0,
-        "position": "left"
-      },
-      "right": {
-        "index": 1,
-        "position": "right"
-      }
-    }
+    "fps": 15,
+    "active_camera": "left",
+    "single_camera_mode": true
   },
   "projector": {
     "type": "dlp342x",
-    "resolution": [1920, 1080],
-    "position": "center",
+    "resolution": [1280, 720],  // Native DLP342x resolution
+    "position": "right",        // 8cm to the right of camera
+    "baseline_mm": 80,
     "i2c_bus": 3,
     "i2c_address": "0x1b"
   },
@@ -99,41 +113,80 @@ python unlook/examples/calibration/calibrate_projector.py --camera left --projec
     "method": "phase_shift",
     "pattern_type": "sinusoidal_pattern",
     "frequencies": [1, 8, 64],
-    "steps_per_frequency": 4
+    "steps_per_frequency": 4,
+    "single_camera": true,
+    "primary_camera": "left"
   }
 }
 ```
 
-### Calibration Strategy
+### Checkerboard Specifications
 
-#### Phase 1: Basic Calibration
-1. **Camera Intrinsics**: Use checkerboard patterns
-2. **Stereo Extrinsics**: Calibrate camera-to-camera relationship
-3. **Projector Intrinsics**: Treat projector as inverse camera
+#### Pattern Details
+- **Internal corners**: 9x6 (columns x rows)
+- **Total squares**: 10x7 (alternating black/white)
+- **Square size**: 25-30mm per square
+- **Total size on A4**: ~250x175mm (fits well)
+- **Total size on A3**: ~300x210mm (better for larger FOV)
 
-#### Phase 2: Projector-Camera Calibration
-1. **Project Gray Code**: Use structured patterns for correspondence
-2. **Capture with Left Camera**: Primary camera for triangulation
-3. **Calculate Projector Pose**: Relative to left camera coordinate system
+#### Important Notes
+- **Must be printed** on matte paper (tablet screens cause reflections)
+- **Mount on rigid surface** (cardboard or foam board) to keep flat
+- **High contrast** black and white pattern required
+- **Avoid glossy surfaces** that create reflections with projected patterns
 
-#### Phase 3: System Validation
-1. **Test Phase Shift Patterns**: Verify pattern quality
-2. **Measure Known Objects**: Validate accuracy
-3. **Optimize Parameters**: Fine-tune for your setup
+### DLP342x Projector Specifications
 
-### Pattern Generation Strategy
+#### Native Resolution
+- **Resolution**: 1280x720 pixels (HD/720p)
+- **Lumens**: 100
+- **Control**: I2C interface
 
-For your dual-camera setup with central projector:
+#### Pattern Generation Options
+- **Native**: 1280x720 (recommended for calibration)
+- **Upscaled**: 1920x1080 (automatically scaled by projector)
+- **SDK Default**: 1024x768
 
-#### Primary Method: Projector-Left Camera
-- Use left camera as primary for phase shift reconstruction
-- Projector provides structured illumination
-- Achieve ~100x more points than stereo alone
+### Calibration Process Overview
 
-#### Secondary Method: Stereo Verification
-- Use right camera for correspondence validation
-- Cross-check phase measurements between cameras
-- Improve robustness in challenging conditions
+1. **Physical Setup**
+   - Mount checkerboard on wall/stand at **40-50cm distance** (optimal range)
+   - **Minimum distance**: 30cm (below this, focus issues may occur)
+   - **Maximum distance**: 60cm (beyond this, pattern resolution decreases)
+   - **Sweet spot**: 45cm for best calibration accuracy
+   - Ensure good ambient lighting for camera calibration
+   - Darken room slightly for projector calibration
+
+2. **Camera Calibration**
+   - Capture 20-30 images of checkerboard from different angles
+   - No projected patterns during this phase
+   - Validates camera intrinsics (focal length, distortion)
+
+3. **Projector-Camera Calibration**
+   - Interactive mode projects Gray code automatically
+   - System captures checkerboard + projected patterns together
+   - Creates projector↔camera correspondence map
+   - Calculates relative position and orientation
+
+4. **Validation**
+   - Test with known objects
+   - Verify reconstruction accuracy
+   - Fine-tune if needed
+
+### Pattern Generation Strategy for Single Camera + Projector
+
+#### Phase Shift Method (Recommended)
+- **Pattern Type**: Sinusoidal phase shift patterns
+- **Frequencies**: Multi-frequency approach [1, 8, 64]
+- **Steps**: 4 steps per frequency (total 12 patterns)
+- **Triangulation**: Direct projector-camera ray intersection
+- **Expected Points**: 50,000-200,000 per scan
+
+#### Implementation Note
+The system must use **projector-camera triangulation**, NOT stereo matching:
+- Each camera pixel → phase value → projector column
+- Triangulate between camera ray and projector ray
+- Requires proper projector calibration as "inverse camera"
 
 ### Software Configuration
 
@@ -143,21 +196,27 @@ For your dual-camera setup with central projector:
 python unlook/server_bootstrap.py --config unlook_config_2k.json --enable-protocol-v2
 ```
 
-#### Client Usage
+#### Client Usage for Single Camera + Projector
 ```python
 from unlook.client.scanner import Scanner3D
 
-# Initialize with dual camera + projector config
+# Initialize scanner
 scanner = Scanner3D()
 scanner.connect()
 
-# Capture phase shift sequence
+# Load projector calibration
+scanner.load_projector_calibration("projector_calibration.json")
+
+# Capture phase shift sequence with projector-camera triangulation
 result = scanner.scan_3d(
     pattern_type="phase_shift",
     frequencies=[1, 8, 64],
     steps_per_frequency=4,
-    use_both_cameras=True  # For validation
+    use_projector_camera_triangulation=True,  # Critical!
+    single_camera_mode=True
 )
+
+print(f"3D Points generated: {len(result.point_cloud.points)}")
 ```
 
 ### Expected Performance

@@ -88,6 +88,9 @@ class UnlookClient(EventEmitter):
         self._camera = None
         self._projector = None
         self._stream = None
+        
+        # Camera discovery
+        self._camera_discovery = None
 
         # Start discovery if requested
         if auto_discover:
@@ -119,6 +122,17 @@ class UnlookClient(EventEmitter):
             from ..streaming import StreamClient
             self._stream = StreamClient(self)
         return self._stream
+    
+    @property
+    def camera_discovery(self):
+        """Lazy-loading of camera discovery."""
+        if self._camera_discovery is None:
+            from .camera_discovery import CameraDiscovery
+            self._camera_discovery = CameraDiscovery(self)
+            # Auto-discover cameras if connected
+            if self.connected:
+                self._camera_discovery.discover_cameras()
+        return self._camera_discovery
 
     # Connection and scanner management methods
     def start_discovery(self, callback: Optional[Callable[[ScannerInfo, bool], None]] = None):
@@ -270,6 +284,15 @@ class UnlookClient(EventEmitter):
             # Update state
             self.connected = True
             logger.info(f"Connected to {self.scanner.name} ({self.scanner.uuid})")
+            
+            # Initialize camera discovery after connection
+            try:
+                if self._camera_discovery:
+                    logger.info("Initializing camera discovery...")
+                    self._camera_discovery.discover_cameras()
+            except Exception as e:
+                logger.warning(f"Failed to initialize camera discovery: {e}")
+                # Non-critical error, continue
 
             # Emit event
             self.emit(EventType.CONNECTED, self.scanner)

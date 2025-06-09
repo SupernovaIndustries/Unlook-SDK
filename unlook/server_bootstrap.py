@@ -108,6 +108,20 @@ def main():
     logger.info(f"Root directory: {root_dir}")
 
     try:
+        # Run hardware autodiscovery first
+        logger.info("Running hardware autodiscovery...")
+        try:
+            from unlook.scanning_modules import detect_hardware, select_scanning_module
+            hardware_config = detect_hardware()
+            module_config = select_scanning_module(hardware_config)
+            
+            logger.info(f"Hardware detected: {len(hardware_config.get('cameras', []))} cameras")
+            logger.info(f"Selected module: {module_config.get('module', 'unknown')}")
+            logger.info(f"Camera mapping: {module_config.get('camera_mapping', {})}")
+        except Exception as e:
+            logger.warning(f"Hardware autodiscovery failed: {e}")
+            logger.warning("Continuing with default configuration")
+        
         # Using server-only mode (set earlier), we can directly import just the server module
         # without the risk of circular imports with client modules
         from unlook.server.scanner import UnlookServer

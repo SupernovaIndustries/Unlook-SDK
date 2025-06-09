@@ -9,13 +9,14 @@ Specifically designed for 2K resolution calibration to achieve maximum accuracy.
 
 Features:
 - 2K resolution capture (2048x1536)
-- 5x8 checkerboard pattern detection
+- 9x6 checkerboard pattern detection
 - Real-time checkerboard detection feedback
 - Automatic quality validation
-- Server configuration using unlook_config_2k.json
+- AS1170 LED control for better illumination
+- Protocol v2 support
 
 Usage:
-  python capture_checkerboard_images.py --output calibration_2k_images/ --num-images 40
+  python capture_checkerboard_images.py --output calibration_2k_images/ --num-images 20
 """
 
 import os
@@ -40,8 +41,8 @@ logger = logging.getLogger("capture_checkerboard_2k")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 
 try:
-    from unlook import UnlookClient
-    from unlook.core.discovery import discover_scanners
+    from unlook.client.scanner import Scanner3D
+    from unlook.client.scanner.scanner import UnlookClient
 except ImportError as e:
     logger.error(f"Required dependency missing: {e}")
     sys.exit(1)
@@ -49,7 +50,7 @@ except ImportError as e:
 class Checkerboard2KCapture:
     """2K resolution checkerboard capture system"""
     
-    def __init__(self, checkerboard_size=(8, 5), square_size_mm=24.0):
+    def __init__(self, checkerboard_size=(9, 6), square_size_mm=25.0):
         """
         Initialize capture system for 2K calibration.
         
@@ -68,29 +69,28 @@ class Checkerboard2KCapture:
         logger.info(f"Initialized for {checkerboard_size[0]}x{checkerboard_size[1]} checkerboard")
         logger.info(f"Target resolution: {self.target_resolution[0]}x{self.target_resolution[1]}")
         
-    def configure_scanner_2k(self, scanner):
-        """Configure scanner for 2K resolution capture"""
+    def configure_scanner_2k(self, client, led_intensity=200):
+        """Configure scanner for 2K resolution capture with LED illumination"""
         try:
-            # Load 2K configuration
-            config_path = Path(__file__).parent.parent.parent.parent / "unlook_config_2k.json"
-            if config_path.exists():
-                with open(config_path, 'r') as f:
-                    config_2k = json.load(f)
-                    logger.info("Loaded 2K configuration from unlook_config_2k.json")
-            else:
-                logger.warning("2K config file not found, using hardcoded settings")
-                config_2k = None
+            # Configure LED illumination for better checkerboard visibility
+            try:
+                # Turn on LED at specified intensity for calibration
+                # AS1170 LED controller: LED1 for spot, LED2 for flood
+                client.projector.led_set_intensity(led1_mA=0, led2_mA=led_intensity)
+                logger.info(f"LED illumination enabled for calibration ({led_intensity}mA)")
+            except Exception as e:
+                logger.warning(f"LED control not available: {e}")
             
-            # Apply 2K camera settings
-            scanner.set_camera_resolution(self.target_resolution[0], self.target_resolution[1])
-            scanner.set_jpeg_quality(self.jpeg_quality)
-            scanner.set_camera_fps(15)  # Reduced FPS for 2K stability
+            # Set camera parameters for calibration
+            try:
+                # Request 2K resolution capture
+                client.set_capture_resolution(self.target_resolution[0], self.target_resolution[1])
+                # Set JPEG quality
+                client.set_capture_quality(self.jpeg_quality)
+                logger.info("Scanner configured for 2K calibration capture")
+            except Exception as e:
+                logger.warning(f"Could not set capture parameters: {e}")
             
-            # Configure exposure for calibration
-            scanner.set_camera_exposure_mode('manual')
-            scanner.set_camera_exposure_value(15000)  # Fixed exposure for consistency
-            
-            logger.info("Scanner configured for 2K calibration capture")
             return True
             
         except Exception as e:
@@ -168,25 +168,24 @@ class Checkerboard2KCapture:
         
         return True, quality_score, "Good quality"
     
-    def capture_calibration_set(self, client, output_dir, num_images=40, min_delay=2.0):
+    def capture_calibration_set(self, client, output_dir, num_images=20, min_delay=2.0, single_camera_mode=False):
         """
         Capture a complete set of calibration images at 2K resolution.
         
         Args:
-            client: UnlookClient instance
+            scanner: Scanner3D instance
             output_dir: Directory to save captured images
-            num_images: Number of image pairs to capture
+            num_images: Number of images to capture
             min_delay: Minimum delay between captures
+            single_camera_mode: If True, only capture left camera images
             
         Returns:
             dict: Calibration capture results
         """
-        # Create output directory structure
+        # Create output directory structure (single camera)
         output_path = Path(output_dir)
-        left_dir = output_path / "left"
-        right_dir = output_path / "right"
+        left_dir = output_path / "camera"  # Changed from "left" to "camera"
         left_dir.mkdir(parents=True, exist_ok=True)
-        right_dir.mkdir(parents=True, exist_ok=True)
         
         # Save calibration info
         calib_info = {
@@ -195,7 +194,8 @@ class Checkerboard2KCapture:
             "checkerboard_size": list(self.checkerboard_size),
             "square_size_mm": self.square_size_mm,
             "num_images": num_images,
-            "jpeg_quality": self.jpeg_quality
+            "jpeg_quality": self.jpeg_quality,
+            "single_camera_mode": single_camera_mode
         }
         
         with open(output_path / "calibration_info.json", 'w') as f:
@@ -208,10 +208,11 @@ class Checkerboard2KCapture:
         print(f"Checkerboard: {self.checkerboard_size[0]}x{self.checkerboard_size[1]} inner corners")
         print(f"Output directory: {output_path}")
         print("\nInstructions:")
-        print("1. Hold checkerboard at various distances (30-80cm)")
+        print("1. Hold checkerboard at various distances (40-50cm optimal, 30-60cm range)")
         print("2. Rotate to different angles (±30°)")
         print("3. Cover all areas of the image")
         print("4. Ensure ENTIRE checkerboard is visible")
+        print("5. Best distance for calibration: 45cm")
         print("="*60 + "\n")
         
         captured_count = 0
@@ -219,7 +220,7 @@ class Checkerboard2KCapture:
         capture_results = []
         
         while captured_count < num_images:
-            print(f"\nImage pair {captured_count + 1}/{num_images}")
+            print(f"\nImage {captured_count + 1}/{num_images}")
             
             if captured_count > 0:
                 print(f"Move checkerboard to new position...")
@@ -227,49 +228,59 @@ class Checkerboard2KCapture:
                 time.sleep(min_delay)
             
             try:
-                # Capture stereo pair
+                # Capture image(s)
                 print("Capturing... ", end="", flush=True)
-                left_img, right_img = client.camera.capture_stereo_pair()
                 
-                if left_img is None or right_img is None:
-                    print("FAILED - No image received")
+                # Now capture_stereo_pair() works correctly with single camera
+                try:
+                    left_img, right_img = client.camera.capture_stereo_pair()
+                    
+                    # For single camera mode, ignore right image
+                    if single_camera_mode:
+                        right_img = None
+                        
+                except Exception as e:
+                    print(f"FAILED - Capture error: {e}")
+                    failed_count += 1
+                    continue
+                
+                if left_img is None:
+                    print("FAILED - No image captured")
                     failed_count += 1
                     continue
                 
                 # Detect checkerboards
                 print("Detecting checkerboard... ", end="", flush=True)
                 left_found, left_corners = self.detect_checkerboard(left_img)
-                right_found, right_corners = self.detect_checkerboard(right_img)
                 
-                if not left_found or not right_found:
-                    print("FAILED - Checkerboard not found in both images")
+                # Since we only have one camera, just check the single image
+                if not left_found:
+                    print("FAILED - Checkerboard not found")
                     failed_count += 1
                     continue
                 
                 # Validate quality
-                left_valid, left_score, left_msg = self.validate_image_quality(left_img, left_corners)
-                right_valid, right_score, right_msg = self.validate_image_quality(right_img, right_corners)
+                img_valid, img_score, img_msg = self.validate_image_quality(left_img, left_corners)
                 
-                if not left_valid or not right_valid:
-                    print(f"FAILED - Quality issue: L:{left_msg}, R:{right_msg}")
+                if not img_valid:
+                    print(f"FAILED - Quality issue: {img_msg}")
                     failed_count += 1
                     continue
                 
-                # Save images
+                # Save image (only one camera available)
                 filename = f"calib_{captured_count:04d}.jpg"
                 cv2.imwrite(str(left_dir / filename), left_img, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
-                cv2.imwrite(str(right_dir / filename), right_img, [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality])
                 
                 # Record results
                 capture_results.append({
                     "index": captured_count,
                     "filename": filename,
-                    "left_quality": left_score,
-                    "right_quality": right_score,
+                    "camera_id": camera_id,
+                    "quality": img_score,
                     "timestamp": datetime.now().isoformat()
                 })
                 
-                print(f"SUCCESS - Quality: L:{left_score:.2f}, R:{right_score:.2f}")
+                print(f"SUCCESS - Quality: {img_score:.2f}")
                 captured_count += 1
                 
             except Exception as e:
@@ -296,7 +307,7 @@ class Checkerboard2KCapture:
         
         print("\n" + "="*60)
         print("CAPTURE COMPLETE")
-        print(f"Successfully captured: {captured_count} image pairs")
+        print(f"Successfully captured: {captured_count} images")
         print(f"Failed attempts: {failed_count}")
         print(f"Output directory: {output_path}")
         print("="*60)
@@ -307,18 +318,22 @@ def main():
     parser = argparse.ArgumentParser(description="2K Calibration Image Capture Tool")
     parser.add_argument('--output', type=str, default='calibration_2k_images',
                         help='Output directory for calibration images')
-    parser.add_argument('--num-images', type=int, default=40,
-                        help='Number of image pairs to capture (default: 40)')
-    parser.add_argument('--checkerboard-columns', type=int, default=8,
-                        help='Number of inner corners horizontally (default: 8)')
-    parser.add_argument('--checkerboard-rows', type=int, default=5,
-                        help='Number of inner corners vertically (default: 5)')
-    parser.add_argument('--square-size', type=float, default=24.0,
-                        help='Size of checkerboard squares in mm (default: 24.0)')
+    parser.add_argument('--num-images', type=int, default=20,
+                        help='Number of images to capture (default: 20)')
+    parser.add_argument('--checkerboard-columns', type=int, default=9,
+                        help='Number of inner corners horizontally (default: 9)')
+    parser.add_argument('--checkerboard-rows', type=int, default=6,
+                        help='Number of inner corners vertically (default: 6)')
+    parser.add_argument('--square-size', type=float, default=25.0,
+                        help='Size of checkerboard squares in mm (default: 25.0)')
     parser.add_argument('--scanner-ip', type=str,
                         help='Scanner IP address (auto-discover if not specified)')
     parser.add_argument('--delay', type=float, default=2.0,
                         help='Minimum delay between captures in seconds')
+    parser.add_argument('--single-camera', action='store_true',
+                        help='Capture only left camera images for single camera calibration')
+    parser.add_argument('--led-intensity', type=int, default=200,
+                        help='LED intensity in mA for illumination (0-450, default: 200)')
     
     args = parser.parse_args()
     
@@ -328,43 +343,79 @@ def main():
         square_size_mm=args.square_size
     )
     
-    # Connect to scanner
-    if args.scanner_ip:
-        scanner_ip = args.scanner_ip
-    else:
-        print("Discovering scanners...")
-        scanners = discover_scanners(timeout=5.0)
-        if not scanners:
-            logger.error("No scanners found on network")
-            return 1
-        scanner_ip = scanners[0]['ip']
-        print(f"Found scanner at {scanner_ip}")
+    # Connect to scanner using auto-discovery
+    print("Discovering scanners...")
+    client = UnlookClient("CalibrationCapture", auto_discover=True)
     
-    # Create client
+    # Wait for discovery
+    time.sleep(3)
+    
+    scanners = client.get_discovered_scanners()
+    if not scanners:
+        logger.error("No scanners found on network")
+        logger.error("Make sure the scanner server is running with:")
+        logger.error("  python unlook/server_bootstrap.py --config unlook_config_2k.json")
+        return 1
+    
+    # Select scanner
+    scanner_info = None
+    if args.scanner_ip:
+        # Find scanner by IP
+        for s in scanners:
+            if s.host == args.scanner_ip:
+                scanner_info = s
+                break
+        if not scanner_info:
+            logger.error(f"Scanner with IP {args.scanner_ip} not found")
+            return 1
+    else:
+        # Use first discovered scanner
+        scanner_info = scanners[0]
+    
+    print(f"Found scanner: {scanner_info.name} at {scanner_info.host}")
+    
+    # Connect to scanner
     try:
-        client = UnlookClient(scanner_ip)
-        print(f"Connected to scanner at {scanner_ip}")
+        if not client.connect(scanner_info):
+            logger.error("Failed to connect to scanner")
+            return 1
+            
+        print(f"Connected to scanner at {scanner_info.host}")
         
-        # Configure for 2K
-        if not capture_system.configure_scanner_2k(client):
+        # Use the connected client directly for capture
+        
+        # Configure scanner for 2K with LED illumination
+        if not capture_system.configure_scanner_2k(client, led_intensity=args.led_intensity):
             logger.error("Failed to configure scanner for 2K")
             return 1
         
-        # Capture calibration images
+        # Wait a moment for LED to stabilize
+        time.sleep(0.5)
+        
+        # Capture calibration images using direct client
         results = capture_system.capture_calibration_set(
             client,
             args.output,
             num_images=args.num_images,
-            min_delay=args.delay
+            min_delay=args.delay,
+            single_camera_mode=args.single_camera
         )
         
         return 0
         
     except Exception as e:
         logger.error(f"Capture failed: {e}")
+        import traceback
+        traceback.print_exc()
         return 1
     finally:
         if 'client' in locals():
+            # Turn off LED before disconnecting
+            try:
+                client.projector.led_off()
+                logger.info("LED turned off")
+            except:
+                pass
             client.disconnect()
 
 if __name__ == "__main__":

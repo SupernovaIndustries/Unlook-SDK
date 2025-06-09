@@ -114,6 +114,11 @@ class UnlookServer(EventEmitter):
         self._led_controller = None
         self._gpu_preprocessor = None
         self._protocol_optimizer = None
+        
+        # Autodiscovery configuration
+        self._hardware_config = None
+        self._module_config = None
+        self._scanning_config = None
 
         # Streaming
         self.streaming_active = False
@@ -1579,6 +1584,60 @@ class UnlookServer(EventEmitter):
                 logger.error(f"Error initializing protocol optimizer: {e}")
                 self._protocol_optimizer = None
         return self._protocol_optimizer
+    
+    @property
+    def hardware_config(self):
+        """Get hardware configuration using autodiscovery."""
+        if self._hardware_config is None:
+            try:
+                logger.info("Running hardware autodiscovery...")
+                from ..scanning_modules import detect_hardware
+                self._hardware_config = detect_hardware()
+                logger.info(f"Hardware detected: {len(self._hardware_config.get('cameras', []))} cameras, "
+                           f"AS1170: {self._hardware_config.get('as1170', False)}, "
+                           f"Projector: {self._hardware_config.get('projector') is not None}")
+            except Exception as e:
+                logger.error(f"Error during hardware detection: {e}")
+                # Fallback configuration
+                self._hardware_config = {
+                    "cameras": [],
+                    "as1170": False,
+                    "projector": None,
+                    "tof_sensor": None,
+                    "i2c_devices": []
+                }
+        return self._hardware_config
+    
+    @property
+    def module_config(self):
+        """Get scanning module configuration based on hardware."""
+        if self._module_config is None:
+            try:
+                from ..scanning_modules import select_scanning_module
+                self._module_config = select_scanning_module(self.hardware_config)
+                logger.info(f"Selected scanning module: {self._module_config.get('module', 'unknown')}")
+            except Exception as e:
+                logger.error(f"Error selecting scanning module: {e}")
+                self._module_config = {}
+        return self._module_config
+    
+    @property
+    def scanning_config(self):
+        """Get scanning configuration for the selected module."""
+        if self._scanning_config is None:
+            try:
+                from ..scanning_modules import create_scanning_config
+                module_name = self.module_config.get("module", "fallback_mono")
+                self._scanning_config = create_scanning_config(
+                    module_name, 
+                    self.hardware_config,
+                    self.module_config.get("configuration", {})
+                )
+                logger.info(f"Created scanning configuration for {module_name}")
+            except Exception as e:
+                logger.error(f"Error creating scanning config: {e}")
+                self._scanning_config = None
+        return self._scanning_config
 
     # Duplicate method removed to fix issue with direct streaming handlers
     # The actual handler initialization is at the beginning of the class
@@ -3054,11 +3113,40 @@ class UnlookServer(EventEmitter):
             return Message.create_error(message, f"Failed to configure synchronization: {str(e)}")
 
     def _handle_scanner_config(self, message: Message) -> Message:
-        """Handle SCANNER_CONFIG messages to apply 2K or other configurations."""
+        """Handle SCANNER_CONFIG messages to get or set scanner configuration."""
         try:
-            config = message.payload.get("config", {})
-            if not config:
-                return Message.create_error(message, "No configuration provided")
+            action = message.payload.get("action", "get")
+            
+            if action == "get":
+                # Return current configuration including autodiscovered settings
+                config_data = {
+                    "hardware": self.hardware_config,
+                    "module": self.module_config,
+                    "scanning": self.scanning_config.get_scanner_params() if self.scanning_config else {},
+                    "server": {
+                        "name": self.name,
+                        "uuid": self.uuid,
+                        "preprocessing": {
+                            "enabled": self.enable_preprocessing,
+                            "level": self.preprocessing_level
+                        },
+                        "sync": {
+                            "enabled": self.enable_sync,
+                            "fps": self.sync_fps
+                        },
+                        "protocol_v2": self.enable_protocol_v2
+                    }
+                }
+                
+                return Message.create_reply(message, {
+                    "status": "success",
+                    "data": config_data
+                })
+            
+            elif action == "set":
+                config = message.payload.get("config", {})
+                if not config:
+                    return Message.create_error(message, "No configuration provided")
             
             logger.info(f"Applying scanner configuration: {config}")
             

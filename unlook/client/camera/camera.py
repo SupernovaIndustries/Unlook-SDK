@@ -841,13 +841,24 @@ class CameraClient:
             >>> # Capture with ROI
             >>> image = client.camera.capture('left', crop_region=(100, 100, 640, 480))
         """
+        # Resolve camera ID through discovery if needed
+        resolved_camera_id = camera_id
+        if hasattr(self.client, 'camera_discovery') and self.client.camera_discovery:
+            resolved_id = self.client.camera_discovery.resolve_camera_id(camera_id)
+            if resolved_id:
+                resolved_camera_id = resolved_id
+                logger.debug(f"Resolved camera ID: {camera_id} -> {resolved_camera_id}")
+        
         # Validate camera exists
-        if camera_id not in self.cameras and self.cameras:
-            raise ValueError(ERROR_NO_CAMERA.format(camera_id))
+        if resolved_camera_id not in self.cameras and self.cameras:
+            # Try to refresh camera list
+            self.get_cameras()
+            if resolved_camera_id not in self.cameras:
+                raise ValueError(ERROR_NO_CAMERA.format(camera_id))
         
         # Prepare capture request parameters
         params = {
-            "camera_id": camera_id,
+            "camera_id": resolved_camera_id,
             "compression_format": format.value if hasattr(format, 'value') else format
         }
         
@@ -1238,6 +1249,11 @@ class CameraClient:
         Returns:
             Tuple (left_camera_id, right_camera_id), None if not found
         """
+        # Use camera discovery if available
+        if hasattr(self.client, 'camera_discovery') and self.client.camera_discovery:
+            return self.client.camera_discovery.get_stereo_pair()
+        
+        # Fallback to old logic
         # Update cache if necessary
         if not self.cameras:
             self.get_cameras()
@@ -1845,21 +1861,33 @@ class CameraClient:
             >>> cv2.imwrite('left.jpg', left)
             >>> cv2.imwrite('right.jpg', right)
         """
-        # Capture from both cameras
-        images = self.capture_multi(['left', 'right'], 
+        # Get actual camera IDs dynamically
+        left_camera, right_camera = self.get_stereo_pair()
+        if not left_camera:
+            raise RuntimeError("No cameras available for stereo capture")
+        
+        # For single camera, use it for both left and right
+        if not right_camera:
+            right_camera = left_camera
+        
+        # Capture from cameras using actual IDs
+        images = self.capture_multi([left_camera, right_camera], 
                                    jpeg_quality=jpeg_quality,
                                    format=format)
         
-        # Check both images were captured
-        if 'left' not in images or 'right' not in images:
-            missing = []
-            if 'left' not in images:
-                missing.append('left')
-            if 'right' not in images:
-                missing.append('right')
-            raise RuntimeError(f"Failed to capture from cameras: {', '.join(missing)}")
+        # Check images were captured
+        if left_camera not in images:
+            raise RuntimeError(f"Failed to capture from camera: {left_camera}")
         
-        if images['left'] is None or images['right'] is None:
-            raise RuntimeError("Stereo capture returned null images")
-        
-        return images['left'], images['right']
+        # For single camera setup, return same image for both left and right
+        if left_camera == right_camera:
+            if images[left_camera] is None:
+                raise RuntimeError("Single camera capture returned null image")
+            return images[left_camera], images[left_camera]
+        else:
+            # True stereo setup
+            if right_camera not in images:
+                raise RuntimeError(f"Failed to capture from camera: {right_camera}")
+            if images[left_camera] is None or images[right_camera] is None:
+                raise RuntimeError("Stereo capture returned null images")
+            return images[left_camera], images[right_camera]
