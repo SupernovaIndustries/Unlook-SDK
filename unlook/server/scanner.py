@@ -2051,6 +2051,20 @@ class UnlookServer(EventEmitter):
             return Message.create_error(message, "Camera ID list not specified")
 
         try:
+            # Extract camera IDs if dictionaries were passed
+            processed_camera_ids = []
+            for cam in camera_ids:
+                if isinstance(cam, dict):
+                    # Extract ID from dictionary
+                    cam_id = cam.get('id') or cam.get('camera_id') or list(cam.keys())[0]
+                    processed_camera_ids.append(cam_id)
+                else:
+                    # Already a string ID
+                    processed_camera_ids.append(cam)
+            
+            camera_ids = processed_camera_ids
+            logger.info(f"Processed camera IDs: {camera_ids}")
+            
             # Open all requested cameras if they're not already open
             for camera_id in camera_ids:
                 logger.info(f"Attempting to open camera: {camera_id}")

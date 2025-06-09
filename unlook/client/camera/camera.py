@@ -994,9 +994,22 @@ class CameraClient:
             format_value = format.value
         else:
             format_value = format
-            
+        
+        # Ensure camera_ids are strings, not dicts
+        processed_camera_ids = []
+        for cam in camera_ids:
+            if isinstance(cam, dict):
+                # Extract ID from dictionary
+                cam_id = cam.get('id') or cam.get('camera_id')
+                if cam_id:
+                    processed_camera_ids.append(cam_id)
+                else:
+                    logger.warning(f"Skipping invalid camera dict: {cam}")
+            else:
+                processed_camera_ids.append(str(cam))
+        
         params = {
-            "camera_ids": camera_ids,
+            "camera_ids": processed_camera_ids,
             "compression_format": format_value
         }
         
@@ -1019,11 +1032,25 @@ class CameraClient:
             binary_response=True
         )
 
-        if not success or binary_data is None:
-            logger.error("Error in synchronized capture")
+        if not success:
+            logger.error(f"Error in synchronized capture: {response}")
+            return {}
+            
+        if binary_data is None:
+            logger.error("No binary data received")
             return {}
 
         try:
+            # Check if this is an error message (JSON) instead of binary data
+            if binary_data.startswith(b'{') and b'"type"' in binary_data[:100]:
+                # This looks like a JSON error message
+                try:
+                    error_msg = json.loads(binary_data.decode('utf-8'))
+                    logger.error(f"Server returned error: {error_msg}")
+                    return {}
+                except:
+                    pass
+            
             # Debug log
             logger.debug(f"Received {len(binary_data)} bytes of binary data")
 
