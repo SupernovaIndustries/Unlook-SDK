@@ -1811,6 +1811,55 @@ class UnlookServer(EventEmitter):
             elif pattern_type == "colorbars":
                 # Generate pattern
                 success = self.projector.generate_colorbars()
+                
+            elif pattern_type == "sinusoidal_pattern":
+                # SINUSOIDAL PATTERN for phase shift structured light
+                # Get parameters with proper defaults for phase shift scanning
+                frequency = message.payload.get("frequency", 1)
+                phase = message.payload.get("phase", 0.0)
+                orientation = message.payload.get("orientation", "vertical")
+                amplitude = message.payload.get("amplitude", 127.5)
+                offset = message.payload.get("offset", 127.5)
+                
+                # Validate parameters
+                if frequency <= 0:
+                    return Message.create_error(message, "Frequency must be positive")
+                if not orientation in ["vertical", "horizontal"]:
+                    return Message.create_error(message, "Orientation must be 'vertical' or 'horizontal'")
+                if amplitude < 0 or amplitude > 255:
+                    return Message.create_error(message, "Amplitude must be between 0 and 255")
+                if offset < 0 or offset > 255:
+                    return Message.create_error(message, "Offset must be between 0 and 255")
+                
+                # Store additional pattern info for phase shift tracking
+                self._current_pattern_info.update({
+                    'frequency': frequency,
+                    'phase': phase,
+                    'orientation': orientation,
+                    'amplitude': amplitude,
+                    'offset': offset
+                })
+                
+                # Generate sinusoidal pattern using hardware interface
+                try:
+                    from .hardware.projector import generate_sinusoidal_pattern
+                    success = generate_sinusoidal_pattern(
+                        self.projector,
+                        frequency=frequency,
+                        phase_shift=phase,
+                        orientation=orientation,
+                        amplitude=amplitude,
+                        offset=offset
+                    )
+                    
+                    if success:
+                        logger.info(f"Sinusoidal pattern generated: f={frequency}, phase={phase:.2f}, {orientation}")
+                    else:
+                        logger.error(f"Failed to generate sinusoidal pattern: f={frequency}, phase={phase:.2f}")
+                        
+                except Exception as e:
+                    logger.error(f"Error generating sinusoidal pattern: {e}")
+                    return Message.create_error(message, f"Sinusoidal pattern generation failed: {e}")
 
             else:
                 return Message.create_error(

@@ -69,14 +69,17 @@ class PatternManager:
     
     def __init__(self):
         """Initialize the pattern manager."""
-        self.default_num_bits = 8  # Default Gray code bits
+        self.default_num_bits = 5  # Reduced Gray code bits for better visibility
         self.default_phase_steps = 4
         self.default_frequencies = [1, 8, 64]  # Multi-frequency phase shift
         
     def create_gray_code_patterns(self, 
                                  num_bits: int = None,
                                  use_blue: bool = True,
-                                 include_inverse: bool = True) -> List[PatternInfo]:
+                                 include_inverse: bool = True,
+                                 orientation: str = "both",
+                                 projector_width: int = 1280,
+                                 projector_height: int = 720) -> List[PatternInfo]:
         """
         Create Gray code pattern sequence.
         
@@ -87,6 +90,9 @@ class PatternManager:
             num_bits: Number of Gray code bits (default: 8)
             use_blue: Use blue stripes instead of white for better contrast
             include_inverse: Include inverse patterns for robust decoding
+            orientation: Pattern orientation - "vertical", "horizontal", or "both" (default: "both")
+            projector_width: Projector resolution width (default: 1280)
+            projector_height: Projector resolution height (default: 720)
             
         Returns:
             List of PatternInfo objects describing the patterns
@@ -94,8 +100,9 @@ class PatternManager:
         if num_bits is None:
             num_bits = self.default_num_bits
         
-        # Try to use enhanced pattern generation if available
-        if PATTERNS_AVAILABLE:
+        # FORCE basic pattern generation for ENORMOUS stripes
+        # Skip enhanced patterns that use small 1px stripes
+        if False:  # PATTERNS_AVAILABLE - disabled to use ENORMOUS stripes
             try:
                 # Use enhanced gray code generation
                 enhanced_patterns = generate_enhanced_gray_code_patterns(
@@ -131,8 +138,8 @@ class PatternManager:
                             "color": ep.get("color", "White"),
                             "foreground_color": "Blue" if use_blue and projector_pattern_type != "solid_field" else ep.get("foreground_color", "White"),
                             "background_color": ep.get("background_color", "Black"),
-                            "foreground_width": ep.get("stripe_width", 1),
-                            "background_width": ep.get("stripe_width", 1)
+                            "foreground_width": ep.get("stripe_width", 500),  # Force larger default
+                            "background_width": ep.get("stripe_width", 500)   # Force larger default
                         }
                     )
                     patterns.append(pattern_info)
@@ -177,54 +184,95 @@ class PatternManager:
         foreground_color = "Blue" if use_blue else "White"
         pattern_index = 2
         
-        for bit in range(num_bits):
-            # Calculate stripe width for this bit - make MUCH larger for hardware compatibility
-            # Use minimum 400px for the finest patterns - hardware needs very thick stripes
-            base_width = 2 ** (num_bits - bit - 1)
-            stripe_width = max(400, base_width * 32)  # Much thicker - 32x multiplier
+        # Generate patterns based on orientation
+        orientations_to_generate = []
+        if orientation in ["vertical", "both"]:
+            orientations_to_generate.append("vertical")
+        if orientation in ["horizontal", "both"]:
+            orientations_to_generate.append("horizontal")
             
-            # Normal pattern
-            patterns.append(PatternInfo(
-                pattern_type="vertical_lines",
-                name=f"gray_code_bit_{bit}",
-                metadata={
-                    "pattern_set": "gray_code",
-                    "gray_code": True,
-                    "bit": bit,
-                    "inverted": False,
-                    "index": pattern_index
-                },
-                parameters={
-                    "foreground_color": foreground_color,
-                    "background_color": "Black",
-                    "foreground_width": stripe_width,
-                    "background_width": stripe_width
-                }
-            ))
-            pattern_index += 1
+        for orient in orientations_to_generate:
+            # Calculate appropriate number of bits based on projector resolution
+            if orient == "vertical":
+                # For vertical patterns, encode X coordinate (projector width)
+                resolution = projector_width
+                pattern_type = "vertical_lines"
+                orientation_prefix = "v"
+            else:
+                # For horizontal patterns, encode Y coordinate (projector height)
+                resolution = projector_height
+                pattern_type = "horizontal_lines"
+                orientation_prefix = "h"
+                
+            # Adjust number of bits if needed based on resolution
+            effective_bits = min(num_bits, int(np.ceil(np.log2(resolution))))
             
-            # Inverted pattern
-            if include_inverse:
+            for bit in range(effective_bits):
+                # Start from 80px and halve for each bit
+                if bit == 0:
+                    stripe_width = 80
+                elif bit == 1:
+                    stripe_width = 40
+                elif bit == 2:
+                    stripe_width = 20
+                elif bit == 3:
+                    stripe_width = 10
+                elif bit == 4:
+                    stripe_width = 5
+                else:
+                    stripe_width = 2
+                
+                logger.info(f"Bit {bit}: Using stripe width = {stripe_width}px")
+                
+                # Normal pattern
                 patterns.append(PatternInfo(
-                    pattern_type="vertical_lines",
-                    name=f"gray_code_bit_{bit}_inv",
+                    pattern_type=pattern_type,
+                    name=f"gray_code_{orientation_prefix}_bit_{bit}",
                     metadata={
                         "pattern_set": "gray_code",
                         "gray_code": True,
                         "bit": bit,
-                        "inverted": True,
-                        "index": pattern_index
+                        "inverted": False,
+                        "index": pattern_index,
+                        "orientation": orient,
+                        "resolution": resolution
                     },
                     parameters={
-                        "foreground_color": "Black",
-                        "background_color": foreground_color,
+                        "foreground_color": foreground_color,
+                        "background_color": "Black",
                         "foreground_width": stripe_width,
-                        "background_width": stripe_width
+                        "background_width": stripe_width,
+                        "stripe_width_info": f"Pattern: {stripe_width}px stripes"
                     }
                 ))
                 pattern_index += 1
+                
+                # Inverted pattern
+                if include_inverse:
+                    patterns.append(PatternInfo(
+                        pattern_type=pattern_type,
+                        name=f"gray_code_{orientation_prefix}_bit_{bit}_inv",
+                        metadata={
+                            "pattern_set": "gray_code",
+                            "gray_code": True,
+                            "bit": bit,
+                            "inverted": True,
+                            "index": pattern_index,
+                            "orientation": orient,
+                            "resolution": resolution
+                        },
+                        parameters={
+                            "foreground_color": "Black",
+                            "background_color": foreground_color,
+                            "foreground_width": stripe_width,
+                            "background_width": stripe_width,
+                            "stripe_width_info": f"Inverted pattern: {stripe_width}px stripes"
+                        }
+                    ))
+                    pattern_index += 1
         
-        logger.info(f"Created {len(patterns)} basic Gray code patterns with {num_bits} bits")
+        logger.info(f"Created {len(patterns)} Gray code patterns with {num_bits} bits for orientation: {orientation}")
+        logger.info(f"All patterns use normal stripe widths based on bit position")
         return patterns
     
     def create_phase_shift_patterns(self,

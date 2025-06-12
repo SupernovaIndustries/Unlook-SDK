@@ -1,0 +1,74 @@
+{
+  "session": {
+    "scanner_info": {
+      "name": "UnLookScanner",
+      "host": "192.168.1.21",
+      "port": 5555,
+      "preprocessing_version": "v2_enhanced"
+    },
+    "protocol_v2": true,
+    "preprocessing_info": {
+      "enabled": true,
+      "level": "full",
+      "gpu_available": true,
+      "performance_metrics": {}
+    },
+    "sync_enabled": true,
+    "led_enabled": true,
+    "led_intensity": 100,
+    "session_name": "20250612_015815",
+    "timestamp": "2025-06-12T01:58:15.918279",
+    "capture_module_version": "1.0",
+    "cameras": {
+      "primary": {
+        "id": "picamera2_0",
+        "name": "Camera 0",
+        "resolution": [
+          2048,
+          1536
+        ],
+        "fps": 15,
+        "capabilities": [
+          "preview",
+          "still",
+          "video"
+        ]
+      }
+    },
+    "scanning_mode": "single_camera_structured_light"
+  },
+  "capture": {
+    "num_patterns": 26,
+    "camera_ids": [
+      "picamera2_0"
+    ],
+    "captured_images": [
+      {
+        "index": 0,
+        "pattern": {
+          "pattern_type": "solid_field",
+          "name": "reference_white",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "reference": true,
+            "index": 0
+          },
+          "parameters": {
+            "color": "White"
+          }
+        },
+        "primary_image": "primary_000_reference_white.jpg",
+        "timestamp": 1749686297.309358,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 62.180460375829554
+          },
+          "projector_focus": null,
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 62.180460375829554,
+            "right_score": 0,
+            "projector_score": 0,
+            "all_ready": 

@@ -484,10 +484,20 @@ class CameraClient:
         if success and response:
             cameras = response.payload.get("cameras", [])
             
-            # Update internal cache
-            self.cameras = {cam["id"]: cam for cam in cameras}
-            logger.info(f"Found {len(cameras)} cameras")
+            # Update internal cache - use camera ID as key
+            self.cameras = {}
+            for cam in cameras:
+                if isinstance(cam, dict):
+                    cam_id = cam.get("id") or cam.get("camera_id")
+                    if cam_id:
+                        self.cameras[cam_id] = cam
+                elif isinstance(cam, str):
+                    # If it's already a string ID
+                    self.cameras[cam] = {"id": cam, "name": f"Camera {cam}"}
             
+            logger.info(f"Found {len(self.cameras)} cameras")
+            
+            # Return the list of cameras (not the dict)
             return cameras
         
         logger.error("Unable to get camera list from scanner")
@@ -1894,27 +1904,28 @@ class CameraClient:
             raise RuntimeError("No cameras available for stereo capture")
         
         # For single camera, use it for both left and right
-        if not right_camera:
-            right_camera = left_camera
-        
-        # Capture from cameras using actual IDs
-        images = self.capture_multi([left_camera, right_camera], 
-                                   jpeg_quality=jpeg_quality,
-                                   format=format)
-        
-        # Check images were captured
-        if left_camera not in images:
-            raise RuntimeError(f"Failed to capture from camera: {left_camera}")
-        
-        # For single camera setup, return same image for both left and right
-        if left_camera == right_camera:
-            if images[left_camera] is None:
-                raise RuntimeError("Single camera capture returned null image")
-            return images[left_camera], images[left_camera]
+        if not right_camera or left_camera == right_camera:
+            # Single camera mode - capture only once
+            images = self.capture_multi([left_camera], 
+                                       jpeg_quality=jpeg_quality,
+                                       format=format)
+            # Duplicate the image for both left and right
+            if left_camera in images and images[left_camera] is not None:
+                return images[left_camera], images[left_camera]
+            else:
+                raise RuntimeError(f"Failed to capture from camera: {left_camera}")
         else:
-            # True stereo setup
+            # True stereo mode - capture from both cameras
+            images = self.capture_multi([left_camera, right_camera], 
+                                       jpeg_quality=jpeg_quality,
+                                       format=format)
+            
+            # Check images were captured
+            if left_camera not in images:
+                raise RuntimeError(f"Failed to capture from camera: {left_camera}")
             if right_camera not in images:
                 raise RuntimeError(f"Failed to capture from camera: {right_camera}")
             if images[left_camera] is None or images[right_camera] is None:
                 raise RuntimeError("Stereo capture returned null images")
+                
             return images[left_camera], images[right_camera]

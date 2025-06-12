@@ -685,6 +685,46 @@ class ProjectorClient:
             logger.error("Error projecting vertical lines")
             return False
 
+    def show_sinusoidal_pattern(
+            self,
+            frequency: int = 1,
+            phase: float = 0.0,
+            orientation: str = "vertical",
+            amplitude: float = 127.5,
+            offset: float = 127.5
+    ) -> bool:
+        """
+        Show sinusoidal pattern for phase shift structured light.
+
+        Args:
+            frequency: Pattern frequency (cycles across projector width/height)
+            phase: Phase shift in radians (0 to 2π)
+            orientation: "vertical" or "horizontal"
+            amplitude: Sinusoidal amplitude (0-127.5 for proper range)
+            offset: DC offset (typically 127.5 for 0-255 range)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        success, response, _ = self.client.send_message(
+            MessageType.PROJECTOR_PATTERN,
+            {
+                "pattern_type": "sinusoidal_pattern",
+                "frequency": frequency,
+                "phase": phase,
+                "orientation": orientation,
+                "amplitude": amplitude,
+                "offset": offset
+            }
+        )
+
+        if success and response:
+            logger.info(f"Sinusoidal pattern projected: f={frequency}, phase={phase:.2f}, {orientation}")
+            return True
+        else:
+            logger.error(f"Error projecting sinusoidal pattern")
+            return False
+
     def show_grid(
             self,
             foreground_color: str = "White",
@@ -1099,7 +1139,7 @@ class ProjectorClient:
         Create a pattern definition dictionary for use in pattern sequences.
         
         Args:
-            pattern_type: Type of pattern ('solid_field', 'horizontal_lines', 'vertical_lines', 'grid', 'checkerboard')
+            pattern_type: Type of pattern ('solid_field', 'horizontal_lines', 'vertical_lines', 'grid', 'checkerboard', 'sinusoidal_pattern')
             **kwargs: Pattern-specific parameters
             
         Returns:
@@ -1222,6 +1262,24 @@ class ProjectorClient:
                         foreground_width=width,
                         background_width=width
                     )
+                    
+            elif pattern_type == "sinusoidal_pattern":
+                # TRUE SINUSOIDAL PATTERN for phase shift structured light
+                frequency = pattern.get("frequency", 1)
+                phase = pattern.get("phase", 0.0)
+                orientation = pattern.get("orientation", "vertical")
+                amplitude = pattern.get("amplitude", 127.5)
+                offset = pattern.get("offset", 127.5)
+                
+                logger.info(f"Projecting sinusoidal pattern (f={frequency}, phase={phase:.2f}, {orientation})")
+                
+                return self.show_sinusoidal_pattern(
+                    frequency=frequency,
+                    phase=phase,
+                    orientation=orientation,
+                    amplitude=amplitude,
+                    offset=offset
+                )
                     
             elif pattern_type == "enhanced_gray":
                 # Enhanced gray patterns should already be processed as gray_code patterns

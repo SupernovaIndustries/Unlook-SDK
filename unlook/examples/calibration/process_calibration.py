@@ -65,9 +65,91 @@ class StereoCalibration2K:
         logger.info(f"Initialized for {checkerboard_size[0]}x{checkerboard_size[1]} checkerboard")
         logger.info(f"Square size: {square_size_mm}mm, Target baseline: {self.target_baseline_mm}mm")
     
-    def load_calibration_images(self, input_dir):
+    def calibrate_single_camera(self, images):
+        """
+        Calibrate a single camera using checkerboard images.
+        
+        Args:
+            images: List of numpy arrays containing checkerboard images
+            
+        Returns:
+            Tuple: (camera_matrix, distortion_coeffs, rvecs, tvecs, reprojection_error)
+        """
+        logger.info(f"Starting single camera calibration with {len(images)} images")
+        
+        # Prepare object points and image points
+        object_points = []  # 3D points in real world space
+        image_points = []   # 2D points in image plane
+        
+        image_size = None
+        valid_images = 0
+        
+        for i, img in enumerate(images):
+            # Convert to grayscale if needed
+            if len(img.shape) == 3:
+                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = img
+            
+            # Set image size from first valid image
+            if image_size is None:
+                image_size = gray.shape[::-1]  # (width, height)
+                logger.info(f"Image size: {image_size}")
+            
+            # Find checkerboard corners
+            ret, corners = cv2.findChessboardCorners(
+                gray, 
+                self.checkerboard_size,
+                cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE
+            )
+            
+            if ret:
+                # Refine corners for sub-pixel accuracy
+                corners = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), self.criteria)
+                
+                object_points.append(self.objp)
+                image_points.append(corners)
+                valid_images += 1
+                
+                logger.debug(f"Image {i+1}: Checkerboard found")
+            else:
+                logger.warning(f"Image {i+1}: Checkerboard not found")
+        
+        logger.info(f"Found checkerboard in {valid_images}/{len(images)} images")
+        
+        if valid_images < 10:
+            raise ValueError(f"Insufficient valid images: {valid_images} < 10")
+        
+        # Perform camera calibration
+        logger.info("Performing camera calibration...")
+        ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv2.calibrateCamera(
+            object_points, 
+            image_points, 
+            image_size, 
+            None, 
+            None,
+            flags=cv2.CALIB_FIX_K4 + cv2.CALIB_FIX_K5  # Fix high-order distortion
+        )
+        
+        logger.info(f"Camera calibration completed. RMS reprojection error: {ret:.3f} pixels")
+        
+        # Log camera parameters
+        fx, fy = camera_matrix[0, 0], camera_matrix[1, 1]
+        cx, cy = camera_matrix[0, 2], camera_matrix[1, 2]
+        logger.info(f"Camera intrinsics:")
+        logger.info(f"  Focal length: fx={fx:.2f}, fy={fy:.2f}")
+        logger.info(f"  Principal point: cx={cx:.2f}, cy={cy:.2f}")
+        logger.info(f"  Distortion coefficients: {dist_coeffs.ravel()}")
+        
+        return camera_matrix, dist_coeffs, rvecs, tvecs, ret
+    
+    def load_calibration_images(self, input_dir, single_camera_mode=False):
         """
         Load calibration images from directory.
+        
+        Args:
+            input_dir: Path to directory containing images
+            single_camera_mode: If True, look for images in 'camera' subdirectory or directly in input_dir
         
         Returns:
             tuple: (left_images, right_images, image_size)
@@ -81,20 +163,37 @@ class StereoCalibration2K:
             all_files = list(input_path.iterdir())
             logger.info(f"Files/folders in input directory: {[f.name for f in all_files]}")
         
-        left_dir = input_path / "left"
-        right_dir = input_path / "right"
-        
-        logger.info(f"Looking for left images in: {left_dir}")
-        logger.info(f"Left directory exists: {left_dir.exists()}")
-        logger.info(f"Looking for right images in: {right_dir}")
-        logger.info(f"Right directory exists: {right_dir.exists()}")
+        if single_camera_mode:
+            # For single camera mode, check for 'camera' subdirectory first
+            camera_dir = input_path / "camera"
+            if camera_dir.exists():
+                left_dir = camera_dir
+                logger.info(f"Single camera mode: Using 'camera' subdirectory: {left_dir}")
+            else:
+                # Fallback to 'left' subdirectory or directly in input directory
+                left_dir = input_path / "left"
+                if not left_dir.exists():
+                    left_dir = input_path
+                    logger.info(f"Single camera mode: Using input directory directly: {left_dir}")
+                else:
+                    logger.info(f"Single camera mode: Using 'left' subdirectory: {left_dir}")
+            right_dir = None  # No right camera in single camera mode
+        else:
+            # Standard stereo mode
+            left_dir = input_path / "left"
+            right_dir = input_path / "right"
+            
+            logger.info(f"Looking for left images in: {left_dir}")
+            logger.info(f"Left directory exists: {left_dir.exists()}")
+            logger.info(f"Looking for right images in: {right_dir}")
+            logger.info(f"Right directory exists: {right_dir.exists()}")
         
         # List files in subdirectories if they exist
         if left_dir.exists():
             left_dir_files = list(left_dir.iterdir())
             logger.info(f"Files in left directory: {[f.name for f in left_dir_files[:10]]}{'...' if len(left_dir_files) > 10 else ''}")
         
-        if right_dir.exists():
+        if right_dir and right_dir.exists():
             right_dir_files = list(right_dir.iterdir())
             logger.info(f"Files in right directory: {[f.name for f in right_dir_files[:10]]}{'...' if len(right_dir_files) > 10 else ''}")
         
@@ -110,45 +209,77 @@ class StereoCalibration2K:
         # Find image pairs - try both JPG and PNG
         left_pattern_jpg = str(left_dir / "*.jpg")
         left_pattern_png = str(left_dir / "*.png")
-        right_pattern_jpg = str(right_dir / "*.jpg")
-        right_pattern_png = str(right_dir / "*.png")
         
         logger.info(f"Searching for left JPG images: {left_pattern_jpg}")
         logger.info(f"Searching for left PNG images: {left_pattern_png}")
-        logger.info(f"Searching for right JPG images: {right_pattern_jpg}")
-        logger.info(f"Searching for right PNG images: {right_pattern_png}")
+        
+        if right_dir:
+            right_pattern_jpg = str(right_dir / "*.jpg")
+            right_pattern_png = str(right_dir / "*.png")
+            logger.info(f"Searching for right JPG images: {right_pattern_jpg}")
+            logger.info(f"Searching for right PNG images: {right_pattern_png}")
+        else:
+            right_pattern_jpg = ""
+            right_pattern_png = ""
         
         left_files = sorted(glob.glob(left_pattern_jpg) + glob.glob(left_pattern_png))
-        right_files = sorted(glob.glob(right_pattern_jpg) + glob.glob(right_pattern_png))
+        if right_dir:
+            right_files = sorted(glob.glob(right_pattern_jpg) + glob.glob(right_pattern_png))
+        else:
+            right_files = []
         
         logger.info(f"Found {len(left_files)} left images: {[Path(f).name for f in left_files[:5]]}{'...' if len(left_files) > 5 else ''}")
-        logger.info(f"Found {len(right_files)} right images: {[Path(f).name for f in right_files[:5]]}{'...' if len(right_files) > 5 else ''}")
+        if right_dir:
+            logger.info(f"Found {len(right_files)} right images: {[Path(f).name for f in right_files[:5]]}{'...' if len(right_files) > 5 else ''}")
         
-        if len(left_files) != len(right_files):
-            raise ValueError(f"Mismatched image counts: {len(left_files)} left, {len(right_files)} right")
-        
-        logger.info(f"Found {len(left_files)} image pairs")
+        if single_camera_mode:
+            if len(left_files) == 0:
+                raise ValueError(f"No images found in single camera mode")
+            logger.info(f"Found {len(left_files)} single camera images")
+        else:
+            if len(left_files) != len(right_files):
+                raise ValueError(f"Mismatched image counts: {len(left_files)} left, {len(right_files)} right")
+            logger.info(f"Found {len(left_files)} image pairs")
         
         left_images = []
         right_images = []
         image_size = None
         
-        for left_path, right_path in zip(left_files, right_files):
-            left_img = cv2.imread(left_path)
-            right_img = cv2.imread(right_path)
+        if single_camera_mode:
+            # Single camera mode - only load left images
+            for left_path in left_files:
+                left_img = cv2.imread(left_path)
+                
+                if left_img is None:
+                    logger.warning(f"Failed to load image: {os.path.basename(left_path)}")
+                    continue
+                
+                if image_size is None:
+                    image_size = (left_img.shape[1], left_img.shape[0])
+                    logger.info(f"Image size: {image_size[0]}x{image_size[1]}")
+                
+                left_images.append(left_img)
             
-            if left_img is None or right_img is None:
-                logger.warning(f"Failed to load image pair: {os.path.basename(left_path)}")
-                continue
+            logger.info(f"Loaded {len(left_images)} single camera images")
+            return left_images, [], image_size  # Empty right_images for single camera
+        else:
+            # Stereo mode - load both left and right images
+            for left_path, right_path in zip(left_files, right_files):
+                left_img = cv2.imread(left_path)
+                right_img = cv2.imread(right_path)
+                
+                if left_img is None or right_img is None:
+                    logger.warning(f"Failed to load image pair: {os.path.basename(left_path)}")
+                    continue
+                
+                if image_size is None:
+                    image_size = (left_img.shape[1], left_img.shape[0])
+                    logger.info(f"Image size: {image_size[0]}x{image_size[1]}")
+                
+                left_images.append(left_img)
+                right_images.append(right_img)
             
-            if image_size is None:
-                image_size = (left_img.shape[1], left_img.shape[0])
-                logger.info(f"Image size: {image_size[0]}x{image_size[1]}")
-            
-            left_images.append(left_img)
-            right_images.append(right_img)
-        
-        return left_images, right_images, image_size
+            return left_images, right_images, image_size
     
     def detect_corners(self, images, visualize=False):
         """
@@ -790,6 +921,8 @@ def main():
                         help='Number of inner corners horizontally')
     parser.add_argument('--checkerboard-rows', type=int, default=5,
                         help='Number of inner corners vertically')
+    parser.add_argument('--checkerboard-size', type=str, 
+                        help='Checkerboard size as "columnsxrows" (e.g., "9x6") - alternative to separate columns/rows args')
     parser.add_argument('--square-size', type=float, default=19.5,
                         help='Size of checkerboard squares in mm')
     parser.add_argument('--visualize', action='store_true',
@@ -800,8 +933,22 @@ def main():
                         help='Save rectified images and epipolar line visualizations')
     parser.add_argument('--verification-samples', type=int, default=3,
                         help='Number of sample images for verification (default: 3)')
+    parser.add_argument('--single-camera', action='store_true',
+                        help='Calibrate single camera instead of stereo pair')
+    parser.add_argument('--camera', type=str, choices=['left', 'right'], default='left',
+                        help='Which camera to calibrate in single camera mode')
     
     args = parser.parse_args()
+    
+    # Parse checkerboard size if provided as "columnsxrows"
+    if args.checkerboard_size:
+        try:
+            cols, rows = map(int, args.checkerboard_size.split('x'))
+            args.checkerboard_columns = cols
+            args.checkerboard_rows = rows
+        except ValueError:
+            logger.error(f"Invalid checkerboard size format: {args.checkerboard_size}. Use format like '9x6'")
+            return 1
     
     # Log command line arguments
     logger.info("Starting calibration with parameters:")
@@ -813,6 +960,9 @@ def main():
     logger.info(f"   Deploy: {args.deploy}")
     logger.info(f"   Save verification: {args.save_verification}")
     logger.info(f"   Verification samples: {args.verification_samples}")
+    logger.info(f"   Single camera mode: {args.single_camera}")
+    if args.single_camera:
+        logger.info(f"   Camera to calibrate: {args.camera}")
     
     # Initialize calibration processor
     logger.info("Initializing calibration processor...")
@@ -822,8 +972,53 @@ def main():
     )
     
     try:
-        # Load images
-        left_images, right_images, image_size = calibrator.load_calibration_images(args.input)
+        if args.single_camera:
+            # Single camera calibration
+            logger.info(f"Loading images for single camera calibration ({args.camera} camera)")
+            left_images, right_images, image_size = calibrator.load_calibration_images(args.input, single_camera_mode=True)
+            
+            # Use appropriate camera images
+            if args.camera == 'left':
+                images = left_images
+            else:
+                images = right_images if right_images else left_images
+            
+            if not images:
+                logger.error(f"No images found for {args.camera} camera")
+                return 1
+            
+            # Perform single camera calibration
+            camera_matrix, dist_coeffs, rvecs, tvecs, rms_error = calibrator.calibrate_single_camera(images)
+            
+            # Save single camera calibration
+            calibration_data = {
+                "calibration_type": "single_camera",
+                "camera": args.camera,
+                "camera_matrix": camera_matrix.tolist(),
+                "distortion_coefficients": dist_coeffs.tolist(),
+                "image_size": image_size,
+                "checkerboard_size": [args.checkerboard_columns, args.checkerboard_rows],
+                "square_size_mm": args.square_size,
+                "rms_reprojection_error": rms_error,
+                "num_calibration_images": len(images),
+                "calibration_date": datetime.now().isoformat(),
+                "notes": f"Single {args.camera} camera calibration for projector-camera structured light system"
+            }
+            
+            # Save calibration file
+            output_file = Path(args.output)
+            with open(output_file, 'w') as f:
+                json.dump(calibration_data, f, indent=2)
+            
+            logger.info(f"✅ Single camera calibration completed successfully!")
+            logger.info(f"📁 Calibration saved to: {output_file}")
+            logger.info(f"📊 RMS reprojection error: {rms_error:.3f} pixels")
+            logger.info(f"🎯 Next step: Use this calibration for projector-camera calibration")
+            
+            return 0
+        else:
+            # Original stereo calibration
+            left_images, right_images, image_size = calibrator.load_calibration_images(args.input)
         
         # Perform calibration
         calibration = calibrator.calibrate_stereo_advanced(left_images, right_images, image_size)

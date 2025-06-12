@@ -109,3 +109,8 @@ test_epipolar_check.jpg
 /investor_demo
 /test_fix_debug
 /unlook/client/lib
+/calibration_2k_left_only
+/calibration_capture
+/calibration_2k_left_only
+/md
+/test_q_matrix_fix

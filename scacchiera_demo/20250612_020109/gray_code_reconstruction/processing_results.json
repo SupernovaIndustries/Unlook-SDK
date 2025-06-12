@@ -1,0 +1,48 @@
+{
+  "method": "gray_code_reconstruction",
+  "pattern_type": "gray_code",
+  "success": true,
+  "processing_time_seconds": 0.7982430458068848,
+  "reconstruction_info": {
+    "pattern_type": "gray_code",
+    "calibrated": true,
+    "valid_pixels": 283475,
+    "total_pixels": 1584128,
+    "coverage_percentage": 17.894702953296704,
+    "valid_3d_points": 283475,
+    "coverage_3d_percentage": 17.894702953296704,
+    "method": "gray_code_structured_light",
+    "demo_optimized": true
+  },
+  "output_directory": "scacchiera_demo\\20250612_020109\\gray_code_reconstruction",
+  "command_line_args": {
+    "input": "scacchiera_demo\\20250612_020109",
+    "output": null,
+    "calibration": "projector_camera_calibration.json",
+    "pattern": "gray_code",
+    "frequencies": [
+      1,
+      8,
+      64
+    ],
+    "steps": 4,
+    "gray_bits": 6,
+    "projector_width": 1280,
+    "projector_height": 720,
+    "format": "ply",
+    "save_visualizations": true,
+    "filter_distance": [
+      50.0,
+      1500.0
+    ],
+    "demo_mode": true,
+    "high_precision": false,
+    "generate_mesh": false,
+    "mesh_method": "poisson",
+    "mesh_depth": 9,
+    "mesh_format": "ply",
+    "debug": false,
+    "info": false
+  },
+  "timestamp": "2025-06-12T03:37:26.430986"
+}

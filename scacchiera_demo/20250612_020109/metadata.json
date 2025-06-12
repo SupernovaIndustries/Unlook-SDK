@@ -1,0 +1,1789 @@
+{
+  "session": {
+    "scanner_info": {
+      "name": "UnLookScanner",
+      "host": "192.168.1.21",
+      "port": 5555,
+      "preprocessing_version": "v2_enhanced"
+    },
+    "protocol_v2": true,
+    "preprocessing_info": {
+      "enabled": true,
+      "level": "full",
+      "gpu_available": true,
+      "performance_metrics": {}
+    },
+    "sync_enabled": true,
+    "led_enabled": true,
+    "led_intensity": 100,
+    "session_name": "20250612_020109",
+    "timestamp": "2025-06-12T02:01:09.566354",
+    "capture_module_version": "1.0",
+    "cameras": {
+      "primary": {
+        "id": "picamera2_0",
+        "name": "Camera 0",
+        "resolution": [
+          2048,
+          1536
+        ],
+        "fps": 15,
+        "capabilities": [
+          "preview",
+          "still",
+          "video"
+        ]
+      }
+    },
+    "scanning_mode": "single_camera_structured_light"
+  },
+  "capture": {
+    "num_patterns": 26,
+    "camera_ids": [
+      "picamera2_0"
+    ],
+    "captured_images": [
+      {
+        "index": 0,
+        "pattern": {
+          "pattern_type": "solid_field",
+          "name": "reference_white",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "reference": true,
+            "index": 0
+          },
+          "parameters": {
+            "color": "White"
+          }
+        },
+        "primary_image": "primary_000_reference_white.jpg",
+        "timestamp": 1749686470.8865788,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 66.54026086669872
+          },
+          "projector_focus": null,
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 66.54026086669872,
+            "right_score": 0,
+            "projector_score": 0,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 1,
+        "pattern": {
+          "pattern_type": "solid_field",
+          "name": "reference_black",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "reference": true,
+            "index": 1
+          },
+          "parameters": {
+            "color": "Black"
+          }
+        },
+        "primary_image": "primary_001_reference_black.jpg",
+        "timestamp": 1749686472.096235,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 74.31818303523369
+          },
+          "projector_focus": null,
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 82.09610520376864,
+            "right_score": 0,
+            "projector_score": 0,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 2,
+        "pattern": {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_0",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 0,
+            "inverted": false,
+            "index": 2,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 80,
+            "background_width": 80,
+            "stripe_width_info": "Pattern: 80px stripes"
+          }
+        },
+        "primary_image": "primary_002_gray_code_v_bit_0.jpg",
+        "timestamp": 1749686473.6343422,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 74.41889529142635
+          },
+          "projector_focus": {
+            "focus_score": 85.03152401409608,
+            "smoothed_score": 85.03152401409608,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9921874999612427,
+            "pattern_regularity": 0.15774152071014289
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 74.6203198038117,
+            "right_score": 0,
+            "projector_score": 85.03152401409608,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 3,
+        "pattern": {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_0_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 0,
+            "inverted": true,
+            "index": 3,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 80,
+            "background_width": 80,
+            "stripe_width_info": "Inverted pattern: 80px stripes"
+          }
+        },
+        "primary_image": "primary_003_gray_code_v_bit_0_inv.jpg",
+        "timestamp": 1749686475.10986,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 73.87366976732156
+          },
+          "projector_focus": {
+            "focus_score": 84.83287266610077,
+            "smoothed_score": 84.93219834009842,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9921874999612427,
+            "pattern_regularity": 0.15763137567696722
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 72.23799319500719,
+            "right_score": 0,
+            "projector_score": 84.83287266610077,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 4,
+        "pattern": {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_1",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 1,
+            "inverted": false,
+            "index": 4,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 40,
+            "background_width": 40,
+            "stripe_width_info": "Pattern: 40px stripes"
+          }
+        },
+        "primary_image": "primary_004_gray_code_v_bit_1.jpg",
+        "timestamp": 1749686476.5413263,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 73.56193649915016
+          },
+          "projector_focus": {
+            "focus_score": 85.14497780792205,
+            "smoothed_score": 85.00312482937296,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9844357976270647,
+            "pattern_regularity": 0.1591853346012704
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 72.31500342646464,
+            "right_score": 0,
+            "projector_score": 85.14497780792205,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 5,
+        "pattern": {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_1_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 1,
+            "inverted": true,
+            "index": 5,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 40,
+            "background_width": 40,
+            "stripe_width_info": "Inverted pattern: 40px stripes"
+          }
+        },
+        "primary_image": "primary_005_gray_code_v_bit_1_inv.jpg",
+        "timestamp": 1749686477.991743,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 73.34992784081606
+          },
+          "projector_focus": {
+            "focus_score": 85.70220066692782,
+            "smoothed_score": 85.17789378876168,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9921874999612427,
+            "pattern_regularity": 0.16008393458666811
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 72.28988454914554,
+            "right_score": 0,
+            "projector_score": 85.70220066692782,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 6,
+        "pattern": {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_2",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 2,
+            "inverted": false,
+            "index": 6,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 20,
+            "background_width": 20,
+            "stripe_width_info": "Pattern: 20px stripes"
+          }
+        },
+        "primary_image": "primary_006_gray_code_v_bit_2.jpg",
+        "timestamp": 1749686479.4853039,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 73.73228444086782
+          },
+          "projector_focus": {
+            "focus_score": 85.93642201004485,
+            "smoothed_score": 85.32959943301832,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9921874999612427,
+            "pattern_regularity": 0.15953668843688235
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 76.02642404117834,
+            "right_score": 0,
+            "projector_score": 85.93642201004485,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 7,
+        "pattern": {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_2_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 2,
+            "inverted": true,
+            "index": 7,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 20,
+            "background_width": 20,
+            "stripe_width_info": "Inverted pattern: 20px stripes"
+          }
+        },
+        "primary_image": "primary_007_gray_code_v_bit_2_inv.jpg",
+        "timestamp": 1749686480.9840336,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 72.8713019713252
+          },
+          "projector_focus": {
+            "focus_score": 87.03185899498774,
+            "smoothed_score": 85.61330936001322,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.99199999996032,
+            "pattern_regularity": 0.16487323759526903
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 66.84442468452676,
+            "right_score": 0,
+            "projector_score": 87.03185899498774,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 8,
+        "pattern": {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_3",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 3,
+            "inverted": false,
+            "index": 8,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 10,
+            "background_width": 10,
+            "stripe_width_info": "Pattern: 10px stripes"
+          }
+        },
+        "primary_image": "primary_008_gray_code_v_bit_3.jpg",
+        "timestamp": 1749686482.4376173,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 72.44265429630653
+          },
+          "projector_focus": {
+            "focus_score": 86.11831193855446,
+            "smoothed_score": 85.68545258551912,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9918699186588671,
+            "pattern_regularity": 0.16118361201746637
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 69.01347289615723,
+            "right_score": 0,
+            "projector_score": 86.11831193855446,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 9,
+        "pattern": {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_3_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 3,
+            "inverted": true,
+            "index": 9,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 10,
+            "background_width": 10,
+            "stripe_width_info": "Inverted pattern: 10px stripes"
+          }
+        },
+        "primary_image": "primary_009_gray_code_v_bit_3_inv.jpg",
+        "timestamp": 1749686483.869548,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 72.16777567106269
+          },
+          "projector_focus": {
+            "focus_score": 85.64324130830138,
+            "smoothed_score": 85.68017617586689,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.99199999996032,
+            "pattern_regularity": 0.15966799790709527
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 69.69386804386812,
+            "right_score": 0,
+            "projector_score": 85.64324130830138,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 10,
+        "pattern": {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_4",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 4,
+            "inverted": false,
+            "index": 10,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 5,
+            "background_width": 5,
+            "stripe_width_info": "Pattern: 5px stripes"
+          }
+        },
+        "primary_image": "primary_010_gray_code_v_bit_4.jpg",
+        "timestamp": 1749686485.3799279,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 72.59553357234977
+          },
+          "projector_focus": {
+            "focus_score": 87.4985217906574,
+            "smoothed_score": 85.88221457751028,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9915254236867997,
+            "pattern_regularity": 0.16395859345061292
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 70.81783987956936,
+            "right_score": 0,
+            "projector_score": 87.4985217906574,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 11,
+        "pattern": {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_4_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 4,
+            "inverted": true,
+            "index": 11,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 5,
+            "background_width": 5,
+            "stripe_width_info": "Inverted pattern: 5px stripes"
+          }
+        },
+        "primary_image": "primary_011_gray_code_v_bit_4_inv.jpg",
+        "timestamp": 1749686486.884636,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 71.61587968943729
+          },
+          "projector_focus": {
+            "focus_score": 87.88750962652546,
+            "smoothed_score": 86.08274408241179,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9919678714461057,
+            "pattern_regularity": 0.165141846093689
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 72.299566374644,
+            "right_score": 0,
+            "projector_score": 87.88750962652546,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 12,
+        "pattern": {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_5",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 5,
+            "inverted": false,
+            "index": 12,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 2,
+            "background_width": 2,
+            "stripe_width_info": "Pattern: 2px stripes"
+          }
+        },
+        "primary_image": "primary_012_gray_code_v_bit_5.jpg",
+        "timestamp": 1749686488.3737903,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 71.03052344626727
+          },
+          "projector_focus": {
+            "focus_score": 86.17330740427155,
+            "smoothed_score": 86.19692242142935,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9921259842129084,
+            "pattern_regularity": 0.16017482461811575
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 68.76675737211147,
+            "right_score": 0,
+            "projector_score": 86.17330740427155,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 13,
+        "pattern": {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_5_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 5,
+            "inverted": true,
+            "index": 13,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 2,
+            "background_width": 2,
+            "stripe_width_info": "Inverted pattern: 2px stripes"
+          }
+        },
+        "primary_image": "primary_013_gray_code_v_bit_5_inv.jpg",
+        "timestamp": 1749686489.849548,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 70.48264342214657
+          },
+          "projector_focus": {
+            "focus_score": 85.80849621408647,
+            "smoothed_score": 86.29448477622793,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9909090908640495,
+            "pattern_regularity": 0.16020180469451833
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 66.7591929538001,
+            "right_score": 0,
+            "projector_score": 85.80849621408647,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 14,
+        "pattern": {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_0",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 0,
+            "inverted": false,
+            "index": 14,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 80,
+            "background_width": 80,
+            "stripe_width_info": "Pattern: 80px stripes"
+          }
+        },
+        "primary_image": "primary_014_gray_code_h_bit_0.jpg",
+        "timestamp": 1749686491.2605,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 69.91936531598813
+          },
+          "projector_focus": {
+            "focus_score": 86.99077940394974,
+            "smoothed_score": 86.47906493583069,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9836734693476051,
+            "pattern_regularity": 0.16612841306293175
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 66.68222236488029,
+            "right_score": 0,
+            "projector_score": 86.99077940394974,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 15,
+        "pattern": {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_0_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 0,
+            "inverted": true,
+            "index": 15,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 80,
+            "background_width": 80,
+            "stripe_width_info": "Inverted pattern: 80px stripes"
+          }
+        },
+        "primary_image": "primary_015_gray_code_h_bit_0_inv.jpg",
+        "timestamp": 1749686492.6262672,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 69.75174011542484
+          },
+          "projector_focus": {
+            "focus_score": 87.1068347582063,
+            "smoothed_score": 86.61952834495854,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9914529914106216,
+            "pattern_regularity": 0.16454883587482802
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 70.61363254351272,
+            "right_score": 0,
+            "projector_score": 87.1068347582063,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 16,
+        "pattern": {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_1",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 1,
+            "inverted": false,
+            "index": 16,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 40,
+            "background_width": 40,
+            "stripe_width_info": "Pattern: 40px stripes"
+          }
+        },
+        "primary_image": "primary_016_gray_code_h_bit_1.jpg",
+        "timestamp": 1749686494.0055137,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 69.18032561999279
+          },
+          "projector_focus": {
+            "focus_score": 86.37444389083544,
+            "smoothed_score": 86.66333053303761,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9918367346533944,
+            "pattern_regularity": 0.1623441099162235
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 70.31227908685776,
+            "right_score": 0,
+            "projector_score": 86.37444389083544,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 17,
+        "pattern": {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_1_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 1,
+            "inverted": true,
+            "index": 17,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 40,
+            "background_width": 40,
+            "stripe_width_info": "Inverted pattern: 40px stripes"
+          }
+        },
+        "primary_image": "primary_017_gray_code_h_bit_1_inv.jpg",
+        "timestamp": 1749686495.3391585,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 69.46956561149211
+          },
+          "projector_focus": {
+            "focus_score": 86.41623980495004,
+            "smoothed_score": 86.60176861403383,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9918032786478769,
+            "pattern_regularity": 0.1627916456686951
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 69.73682459951993,
+            "right_score": 0,
+            "projector_score": 86.41623980495004,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 18,
+        "pattern": {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_2",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 2,
+            "inverted": false,
+            "index": 18,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 20,
+            "background_width": 20,
+            "stripe_width_info": "Pattern: 20px stripes"
+          }
+        },
+        "primary_image": "primary_018_gray_code_h_bit_2.jpg",
+        "timestamp": 1749686496.7119675,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 69.41439081842039
+          },
+          "projector_focus": {
+            "focus_score": 86.04539863761593,
+            "smoothed_score": 86.59447728393997,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9835390946097309,
+            "pattern_regularity": 0.1624907018884161
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 68.46172496544028,
+            "right_score": 0,
+            "projector_score": 86.04539863761593,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 19,
+        "pattern": {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_2_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 2,
+            "inverted": true,
+            "index": 19,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 20,
+            "background_width": 20,
+            "stripe_width_info": "Inverted pattern: 20px stripes"
+          }
+        },
+        "primary_image": "primary_019_gray_code_h_bit_2_inv.jpg",
+        "timestamp": 1749686498.0916238,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 69.3174149570946
+          },
+          "projector_focus": {
+            "focus_score": 86.09582751165672,
+            "smoothed_score": 86.63973590427551,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9917355371491018,
+            "pattern_regularity": 0.1619564804913049
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 68.72410943061017,
+            "right_score": 0,
+            "projector_score": 86.09582751165672,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 20,
+        "pattern": {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_3",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 3,
+            "inverted": false,
+            "index": 20,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 10,
+            "background_width": 10,
+            "stripe_width_info": "Pattern: 10px stripes"
+          }
+        },
+        "primary_image": "primary_020_gray_code_h_bit_3.jpg",
+        "timestamp": 1749686499.4169333,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 69.30041469854348
+          },
+          "projector_focus": {
+            "focus_score": 87.50999629004157,
+            "smoothed_score": 86.64088335421393,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.991631799121689,
+            "pattern_regularity": 0.16531220594709564
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 70.64783729405798,
+            "right_score": 0,
+            "projector_score": 87.50999629004157,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 21,
+        "pattern": {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_3_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 3,
+            "inverted": true,
+            "index": 21,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 10,
+            "background_width": 10,
+            "stripe_width_info": "Inverted pattern: 10px stripes"
+          }
+        },
+        "primary_image": "primary_021_gray_code_h_bit_3_inv.jpg",
+        "timestamp": 1749686500.722049,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 68.98723922060871
+          },
+          "projector_focus": {
+            "focus_score": 87.97851775643814,
+            "smoothed_score": 86.64998416720519,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9917012447721285,
+            "pattern_regularity": 0.16704569694370686
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 69.16781159529637,
+            "right_score": 0,
+            "projector_score": 87.97851775643814,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 22,
+        "pattern": {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_4",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 4,
+            "inverted": false,
+            "index": 22,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 5,
+            "background_width": 5,
+            "stripe_width_info": "Pattern: 5px stripes"
+          }
+        },
+        "primary_image": "primary_022_gray_code_h_bit_4.jpg",
+        "timestamp": 1749686502.1029463,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 68.96218111162965
+          },
+          "projector_focus": {
+            "focus_score": 87.08360490875798,
+            "smoothed_score": 86.74101391765382,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9919354838309703,
+            "pattern_regularity": 0.16363435681300287
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 68.51617628232096,
+            "right_score": 0,
+            "projector_score": 87.08360490875798,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 23,
+        "pattern": {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_4_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 4,
+            "inverted": true,
+            "index": 23,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 5,
+            "background_width": 5,
+            "stripe_width_info": "Inverted pattern: 5px stripes"
+          }
+        },
+        "primary_image": "primary_023_gray_code_h_bit_4_inv.jpg",
+        "timestamp": 1749686503.4448884,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 69.11003256844113
+          },
+          "projector_focus": {
+            "focus_score": 86.60500106348391,
+            "smoothed_score": 86.82066440259356,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9918367346533944,
+            "pattern_regularity": 0.16214816003009375
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 68.23770752191483,
+            "right_score": 0,
+            "projector_score": 86.60500106348391,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 24,
+        "pattern": {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_5",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 5,
+            "inverted": false,
+            "index": 24,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 2,
+            "background_width": 2,
+            "stripe_width_info": "Pattern: 2px stripes"
+          }
+        },
+        "primary_image": "primary_024_gray_code_h_bit_5.jpg",
+        "timestamp": 1749686504.8272872,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 69.27859565572234
+          },
+          "projector_focus": {
+            "focus_score": 85.13038914405239,
+            "smoothed_score": 86.63462537660385,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9838709677022632,
+            "pattern_regularity": 0.15784348678501312
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 68.36785323769249,
+            "right_score": 0,
+            "projector_score": 85.13038914405239,
+            "all_ready": false
+          }
+        }
+      },
+      {
+        "index": 25,
+        "pattern": {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_5_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 5,
+            "inverted": true,
+            "index": 25,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 2,
+            "background_width": 2,
+            "stripe_width_info": "Inverted pattern: 2px stripes"
+          }
+        },
+        "primary_image": "primary_025_gray_code_h_bit_5_inv.jpg",
+        "timestamp": 1749686506.1764224,
+        "focus_assessment": {
+          "primary_camera": {
+            "quality": "fair",
+            "score": 69.37102848648222
+          },
+          "projector_focus": {
+            "focus_score": 85.3428713744274,
+            "smoothed_score": 86.45822903822595,
+            "status": "excellent",
+            "quality": "excellent",
+            "threshold": 0.15,
+            "contrast": 0.9920634920241245,
+            "pattern_regularity": 0.15625204812169835
+          },
+          "overall_status": {
+            "status": "poor",
+            "message": "\u274c Focus adjustment needed",
+            "left_score": 71.53796085111145,
+            "right_score": 0,
+            "projector_score": 85.3428713744274,
+            "all_ready": false
+          }
+        }
+      }
+    ],
+    "pattern_info": {
+      "num_patterns": 26,
+      "pattern_types": [
+        "gray_code"
+      ],
+      "gray_code_bits": 6,
+      "phase_shift_steps": null,
+      "phase_frequencies": null,
+      "uses_blue_channel": true,
+      "pattern_sequence": [
+        {
+          "pattern_type": "solid_field",
+          "name": "reference_white",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "reference": true,
+            "index": 0
+          },
+          "parameters": {
+            "color": "White"
+          }
+        },
+        {
+          "pattern_type": "solid_field",
+          "name": "reference_black",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "reference": true,
+            "index": 1
+          },
+          "parameters": {
+            "color": "Black"
+          }
+        },
+        {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_0",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 0,
+            "inverted": false,
+            "index": 2,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 80,
+            "background_width": 80,
+            "stripe_width_info": "Pattern: 80px stripes"
+          }
+        },
+        {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_0_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 0,
+            "inverted": true,
+            "index": 3,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 80,
+            "background_width": 80,
+            "stripe_width_info": "Inverted pattern: 80px stripes"
+          }
+        },
+        {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_1",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 1,
+            "inverted": false,
+            "index": 4,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 40,
+            "background_width": 40,
+            "stripe_width_info": "Pattern: 40px stripes"
+          }
+        },
+        {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_1_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 1,
+            "inverted": true,
+            "index": 5,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 40,
+            "background_width": 40,
+            "stripe_width_info": "Inverted pattern: 40px stripes"
+          }
+        },
+        {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_2",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 2,
+            "inverted": false,
+            "index": 6,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 20,
+            "background_width": 20,
+            "stripe_width_info": "Pattern: 20px stripes"
+          }
+        },
+        {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_2_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 2,
+            "inverted": true,
+            "index": 7,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 20,
+            "background_width": 20,
+            "stripe_width_info": "Inverted pattern: 20px stripes"
+          }
+        },
+        {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_3",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 3,
+            "inverted": false,
+            "index": 8,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 10,
+            "background_width": 10,
+            "stripe_width_info": "Pattern: 10px stripes"
+          }
+        },
+        {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_3_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 3,
+            "inverted": true,
+            "index": 9,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 10,
+            "background_width": 10,
+            "stripe_width_info": "Inverted pattern: 10px stripes"
+          }
+        },
+        {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_4",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 4,
+            "inverted": false,
+            "index": 10,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 5,
+            "background_width": 5,
+            "stripe_width_info": "Pattern: 5px stripes"
+          }
+        },
+        {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_4_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 4,
+            "inverted": true,
+            "index": 11,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 5,
+            "background_width": 5,
+            "stripe_width_info": "Inverted pattern: 5px stripes"
+          }
+        },
+        {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_5",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 5,
+            "inverted": false,
+            "index": 12,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 2,
+            "background_width": 2,
+            "stripe_width_info": "Pattern: 2px stripes"
+          }
+        },
+        {
+          "pattern_type": "vertical_lines",
+          "name": "gray_code_v_bit_5_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 5,
+            "inverted": true,
+            "index": 13,
+            "orientation": "vertical",
+            "resolution": 1280
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 2,
+            "background_width": 2,
+            "stripe_width_info": "Inverted pattern: 2px stripes"
+          }
+        },
+        {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_0",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 0,
+            "inverted": false,
+            "index": 14,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 80,
+            "background_width": 80,
+            "stripe_width_info": "Pattern: 80px stripes"
+          }
+        },
+        {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_0_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 0,
+            "inverted": true,
+            "index": 15,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 80,
+            "background_width": 80,
+            "stripe_width_info": "Inverted pattern: 80px stripes"
+          }
+        },
+        {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_1",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 1,
+            "inverted": false,
+            "index": 16,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 40,
+            "background_width": 40,
+            "stripe_width_info": "Pattern: 40px stripes"
+          }
+        },
+        {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_1_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 1,
+            "inverted": true,
+            "index": 17,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 40,
+            "background_width": 40,
+            "stripe_width_info": "Inverted pattern: 40px stripes"
+          }
+        },
+        {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_2",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 2,
+            "inverted": false,
+            "index": 18,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 20,
+            "background_width": 20,
+            "stripe_width_info": "Pattern: 20px stripes"
+          }
+        },
+        {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_2_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 2,
+            "inverted": true,
+            "index": 19,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 20,
+            "background_width": 20,
+            "stripe_width_info": "Inverted pattern: 20px stripes"
+          }
+        },
+        {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_3",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 3,
+            "inverted": false,
+            "index": 20,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 10,
+            "background_width": 10,
+            "stripe_width_info": "Pattern: 10px stripes"
+          }
+        },
+        {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_3_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 3,
+            "inverted": true,
+            "index": 21,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 10,
+            "background_width": 10,
+            "stripe_width_info": "Inverted pattern: 10px stripes"
+          }
+        },
+        {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_4",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 4,
+            "inverted": false,
+            "index": 22,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 5,
+            "background_width": 5,
+            "stripe_width_info": "Pattern: 5px stripes"
+          }
+        },
+        {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_4_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 4,
+            "inverted": true,
+            "index": 23,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 5,
+            "background_width": 5,
+            "stripe_width_info": "Inverted pattern: 5px stripes"
+          }
+        },
+        {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_5",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 5,
+            "inverted": false,
+            "index": 24,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Blue",
+            "background_color": "Black",
+            "foreground_width": 2,
+            "background_width": 2,
+            "stripe_width_info": "Pattern: 2px stripes"
+          }
+        },
+        {
+          "pattern_type": "horizontal_lines",
+          "name": "gray_code_h_bit_5_inv",
+          "metadata": {
+            "pattern_set": "gray_code",
+            "gray_code": true,
+            "bit": 5,
+            "inverted": true,
+            "index": 25,
+            "orientation": "horizontal",
+            "resolution": 720
+          },
+          "parameters": {
+            "foreground_color": "Black",
+            "background_color": "Blue",
+            "foreground_width": 2,
+            "background_width": 2,
+            "stripe_width_info": "Inverted pattern: 2px stripes"
+          }
+        }
+      ]
+    },
+    "calibration_file": "calibration.json",
+    "capture_time_seconds": 39.12933897972107,
+    "success_rate": 1.0,
+    "focus_statistics": {
+      "total_images": 26,
+      "images_with_focus_data": 26,
+      "overall_assessment": "POOR - Focus adjustment required"
+    }
+  },
+  "timestamp_end": "2025-06-12T02:01:48.703331"
+}

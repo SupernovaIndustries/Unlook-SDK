@@ -240,19 +240,32 @@ class CaptureModule:
         
         # Get available cameras
         cameras = self.client.camera.get_cameras()
-        if len(cameras) < 2:
-            logger.error(f"Need at least 2 cameras, found {len(cameras)}")
-            return False, {"error": "Insufficient cameras"}
+        if len(cameras) < 1:
+            logger.error(f"Need at least 1 camera, found {len(cameras)}")
+            return False, {"error": "No cameras available"}
         
-        # Use first two cameras as left and right
-        camera_ids = [cam['id'] for cam in cameras[:2]]
-        logger.info(f"Using cameras: {camera_ids}")
-        
-        # Store camera info in metadata
-        self.session_metadata['cameras'] = {
-            'left': cameras[0],
-            'right': cameras[1]
-        }
+        # Support both single camera and stereo setups
+        if len(cameras) >= 2:
+            # Stereo mode - use first two cameras as left and right
+            camera_ids = [cam['id'] for cam in cameras[:2]]
+            logger.info(f"STEREO MODE: Using cameras: {camera_ids}")
+            
+            # Store camera info in metadata
+            self.session_metadata['cameras'] = {
+                'left': cameras[0],
+                'right': cameras[1]
+            }
+            self.session_metadata['scanning_mode'] = 'stereo'
+        else:
+            # Single camera mode (for projector-camera setup)
+            camera_ids = [cameras[0]['id']]
+            logger.info(f"SINGLE CAMERA MODE: Using camera: {camera_ids[0]} (structured light with projector)")
+            
+            # Store camera info in metadata
+            self.session_metadata['cameras'] = {
+                'primary': cameras[0]
+            }
+            self.session_metadata['scanning_mode'] = 'single_camera_structured_light'
         
         # Create capture info
         capture_info = {
@@ -305,82 +318,129 @@ class CaptureModule:
             try:
                 # Try multiple times if sync fails
                 images = None
+                expected_cameras = len(camera_ids)
                 for attempt in range(3):
                     images = self.client.camera.capture_multi(camera_ids)
-                    if images and len(images) == 2:
+                    if images and len(images) == expected_cameras:
                         break
                     if attempt < 2:
                         logger.warning(f"Sync attempt {attempt+1} failed, retrying...")
                         time.sleep(0.05)
                 
-                if images and len(images) == 2:
-                    # Extract left and right images
-                    left_img = images[camera_ids[0]]
-                    right_img = images[camera_ids[1]]
-                    
-                    # Focus assessment for each captured image
-                    left_focus = self.focus_assessment.assess_camera_focus(left_img, 'left')
-                    right_focus = self.focus_assessment.assess_camera_focus(right_img, 'right')
-                    
-                    # Assess projector focus if pattern is structural
-                    projector_focus = None
-                    if pattern.pattern_type == "vertical_lines":
-                        projector_focus = self.focus_assessment.assess_projector_focus(left_img, 'lines')
-                    elif pattern.pattern_type == "horizontal_lines":
-                        projector_focus = self.focus_assessment.assess_projector_focus(left_img, 'lines')
-                    
-                    # Get overall focus status
-                    overall_focus = self.focus_assessment.get_overall_focus_status()
-                    
-                    # Log focus quality
-                    logger.info(f"Focus Quality - Left: {left_focus['quality']} ({left_focus['smoothed_score']:.1f}), Right: {right_focus['quality']} ({right_focus['smoothed_score']:.1f})")
-                    if projector_focus:
-                        logger.info(f"🔍 Projector Focus: {projector_focus['quality']} (contrast: {projector_focus.get('contrast', 0):.2f})")
-                    logger.info(f"Overall Status: {overall_focus['message']}")
-                    
-                    # Save images
-                    left_path = self._save_image(left_img, f"left_{idx:03d}_{pattern.name}")
-                    right_path = self._save_image(right_img, f"right_{idx:03d}_{pattern.name}")
-                    
-                    # Record capture info with focus data
-                    capture_record = {
-                        'index': idx,
-                        'pattern': pattern.to_dict(),
-                        'left_image': os.path.basename(left_path),
-                        'right_image': os.path.basename(right_path),
-                        'timestamp': time.time(),
-                        'focus_assessment': {
-                            'left_camera': {
-                                'quality': left_focus['quality'],
-                                'score': left_focus['smoothed_score'],
-                                'laplacian_var': left_focus.get('laplacian_var', 0),
-                                'gradient_mean': left_focus.get('gradient_mean', 0),
-                                'high_freq_ratio': left_focus.get('high_freq_ratio', 0)
-                            },
-                            'right_camera': {
-                                'quality': right_focus['quality'],
-                                'score': right_focus['smoothed_score'],
-                                'laplacian_var': right_focus.get('laplacian_var', 0),
-                                'gradient_mean': right_focus.get('gradient_mean', 0),
-                                'high_freq_ratio': right_focus.get('high_freq_ratio', 0)
-                            },
-                            'overall_status': overall_focus['status'],
-                            'overall_message': overall_focus['message']
+                if images and len(images) == expected_cameras:
+                    # Handle both single camera and stereo modes
+                    if len(camera_ids) == 1:
+                        # Single camera mode
+                        primary_img = images[camera_ids[0]]
+                        
+                        # Focus assessment for single camera (use 'left' for compatibility)
+                        primary_focus = self.focus_assessment.assess_camera_focus(primary_img, 'left')
+                        
+                        # Assess projector focus if pattern is structural
+                        projector_focus = None
+                        if pattern.pattern_type in ["vertical_lines", "horizontal_lines"]:
+                            projector_focus = self.focus_assessment.assess_projector_focus(primary_img, 'lines')
+                        
+                        # Get overall focus status
+                        overall_focus = self.focus_assessment.get_overall_focus_status()
+                        
+                        # Log focus quality
+                        logger.info(f"Focus Quality - Primary: {primary_focus['quality']} ({primary_focus['smoothed_score']:.1f})")
+                        if projector_focus:
+                            logger.info(f"🔍 Projector Focus: {projector_focus['quality']} (contrast: {projector_focus.get('contrast', 0):.2f})")
+                        logger.info(f"Overall Status: {overall_focus['message']}")
+                        
+                        # Save image
+                        primary_path = self._save_image(primary_img, f"primary_{idx:03d}_{pattern.name}")
+                        
+                        # Record capture info with focus data (single camera format)
+                        capture_record = {
+                            'index': idx,
+                            'pattern': pattern.to_dict(),
+                            'primary_image': os.path.basename(primary_path),
+                            'timestamp': time.time(),
+                            'focus_assessment': {
+                                'primary_camera': {
+                                    'quality': primary_focus['quality'],
+                                    'score': primary_focus['smoothed_score'],
+                                },
+                                'projector_focus': projector_focus if projector_focus else None,
+                                'overall_status': overall_focus
+                            }
                         }
-                    }
-                    
-                    # Add projector focus if available
-                    if projector_focus:
-                        capture_record['focus_assessment']['projector'] = {
-                            'quality': projector_focus['quality'],
-                            'score': projector_focus.get('focus_score', 0),
-                            'contrast': projector_focus.get('contrast', 0),
-                            'pattern_regularity': projector_focus.get('pattern_regularity', 0)
+                        
+                        logger.debug(f"Captured SINGLE: Primary={primary_img.shape}")
+                        
+                    else:
+                        # Stereo mode (original logic)
+                        left_img = images[camera_ids[0]]
+                        right_img = images[camera_ids[1]]
+                        
+                        # Focus assessment for each captured image
+                        left_focus = self.focus_assessment.assess_camera_focus(left_img, 'left')
+                        right_focus = self.focus_assessment.assess_camera_focus(right_img, 'right')
+                        
+                        # Assess projector focus if pattern is structural
+                        projector_focus = None
+                        if pattern.pattern_type == "vertical_lines":
+                            projector_focus = self.focus_assessment.assess_projector_focus(left_img, 'lines')
+                        elif pattern.pattern_type == "horizontal_lines":
+                            projector_focus = self.focus_assessment.assess_projector_focus(left_img, 'lines')
+                        
+                        # Get overall focus status
+                        overall_focus = self.focus_assessment.get_overall_focus_status()
+                        
+                        # Log focus quality
+                        logger.info(f"Focus Quality - Left: {left_focus['quality']} ({left_focus['smoothed_score']:.1f}), Right: {right_focus['quality']} ({right_focus['smoothed_score']:.1f})")
+                        if projector_focus:
+                            logger.info(f"🔍 Projector Focus: {projector_focus['quality']} (contrast: {projector_focus.get('contrast', 0):.2f})")
+                        logger.info(f"Overall Status: {overall_focus['message']}")
+                        
+                        # Save images
+                        left_path = self._save_image(left_img, f"left_{idx:03d}_{pattern.name}")
+                        right_path = self._save_image(right_img, f"right_{idx:03d}_{pattern.name}")
+                        
+                        # Record capture info with focus data
+                        capture_record = {
+                            'index': idx,
+                            'pattern': pattern.to_dict(),
+                            'left_image': os.path.basename(left_path),
+                            'right_image': os.path.basename(right_path),
+                            'timestamp': time.time(),
+                            'focus_assessment': {
+                                'left_camera': {
+                                    'quality': left_focus['quality'],
+                                    'score': left_focus['smoothed_score'],
+                                    'laplacian_var': left_focus.get('laplacian_var', 0),
+                                    'gradient_mean': left_focus.get('gradient_mean', 0),
+                                    'high_freq_ratio': left_focus.get('high_freq_ratio', 0)
+                                },
+                                'right_camera': {
+                                    'quality': right_focus['quality'],
+                                    'score': right_focus['smoothed_score'],
+                                    'laplacian_var': right_focus.get('laplacian_var', 0),
+                                    'gradient_mean': right_focus.get('gradient_mean', 0),
+                                    'high_freq_ratio': right_focus.get('high_freq_ratio', 0)
+                                },
+                                'overall_status': overall_focus['status'],
+                                'overall_message': overall_focus['message']
+                            }
                         }
+                        
+                        # Add projector focus if available (stereo mode)
+                        if projector_focus:
+                            capture_record['focus_assessment']['projector'] = {
+                                'quality': projector_focus['quality'],
+                                'score': projector_focus.get('focus_score', 0),
+                                'contrast': projector_focus.get('contrast', 0),
+                                'pattern_regularity': projector_focus.get('pattern_regularity', 0)
+                            }
+                        
+                        logger.debug(f"Captured STEREO: L={left_img.shape}, R={right_img.shape}")
                     
+                    # Common for both modes: add capture record
                     capture_info['captured_images'].append(capture_record)
                     
-                    logger.debug(f"Captured: L={left_img.shape}, R={right_img.shape}")
                 else:
                     logger.error(f"Failed to capture images for pattern {idx}")
                     
@@ -461,10 +521,15 @@ class CaptureModule:
                     background_width=params.get("background_width", 4)
                 )
                 
-            elif pattern.pattern_type == "sinusoidal":
-                # For phase shift patterns - would need projector support
-                logger.warning(f"Sinusoidal patterns not yet implemented in projector")
-                return False
+            elif pattern.pattern_type == "sinusoidal_pattern":
+                # TRUE SINUSOIDAL PATTERN for phase shift structured light
+                return self.client.projector.show_sinusoidal_pattern(
+                    frequency=params.get("frequency", 1),
+                    phase=params.get("phase", 0.0),
+                    orientation=params.get("orientation", "vertical"),
+                    amplitude=params.get("amplitude", 127.5),
+                    offset=params.get("offset", 127.5)
+                )
                 
             else:
                 logger.warning(f"Unknown pattern type: {pattern.pattern_type}")
@@ -614,9 +679,22 @@ class CaptureModule:
         
         metadata_path = self.session_dir / "metadata.json"
         with open(metadata_path, 'w') as f:
-            json.dump(metadata, f, indent=2)
+            json.dump(metadata, f, indent=2, default=self._json_serializer)
         
         logger.info(f"Saved metadata to {metadata_path}")
+    
+    def _json_serializer(self, obj):
+        """Convert numpy/OpenCV types to JSON serializable types."""
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        elif isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        # Add other types as needed
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
     
     def _cleanup_led(self):
         """Turn off LED flood illuminator."""

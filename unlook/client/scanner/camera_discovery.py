@@ -48,7 +48,23 @@ class CameraDiscovery:
         try:
             # Get camera list from server
             cameras = self.client.camera.get_cameras()
-            self._camera_list = list(cameras.keys()) if isinstance(cameras, dict) else cameras
+            
+            # Extract camera IDs from the list
+            if isinstance(cameras, dict):
+                # If it's a dict, get the keys
+                self._camera_list = list(cameras.keys())
+            elif isinstance(cameras, list):
+                # If it's a list of dicts, extract the 'id' field
+                self._camera_list = []
+                for cam in cameras:
+                    if isinstance(cam, dict):
+                        cam_id = cam.get('id') or cam.get('camera_id')
+                        if cam_id:
+                            self._camera_list.append(cam_id)
+                    else:
+                        self._camera_list.append(str(cam))
+            else:
+                self._camera_list = []
             
             logger.info(f"Discovered {len(self._camera_list)} cameras: {self._camera_list}")
             
@@ -63,6 +79,8 @@ class CameraDiscovery:
             
         except Exception as e:
             logger.error(f"Error discovering cameras: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return []
     
     def _get_module_config(self):
@@ -107,7 +125,7 @@ class CameraDiscovery:
                     "right": camera_id,  # Map right to primary for compatibility
                     "camera0": camera_id
                 }
-                logger.info(f"Single camera setup - mapped all logical names to {camera_id}")
+                logger.info(f"Single camera setup - mapped all logical names to '{camera_id}'")
                 
             elif num_cameras == 2:
                 # Stereo setup

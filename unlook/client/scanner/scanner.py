@@ -287,9 +287,10 @@ class UnlookClient(EventEmitter):
             
             # Initialize camera discovery after connection
             try:
-                if self._camera_discovery:
-                    logger.info("Initializing camera discovery...")
-                    self._camera_discovery.discover_cameras()
+                # Access camera_discovery property to trigger lazy initialization
+                # This will automatically call discover_cameras() if needed
+                _ = self.camera_discovery
+                logger.debug("Camera discovery initialized")
             except Exception as e:
                 logger.warning(f"Failed to initialize camera discovery: {e}")
                 # Non-critical error, continue
